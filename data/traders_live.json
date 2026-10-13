@@ -1,0 +1,192 @@
+{
+ "gerado_em": "2026-10-13",
+ "criterios": {
+  "n": 40,
+  "roi60": 5.0,
+  "preenche60": 60.0,
+  "desl_max": 1.0,
+  "vol_merc": 100000,
+  "pescadas_max": 30.0
+ },
+ "traders": [
+  {
+   "carteira": "0xb31e41965df4ab8014de4c4d8da9deff0a6ac120",
+   "nome": "C63AMG",
+   "nivel": "copiar",
+   "esportes": [
+    "Tenis"
+   ],
+   "janelaSeg": 120,
+   "minUsd": 0,
+   "nota": "Copiando 1 min depois: 17,3% em 100 entradas ao vivo (metade recente 15,6%, metade antiga 18,9%, sem as 3 melhores 7,3%). 12 meses de histórico. Entrada mediana de $804, em mercados com $437.769 de volume.",
+   "stats": {
+    "lucro": 152480,
+    "meses": 12,
+    "meses_positivos": 8,
+    "n": 100,
+    "roi_dele": 12.48,
+    "roi_copia_30s": 13.37,
+    "roi_copia_60s": 17.27,
+    "roi_copia_120s": 19.95,
+    "roi_copia_60s_sem_teto": 14.06,
+    "preenche_60s_pct": 82.0,
+    "vol_mercado_med": 437769,
+    "entrada_med_usd": 804,
+    "deslocamento_med_c": -1.31,
+    "roi_copia_60s_sem_top3": 7.272467335470858,
+    "roi_copia_60s_metade_recente": 15.624719041825202,
+    "roi_copia_60s_metade_antiga": 18.91575937465592
+   }
+  },
+  {
+   "carteira": "0x9bf7b81568ae59dafcb6a233a1d4cdeb593ce41f",
+   "nome": "bronzer6",
+   "nivel": "observar",
+   "esportes": [
+    "Tenis"
+   ],
+   "janelaSeg": 120,
+   "minUsd": 0,
+   "nota": "Copiando 1 min depois: 46,0% em 65 entradas ao vivo (metade recente 49,0%, metade antiga 43,6%, sem as 3 melhores 28,6%). 3 meses de histórico. Entrada mediana de $1.166, em mercados com $684.812 de volume.",
+   "stats": {
+    "lucro": 33142,
+    "meses": 3,
+    "meses_positivos": 2,
+    "n": 65,
+    "roi_dele": 29.91,
+    "roi_copia_30s": 37.25,
+    "roi_copia_60s": 46.04,
+    "roi_copia_120s": 28.93,
+    "roi_copia_60s_sem_teto": 32.44,
+    "preenche_60s_pct": 78.5,
+    "vol_mercado_med": 684812,
+    "entrada_med_usd": 1166,
+    "deslocamento_med_c": 0.69,
+    "roi_copia_60s_sem_top3": 28.557163373932635,
+    "roi_copia_60s_metade_recente": 49.02309438306316,
+    "roi_copia_60s_metade_antiga": 43.581770708515535
+   }
+  },
+  {
+   "carteira": "0xafd492974cd531aae7786210438ae46b42047e61",
+   "nome": "RevengeRange",
+   "nivel": "observar",
+   "esportes": [
+    "Dota 2",
+    "Valorant",
+    "CS2"
+   ],
+   "janelaSeg": 120,
+   "minUsd": 0,
+   "nota": "Copiando 1 min depois: 11,7% em 91 entradas ao vivo (metade recente 7,9%, metade antiga 15,8%, sem as 3 melhores 2,9%). 10 meses de histórico. Entrada mediana de $2.883, em mercados com $660.006 de volume.",
+   "stats": {
+    "lucro": 237487,
+    "meses": 10,
+    "meses_positivos": 7,
+    "n": 91,
+    "roi_dele": 20.25,
+    "roi_copia_30s": 14.61,
+    "roi_copia_60s": 11.73,
+    "roi_copia_120s": 13.07,
+    "roi_copia_60s_sem_teto": 17.79,
+    "preenche_60s_pct": 76.9,
+    "vol_mercado_med": 660006,
+    "entrada_med_usd": 2883,
+    "deslocamento_med_c": 0.41,
+    "roi_copia_60s_sem_top3": 2.877752152599203,
+    "roi_copia_60s_metade_recente": 7.881832536222955,
+    "roi_copia_60s_metade_antiga": 15.810805075759042
+   }
+  },
+  {
+   "carteira": "0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a",
+   "nome": "Sisyphus-",
+   "nivel": "observar",
+   "esportes": [
+    "Dota 2"
+   ],
+   "janelaSeg": 120,
+   "minUsd": 0,
+   "nota": "Copiando 1 min depois: 10,9% em 100 entradas ao vivo (metade recente 13,2%, metade antiga 8,7%, sem as 3 melhores 1,2%). 8 meses de histórico. Entrada mediana de $5.747, em mercados com $618.694 de volume.",
+   "stats": {
+    "lucro": 430286,
+    "meses": 8,
+    "meses_positivos": 8,
+    "n": 100,
+    "roi_dele": 5.47,
+    "roi_copia_30s": 8.37,
+    "roi_copia_60s": 10.86,
+    "roi_copia_120s": 9.47,
+    "roi_copia_60s_sem_teto": 4.69,
+    "preenche_60s_pct": 76.0,
+    "vol_mercado_med": 618694,
+    "entrada_med_usd": 5747,
+    "deslocamento_med_c": -1.92,
+    "roi_copia_60s_sem_top3": 1.2092144616031935,
+    "roi_copia_60s_metade_recente": 13.151873015646864,
+    "roi_copia_60s_metade_antiga": 8.693681269185841
+   }
+  },
+  {
+   "carteira": "0x38181f43e5802391522583a82d05893df3039797",
+   "nome": "MissingJoy",
+   "nivel": "observar",
+   "esportes": [
+    "LoL",
+    "Valorant"
+   ],
+   "janelaSeg": 60,
+   "minUsd": 0,
+   "nota": "Copiando 1 min depois: 8,7% em 100 entradas ao vivo (metade recente -1,3%, metade antiga 17,8%, sem as 3 melhores 0,3%). 6 meses de histórico. Entrada mediana de $1.172, em mercados com $698.391 de volume.",
+   "stats": {
+    "lucro": 117838,
+    "meses": 6,
+    "meses_positivos": 4,
+    "n": 100,
+    "roi_dele": 1.12,
+    "roi_copia_30s": 4.69,
+    "roi_copia_60s": 8.7,
+    "roi_copia_120s": 0.24,
+    "roi_copia_60s_sem_teto": 1.89,
+    "preenche_60s_pct": 84.0,
+    "vol_mercado_med": 698391,
+    "entrada_med_usd": 1172,
+    "deslocamento_med_c": -1.53,
+    "roi_copia_60s_sem_top3": 0.3108607855719496,
+    "roi_copia_60s_metade_recente": -1.2681137754128324,
+    "roi_copia_60s_metade_antiga": 17.766801104117175
+   }
+  },
+  {
+   "carteira": "0xee00ba338c59557141789b127927a55f5cc5cea1",
+   "nome": "S-Works",
+   "nivel": "observar",
+   "esportes": [
+    "LoL",
+    "Beisebol",
+    "CS2"
+   ],
+   "janelaSeg": 120,
+   "minUsd": 0,
+   "nota": "Copiando 1 min depois: 15,5% em 83 entradas ao vivo (metade recente -1,6%, metade antiga 36,8%, sem as 3 melhores -7,4%). 24 meses de histórico. Entrada mediana de $32.320, em mercados com $1.637.821 de volume.",
+   "stats": {
+    "lucro": 2392170,
+    "meses": 24,
+    "meses_positivos": 19,
+    "n": 83,
+    "roi_dele": 40.41,
+    "roi_copia_30s": 14.44,
+    "roi_copia_60s": 15.54,
+    "roi_copia_120s": 13.5,
+    "roi_copia_60s_sem_teto": 24.12,
+    "preenche_60s_pct": 67.5,
+    "vol_mercado_med": 1637821,
+    "entrada_med_usd": 32320,
+    "deslocamento_med_c": 0.35,
+    "roi_copia_60s_sem_top3": -7.439351960975845,
+    "roi_copia_60s_metade_recente": -1.5837247295677679,
+    "roi_copia_60s_metade_antiga": 36.78048567868199
+   }
+  }
+ ]
+}

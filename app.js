@@ -1,4 +1,5 @@
-import { criarApi, carregarTodos, cents, rotuloEsporte, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, FORA, PADRAO } from "./core.js";
+import { iniciarAoVivo } from "./aovivo.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
 const INTERVALO_RETRATO = 120_000; // sem acesso direto, relê o retrato do servidor a cada 2 min
@@ -140,17 +141,18 @@ function render() {
             <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}</span></div>
           <div><div class="evento">${esc(p.tituloEvento)}</div><div class="lado">${esc(p.lado)}</div></div>
           <div class="kv">
-            <div><small>Preço dele</small><b>${cents(p.precoDele)}</b></div>
-            <div><small>Venda agora</small><b>${cents(p.ask)}</b></div>
+            <div><small>Odd dele</small><b>${odd(p.precoDele)}</b></div>
+            <div><small>Odd agora</small><b>${odd(p.ask)}</b></div>
             <div><small>Começa</small><b>${quando(p.horasParaInicio)}</b></div>
             <div><small>Ele apostou</small><b>${usd(p.valorDele)}</b></div>
             <div><small>Livre até o teto</small><b>${usd(p.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(p.entrouEm)}</b></div>
           </div>
-          <div class="ordem">${p.status === "COPIAR" ? "Ordem limitada" : "Deixe ordem limitada"}: <b>${esc(p.lado)}</b> até <b>${cents(p.teto)}</b>,
-            <b>${usd(stake)}</b> (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)
+          <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
+            aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / p.teto)}</b> se ganhar
+            <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
             ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}</div>
-          <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Teto = preço dele + ${cfg.teto}¢`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
+          <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = odd dele piorada em ${cfg.teto}¢ de preço`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
         </article>`;
       }).join("")
     : `<div class="vazio"><b>Nenhuma posição copiável neste momento.</b><span>Os traders recomendados não têm entradas abertas que passem nas regras. A página se atualiza sozinha.</span></div>`;
@@ -165,7 +167,7 @@ function render() {
         <td><span class="st ${p.status}">${p.status === "NAO" ? "Não" : p.status === "COPIAR" ? "Copiar" : "Esperar"}</span></td>
         <td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
         <td>${esc(p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}</td>
-        <td class="n">${cents(p.precoDele)}</td><td class="n">${cents(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
+        <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
         <td class="n">${quando(p.horasParaInicio)}</td></tr>`).join("");
     return `<article class="trader">
       <div class="trader-head"><span class="nivel ${t.nivel}">${t.nivel === "copiar" ? "Copiar" : "Observar"}</span><h3>${esc(t.nome)}</h3>
@@ -180,7 +182,7 @@ function render() {
       <p class="nota">${esc(t.nota)}</p>
       ${d.erro ? `<p class="erro">Não foi possível ler este trader: ${esc(d.erro)}</p>` : ""}
       ${pos.length
-        ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th>Esporte</th><th class="n">Dele</th><th class="n">Agora</th><th class="n">Apostou</th><th class="n">Começa</th></tr></thead><tbody>${linhas}</tbody></table></div>`
+        ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th>Esporte</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Começa</th></tr></thead><tbody>${linhas}</tbody></table></div>`
         : `<p class="sem">Sem posições abertas em esporte${ocultas ? ` (${ocultas} fora de esporte ocultas)` : ""}.</p>`}
       ${pos.length && ocultas ? `<p class="sem">${ocultas} posições fora de esporte ocultas.</p>` : ""}
     </article>`;
@@ -195,7 +197,7 @@ function avisar(lista) {
   if (primeiraCarga) { primeiraCarga = false; return; } // não avisa o que já estava aberto ao entrar
   if (!cfg.aviso || !novos.length || !("Notification" in window) || Notification.permission !== "granted") return;
   for (const { t, p } of novos) {
-    new Notification(`Copiar: ${p.lado} (${t.nome})`, { body: `${p.tituloEvento} — até ${cents(p.teto)}, começa ${quando(p.horasParaInicio)}`, tag: p.asset });
+    new Notification(`Copiar: ${p.lado} (${t.nome})`, { body: `${p.tituloEvento} — odd mínima ${odd(p.teto)}, começa ${quando(p.horasParaInicio)}`, tag: p.asset });
   }
 }
 
@@ -211,4 +213,23 @@ function avisar(lista) {
   try { dados = await json("data/snapshot.json"); fonte = "retrato"; render(); } catch { /* ainda não existe retrato */ }
   atualizar();
   setInterval(render, 30_000); // relógio: "começa em", "há X min" e revalidação
+
+  // aba ao vivo
+  let vivo = null;
+  const abrir = (qual) => {
+    const v = qual === "vivo";
+    $("#aba-pre").hidden = v; $("#aba-vivo").hidden = !v;
+    $("#tab-pre").setAttribute("aria-selected", String(!v)); $("#tab-vivo").setAttribute("aria-selected", String(v));
+    try { history.replaceState(null, "", v ? "#aovivo" : "#"); } catch { /* sem history */ }
+    if (v) vivo?.agora();
+  };
+  $("#tab-pre").addEventListener("click", () => abrir("pre"));
+  $("#tab-vivo").addEventListener("click", () => abrir("vivo"));
+  try {
+    const { traders: tv } = await json("data/traders_live.json");
+    vivo = iniciarAoVivo({ getCfg: () => cfg, esc, usd, prefixos, traders: tv, ativa: () => !$("#aba-vivo").hidden });
+  } catch (e) {
+    $("#vivo-lista").innerHTML = `<div class="vazio"><b>Lista de traders ao vivo indisponível.</b><span>${esc(e.message)}</span></div>`;
+  }
+  if (location.hash === "#aovivo") abrir("vivo");
 })();

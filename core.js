@@ -88,11 +88,11 @@ export function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, pre
 
   if (!encerrado) {
     if (ask == null) { piora("NAO"); motivos.push("sem ofertas de venda no livro"); }
-    else if (ask >= regras.precoMax) { piora("NAO"); motivos.push(`preço ${cents(ask)} — sem margem`); }
-    else if (ask > preco + regras.toleranciaCentavos / 100) { piora("NAO"); motivos.push(`preço fugiu: ${cents(ask)} vs ${cents(preco)} dele`); }
-    else if (ask > teto) { piora("ESPERAR"); motivos.push(`preço ${cents(ask)} acima do teto ${cents(teto)} — deixe ordem limitada`); }
+    else if (ask >= regras.precoMax) { piora("NAO"); motivos.push(`odd ${odd(ask)} — sem margem`); }
+    else if (ask > preco + regras.toleranciaCentavos / 100) { piora("NAO"); motivos.push(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`); }
+    else if (ask > teto) { piora("ESPERAR"); motivos.push(`odd ${odd(ask)} abaixo da mínima ${odd(teto)} — deixe ordem limitada`); }
   }
-  if (status === "COPIAR") motivos.push(`compre até ${cents(teto)}`);
+  if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
 
   // quanto dá para comprar até o teto sem subir o preço
   const liquidez = asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0);
@@ -104,6 +104,9 @@ export function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, pre
     placar: evento?.score || null, periodo: evento?.period || null,
   };
 }
+
+// Odd decimal = 1 / preço: odd 2,00 paga $20 para uma aposta de $10.
+export const odd = (p) => (p == null || p <= 0 ? "–" : (1 / p).toFixed(2).replace(".", ","));
 
 export const cents = (p) => {
   if (p == null) return "–";
@@ -163,6 +166,71 @@ export async function carregarTodos(api, traders, opts = {}) {
     } catch (e) {
       return { carteira: t.carteira, erro: String(e.message || e), posicoes: [] };
     }
+  });
+  return { geradoEm: Date.now(), traders: res };
+}
+
+// ---------------------------------------------------------------------------
+// AO VIVO: sinais de entrada que ainda dá para replicar.
+// Um sinal = primeira compra do trader num mercado com o jogo em andamento,
+// feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
+// Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
+export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900 } = {}) {
+  const w = trader.carteira;
+  const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=100`)) || [];
+  const corte = agora / 1000 - historicoSeg;
+  // primeira compra de cada ativo dentro da lista (se já comprava antes da janela, não é entrada nova)
+  const porAtivo = new Map();
+  for (const t of [...atividade].sort((a, b) => a.timestamp - b.timestamp)) {
+    if (t.side !== "BUY") continue;
+    const e = porAtivo.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, ex: t };
+    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; }
+    porAtivo.set(t.asset, e);
+  }
+  const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
+  const novos = [...porAtivo.values()].filter((e) => e.t0 >= corte && e.t0 > maisAntigo && e.usd >= (trader.minUsd || 0));
+  const sinais = await emLotes(novos, 4, async (e) => {
+    const t = e.ex;
+    let ev = cacheEventos.get(t.eventSlug);
+    if (ev === undefined) {
+      const r = await api.get("gamma", `/events?slug=${encodeURIComponent(t.eventSlug)}`).catch(() => null);
+      ev = r?.[0] || null;
+      cacheEventos.set(t.eventSlug, ev);
+    }
+    const book = await api.get("clob", `/book?token_id=${t.asset}`).catch(() => null);
+    const sp = esporte(t.eventSlug || t.slug, ev, prefixos);
+    const inicio = inicioDoJogo(ev, t.slug);
+    const { asks, ask } = melhorAsk(book);
+    const preco = e.usd / e.cotas;
+    const teto = Math.min(preco + regras.tetoCentavos / 100, regras.precoMax);
+    const idadeSeg = agora / 1000 - e.t0;
+    const aoVivo = ev?.live === true || (inicio != null && e.t0 * 1000 >= inicio);
+    const motivos = [];
+    let status = "COPIAR";
+    const nao = (m) => { status = "NAO"; motivos.push(m); };
+    if (!aoVivo) nao("entrada antes do jogo (aparece na aba pré-jogo)");
+    if (!trader.esportes.includes(sp)) nao(`${rotuloEsporte(sp)} não é a especialidade dele`);
+    if (!book || ev?.closed || ev?.ended) nao("mercado fechado");
+    else if (ask == null) nao("sem ofertas no livro");
+    else if (ask > teto) nao(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`);
+    if (idadeSeg > trader.janelaSeg) nao(`passou da janela de ${Math.round(trader.janelaSeg / 60)} min`);
+    if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
+    return {
+      carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
+      tituloEvento: ev?.title || t.title, esporte: sp, placar: ev?.score || null, periodo: ev?.period || null,
+      entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
+      ask, teto, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), status, motivos,
+    };
+  });
+  sinais.sort((a, b) => (a.status === b.status ? b.entrouEm - a.entrouEm : a.status === "COPIAR" ? -1 : 1));
+  return { carteira: w, sinais, ultimaAtividade: atividade[0]?.timestamp ? atividade[0].timestamp * 1000 : null };
+}
+
+export async function carregarAoVivo(api, traders, opts = {}) {
+  const cacheEventos = opts.cacheEventos || new Map();
+  const res = await emLotes(traders, 4, async (t) => {
+    try { return await carregarSinaisAoVivo(api, t, { ...opts, cacheEventos }); }
+    catch (e) { return { carteira: t.carteira, erro: String(e.message || e), sinais: [] }; }
   });
   return { geradoEm: Date.now(), traders: res };
 }

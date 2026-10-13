@@ -29,14 +29,20 @@
     <div class="grid-form">
       <label>Banca (USDC)<input id="cfg-banca" type="number" min="0" step="10" inputmode="decimal"></label>
       <label>% da banca por entrada<input id="cfg-pct" type="number" min="0.1" max="10" step="0.1" inputmode="decimal"></label>
-      <label>Teto acima do preço dele (¢)<input id="cfg-teto" type="number" min="0" max="10" step="0.5" inputmode="decimal"></label>
+      <label>Quanto a odd pode piorar (¢ de preço)<input id="cfg-teto" type="number" min="0" max="10" step="0.5" inputmode="decimal"></label>
       <label class="wide">Relay (opcional)<input id="cfg-relay" type="url" placeholder="https://poly-relay.seu-usuario.workers.dev"></label>
       <label class="check"><input id="cfg-fora" type="checkbox"> Mostrar posições fora de esporte</label>
-      <label class="check"><input id="cfg-aviso" type="checkbox"> Avisar quando surgir posição copiável</label>
+      <label class="check"><input id="cfg-aviso" type="checkbox"> Avisar (com bipe) quando surgir entrada copiável</label>
     </div>
     <p class="hint">Tudo fica salvo só neste navegador. O relay serve para quando o seu provedor bloqueia o Polymarket: veja <code>relay/cloudflare-worker.js</code> no repositório.</p>
   </section>
 
+  <nav class="tabs" role="tablist" aria-label="Tipo de entrada">
+    <button id="tab-pre" role="tab" aria-selected="true" aria-controls="aba-pre" type="button">Pré-jogo</button>
+    <button id="tab-vivo" role="tab" aria-selected="false" aria-controls="aba-vivo" type="button">Ao vivo</button>
+  </nav>
+
+  <div id="aba-pre" class="aba" role="tabpanel" aria-labelledby="tab-pre">
   <div id="aviso-dns" class="banner" hidden></div>
 
   <section class="agora">
@@ -44,7 +50,7 @@
       <h1 id="titulo-agora">Copiáveis agora</h1>
       <span id="atualizado" class="muted"></span>
     </div>
-    <p class="muted lede">Posições abertas dos traders recomendados em que o jogo ainda não começou, o mercado é da especialidade dele e o preço ainda está perto do que ele pagou.</p>
+    <p class="muted lede">Posições abertas dos traders recomendados em que o jogo ainda não começou, o mercado é da especialidade dele e a odd ainda está perto da que ele pegou. Odd decimal: odd 2,00 paga $20 para uma aposta de $10.</p>
     <div id="lista-agora" class="cards"></div>
   </section>
 
@@ -56,13 +62,36 @@
   <section class="panel regras">
     <h2>Como o veredito é decidido</h2>
     <ul>
-      <li><span class="st COPIAR">Copiar</span> o jogo ainda não começou, é um esporte em que o trader é bom e a melhor oferta de venda está até o teto (preço dele + 2¢, no máximo 97¢).</li>
-      <li><span class="st ESPERAR">Esperar</span> o preço passou do teto por pouco (até 5¢ acima do dele). Deixe uma ordem limitada no teto e veja se é preenchida antes do jogo.</li>
-      <li><span class="st NAO">Não copiar</span> o jogo começou, o preço fugiu, o mercado está fechado ou não é a especialidade dele.</li>
+      <li><span class="st COPIAR">Copiar</span> o jogo ainda não começou, é um esporte em que o trader é bom e a odd disponível ainda está perto da dele: no máximo 2¢ de preço pior (odd 2,00 → mínima 1,92) e nunca abaixo de 1,03.</li>
+      <li><span class="st ESPERAR">Esperar</span> a odd caiu um pouco além disso (até 5¢ de preço). Deixe uma ordem limitada na odd mínima e veja se é preenchida antes do jogo.</li>
+      <li><span class="st NAO">Não copiar</span> o jogo começou, a odd caiu demais, o mercado está fechado ou não é a especialidade dele.</li>
       <li>Aposta fixa: a mesma % da banca em cada entrada. Segure até o fim do evento.</li>
     </ul>
     <p class="hint">Traders e estatísticas vêm da análise de 13/10/2026 (347 carteiras, simulação de cópia com atraso). Isto não é recomendação financeira; o Polymarket tem restrições de acesso no Brasil.</p>
   </section>
+  </div>
+
+  <div id="aba-vivo" class="aba" role="tabpanel" aria-labelledby="tab-vivo" hidden>
+    <div id="vivo-status" class="banner" hidden></div>
+    <section class="agora">
+      <div class="sec-head"><h1 id="vivo-titulo">Sinais ao vivo</h1><span id="vivo-atualizado" class="muted"></span></div>
+      <p class="muted lede">Entradas que os traders ao vivo acabaram de fazer num jogo em andamento. Cada uma vale só pela janela do trader (1–2 min): depois disso a odd costuma fugir. Entre e segure até o fim do evento.</p>
+      <div id="vivo-lista" class="cards"></div>
+    </section>
+    <section>
+      <div class="sec-head"><h2>Traders ao vivo</h2><span class="muted">entradas dos últimos 15 min</span></div>
+      <div id="vivo-traders" class="traders"></div>
+    </section>
+    <section class="panel regras">
+      <h2>Como estes traders foram escolhidos</h2>
+      <ul>
+        <li><span class="st COPIAR">Segura</span> vendem menos de 15% do que compram e quase nunca operam os dois lados do mesmo jogo.</li>
+        <li><span class="st COPIAR">Absorve</span> operam mercados com volume alto e compram no nível do mercado, sem pescar preço errado em livro vazio.</li>
+        <li><span class="st COPIAR">Replica</span> nas últimas 100 entradas ao vivo, comprar 1 minuto depois deles, pagando o preço que estava sendo negociado, ainda deu lucro.</li>
+        <li><span class="st NAO">Janela</span> passou a janela, não entre: a vantagem deles some em 2–3 minutos.</li>
+      </ul>
+    </section>
+  </div>
 </main>
 
 <script type="module" src="app.js"></script>
