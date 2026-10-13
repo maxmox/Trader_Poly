@@ -129,7 +129,7 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500 } = {}) {
+async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
@@ -141,7 +141,9 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
     if (t.side !== "BUY") continue;
     primeiraCompra[t.asset] = Math.min(primeiraCompra[t.asset] ?? Infinity, t.timestamp);
   }
-  const abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
+  let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
+  // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
+  if (soEspecialidade) abertas = abertas.filter((p) => trader.esportes.includes(esporte(p.eventSlug || p.slug, null, prefixos)));
   const itens = await emLotes(abertas, 4, async (pos) => {
     let ev = cacheEventos.get(pos.eventSlug);
     if (ev === undefined) {
@@ -180,7 +182,7 @@ async function carregarTodos(api, traders, opts = {}) {
 // Um sinal = primeira compra do trader num mercado com o jogo em andamento,
 // feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
-async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100 } = {}) {
+async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false } = {}) {
   const w = trader.carteira;
   const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
   const corte = agora / 1000 - historicoSeg;
@@ -193,7 +195,12 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     porAtivo.set(t.asset, e);
   }
   const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
-  const novos = [...porAtivo.values()].filter((e) => e.t0 >= corte && e.t0 > maisAntigo && e.usd >= (trader.minUsd || 0));
+  let novos = [...porAtivo.values()].filter((e) => e.t0 >= corte && e.t0 > maisAntigo && e.usd >= (trader.minUsd || 0));
+  // modo econômico (Worker): só gasta consulta com entrada da especialidade e ainda dentro da janela
+  if (soCopiaveis) {
+    novos = novos.filter((e) => agora / 1000 - e.t0 <= trader.janelaSeg
+      && trader.esportes.includes(esporte(e.ex.eventSlug || e.ex.slug, null, prefixos)));
+  }
   const sinais = await emLotes(novos, 4, async (e) => {
     const t = e.ex;
     let ev = cacheEventos.get(t.eventSlug);
@@ -247,7 +254,9 @@ async function carregarAoVivo(api, traders, opts = {}) {
 // 1) RELAY: GET /data/..., /gamma/..., /clob/... repassam a API pública do Polymarket com CORS.
 // 2) ALERTAS (Cron Trigger "* * * * *"):
 //    - a cada minuto: entradas AO VIVO novas dos traders de data/traders_live.json
-//    - a cada 5 min: posições PRÉ-JOGO copiáveis dos traders de data/traders.json
+//    - a cada minuto, um trader de data/traders.json em rodízio: posições PRÉ-JOGO copiáveis
+//    O plano grátis permite 50 consultas externas por execução; o contador ORCAMENTO
+//    corta o trabalho antes disso.
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
@@ -330,13 +339,20 @@ No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
 }
 
-async function verificar(env, { preJogo }) {
+const ORCAMENTO = 40; // consultas à API por execução (limite do plano grátis: 50, sobra para listas e Telegram)
+
+async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
+  let usadas = 0;
+  const fetchContado = (url, opts) => {
+    if (++usadas > ORCAMENTO) return Promise.reject(new Error("orçamento de consultas desta execução esgotado"));
+    return fetch(url, opts);
+  };
   const { pre, vivo, prefixos } = await carregarListas(env);
-  const api = criarApi({ relay: env.RELAY_INTERNO || "" });
-  const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], enviados: 0, erros: [] };
+  const api = criarApi({ relay: env.RELAY_INTERNO || "", fetchFn: fetchContado });
+  const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], preTrader: null, enviados: 0, consultas: 0, erros: [] };
 
   // pouca atividade por trader: entradas novas cabem nas últimas 30 e o plano grátis tem pouco CPU
-  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300) });
+  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true });
   for (const [k, d] of rv.traders.entries()) {
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -350,10 +366,13 @@ async function verificar(env, { preJogo }) {
     }
   }
 
-  if (preJogo) {
-    const rp = await carregarTodos(api, pre, { prefixos, limiteAtividade: 0 });
+  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~8 min)
+  const lista = preTrader ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader) : [pre[minuto % pre.length]];
+  resumo.preTrader = lista.map((t) => t.nome).join(", ");
+  {
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 0, soEspecialidade: true });
     for (const [k, d] of rp.traders.entries()) {
-      const t = pre[k];
+      const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
       for (const p of d.posicoes) {
         if (p.status !== "COPIAR") continue;
@@ -366,6 +385,7 @@ async function verificar(env, { preJogo }) {
       }
     }
   }
+  resumo.consultas = usadas;
   return resumo;
 }
 
@@ -381,7 +401,8 @@ export default {
       return json(r, r.ok ? 200 : 500);
     }
     if (url.pathname === "/verificar") {
-      try { return json(await verificar(env, { preJogo: true })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
+      // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto
+      try { return json(await verificar(env, { preTrader: url.searchParams.get("pre") })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
     }
 
     const [, host, ...resto] = url.pathname.split("/");
@@ -395,7 +416,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const minuto = new Date(event.scheduledTime).getUTCMinutes();
-    ctx.waitUntil(verificar(env, { preJogo: minuto % 5 === 0 }).catch((e) => console.error("verificar", e)));
+    const minuto = Math.floor(event.scheduledTime / 60000);
+    ctx.waitUntil(verificar(env, { minuto }).catch((e) => console.error("verificar", e)));
   },
 };

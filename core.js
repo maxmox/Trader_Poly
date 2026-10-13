@@ -124,7 +124,7 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500 } = {}) {
+export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
@@ -136,7 +136,9 @@ export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, a
     if (t.side !== "BUY") continue;
     primeiraCompra[t.asset] = Math.min(primeiraCompra[t.asset] ?? Infinity, t.timestamp);
   }
-  const abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
+  let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
+  // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
+  if (soEspecialidade) abertas = abertas.filter((p) => trader.esportes.includes(esporte(p.eventSlug || p.slug, null, prefixos)));
   const itens = await emLotes(abertas, 4, async (pos) => {
     let ev = cacheEventos.get(pos.eventSlug);
     if (ev === undefined) {
@@ -175,7 +177,7 @@ export async function carregarTodos(api, traders, opts = {}) {
 // Um sinal = primeira compra do trader num mercado com o jogo em andamento,
 // feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
-export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100 } = {}) {
+export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false } = {}) {
   const w = trader.carteira;
   const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
   const corte = agora / 1000 - historicoSeg;
@@ -188,7 +190,12 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     porAtivo.set(t.asset, e);
   }
   const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
-  const novos = [...porAtivo.values()].filter((e) => e.t0 >= corte && e.t0 > maisAntigo && e.usd >= (trader.minUsd || 0));
+  let novos = [...porAtivo.values()].filter((e) => e.t0 >= corte && e.t0 > maisAntigo && e.usd >= (trader.minUsd || 0));
+  // modo econômico (Worker): só gasta consulta com entrada da especialidade e ainda dentro da janela
+  if (soCopiaveis) {
+    novos = novos.filter((e) => agora / 1000 - e.t0 <= trader.janelaSeg
+      && trader.esportes.includes(esporte(e.ex.eventSlug || e.ex.slug, null, prefixos)));
+  }
   const sinais = await emLotes(novos, 4, async (e) => {
     const t = e.ex;
     let ev = cacheEventos.get(t.eventSlug);

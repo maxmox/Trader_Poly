@@ -39,7 +39,7 @@ A aba ao vivo **precisa de acesso em tempo real** (DNS seguro ou relay). O retra
 
 Um Cloudflare Worker (grátis) faz duas coisas:
 - **Relay:** o site passa a buscar os dados por ele, contornando o bloqueio de DNS. Com isso, o site fica em tempo real e a aba Ao vivo funciona.
-- **Alertas:** a cada minuto ele procura entradas ao vivo novas, e a cada 5 minutos as posições pré-jogo copiáveis. Cada sinal vai **uma vez** para o seu Telegram, com a odd mínima, o prazo da janela e o link.
+- **Alertas:** a cada minuto ele procura entradas ao vivo novas e verifica o pré-jogo de um trader, em rodízio (cada um a cada ~8 min). Cada sinal vai **uma vez** para o seu Telegram, com a odd mínima, o prazo da janela e o link. O plano grátis permite 50 consultas por execução; o Worker usa no máximo ~20.
 
 ### 1. Criar o bot no Telegram
 
@@ -57,7 +57,7 @@ Um Cloudflare Worker (grátis) faz duas coisas:
    - `BANCA` e `PCT` (Text, opcional): ex. `1000` e `1.5`, para a mensagem sugerir o valor da aposta
 4. **Storage & Databases → KV → Create** um namespace (ex.: `trader-poly`). No Worker: **Settings → Bindings → Add → KV namespace**, nome da variável **`ENVIADOS`**. É isso que impede mensagens repetidas.
 5. **Settings → Triggers → Cron Triggers → Add**: `* * * * *` (a cada minuto).
-6. Teste: abra `https://SEU-WORKER.workers.dev/teste`. Deve chegar "Trader Poly conectado" no Telegram. Em `/verificar`, você vê o que ele encontrou agora.
+6. Teste: abra `https://SEU-WORKER.workers.dev/teste`. Deve chegar "Trader Poly conectado" no Telegram. Em `/verificar`, você vê o que ele encontrou agora; `/verificar?pre=mde4life1986` verifica o pré-jogo de um trader específico.
 
 ### 3. Ligar o site ao Worker
 

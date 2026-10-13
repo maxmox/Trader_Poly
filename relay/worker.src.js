@@ -5,7 +5,9 @@
 // 1) RELAY: GET /data/..., /gamma/..., /clob/... repassam a API pública do Polymarket com CORS.
 // 2) ALERTAS (Cron Trigger "* * * * *"):
 //    - a cada minuto: entradas AO VIVO novas dos traders de data/traders_live.json
-//    - a cada 5 min: posições PRÉ-JOGO copiáveis dos traders de data/traders.json
+//    - a cada minuto, um trader de data/traders.json em rodízio: posições PRÉ-JOGO copiáveis
+//    O plano grátis permite 50 consultas externas por execução; o contador ORCAMENTO
+//    corta o trabalho antes disso.
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
@@ -88,13 +90,20 @@ No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
 }
 
-async function verificar(env, { preJogo }) {
+const ORCAMENTO = 40; // consultas à API por execução (limite do plano grátis: 50, sobra para listas e Telegram)
+
+async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
+  let usadas = 0;
+  const fetchContado = (url, opts) => {
+    if (++usadas > ORCAMENTO) return Promise.reject(new Error("orçamento de consultas desta execução esgotado"));
+    return fetch(url, opts);
+  };
   const { pre, vivo, prefixos } = await carregarListas(env);
-  const api = criarApi({ relay: env.RELAY_INTERNO || "" });
-  const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], enviados: 0, erros: [] };
+  const api = criarApi({ relay: env.RELAY_INTERNO || "", fetchFn: fetchContado });
+  const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], preTrader: null, enviados: 0, consultas: 0, erros: [] };
 
   // pouca atividade por trader: entradas novas cabem nas últimas 30 e o plano grátis tem pouco CPU
-  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300) });
+  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true });
   for (const [k, d] of rv.traders.entries()) {
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -108,10 +117,13 @@ async function verificar(env, { preJogo }) {
     }
   }
 
-  if (preJogo) {
-    const rp = await carregarTodos(api, pre, { prefixos, limiteAtividade: 0 });
+  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~8 min)
+  const lista = preTrader ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader) : [pre[minuto % pre.length]];
+  resumo.preTrader = lista.map((t) => t.nome).join(", ");
+  {
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 0, soEspecialidade: true });
     for (const [k, d] of rp.traders.entries()) {
-      const t = pre[k];
+      const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
       for (const p of d.posicoes) {
         if (p.status !== "COPIAR") continue;
@@ -124,6 +136,7 @@ async function verificar(env, { preJogo }) {
       }
     }
   }
+  resumo.consultas = usadas;
   return resumo;
 }
 
@@ -139,7 +152,8 @@ export default {
       return json(r, r.ok ? 200 : 500);
     }
     if (url.pathname === "/verificar") {
-      try { return json(await verificar(env, { preJogo: true })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
+      // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto
+      try { return json(await verificar(env, { preTrader: url.searchParams.get("pre") })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
     }
 
     const [, host, ...resto] = url.pathname.split("/");
@@ -153,7 +167,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const minuto = new Date(event.scheduledTime).getUTCMinutes();
-    ctx.waitUntil(verificar(env, { preJogo: minuto % 5 === 0 }).catch((e) => console.error("verificar", e)));
+    const minuto = Math.floor(event.scheduledTime / 60000);
+    ctx.waitUntil(verificar(env, { minuto }).catch((e) => console.error("verificar", e)));
   },
 };
