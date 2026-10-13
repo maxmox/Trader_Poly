@@ -124,11 +124,11 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map() } = {}) {
+export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500 } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
-    api.get("data", `/activity?user=${w}&type=TRADE&limit=500`),
+    limiteAtividade ? api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`) : Promise.resolve([]),
   ]);
   const primeiraCompra = {};
   const ultimaAtividade = (atividade || []).reduce((m, t) => Math.max(m, t.timestamp), 0);
@@ -175,9 +175,9 @@ export async function carregarTodos(api, traders, opts = {}) {
 // Um sinal = primeira compra do trader num mercado com o jogo em andamento,
 // feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
-export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900 } = {}) {
+export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100 } = {}) {
   const w = trader.carteira;
-  const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=100`)) || [];
+  const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
   const corte = agora / 1000 - historicoSeg;
   // primeira compra de cada ativo dentro da lista (se já comprava antes da janela, não é entrada nova)
   const porAtivo = new Map();

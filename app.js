@@ -35,6 +35,8 @@ $("#btn-atualizar").addEventListener("click", () => atualizar());
 
 // ---------- estado ----------
 let traders = [], prefixos = {}, dados = null, fonte = "carregando", jaAvisados = new Set(), primeiraCarga = true;
+let relayPadrao = ""; // data/config.json: relay do repositório, usado quando Ajustes está vazio
+const relay = () => cfg.relay || relayPadrao;
 const regras = () => ({ ...PADRAO, tetoCentavos: cfg.teto });
 
 async function json(path) {
@@ -44,7 +46,7 @@ async function json(path) {
 }
 
 async function buscarVivo() {
-  const api = criarApi({ relay: cfg.relay });
+  const api = criarApi({ relay: relay() });
   const res = await carregarTodos(api, traders, { prefixos, regras: regras() });
   if (res.traders.every((t) => t.erro)) throw new Error(res.traders[0]?.erro || "sem resposta");
   return res;
@@ -58,7 +60,7 @@ async function atualizar() {
   $("#btn-atualizar").textContent = "Atualizando…";
   try {
     dados = await buscarVivo();
-    fonte = cfg.relay ? "relay" : "direto";
+    fonte = relay() ? "relay" : "direto";
     $("#aviso-dns").hidden = true;
   } catch (e) {
     try {
@@ -78,7 +80,7 @@ async function atualizar() {
 function mostrarAvisoDns(e) {
   const b = $("#aviso-dns");
   b.hidden = false;
-  b.innerHTML = `<b>Sem acesso direto ao Polymarket${cfg.relay ? " (nem pelo relay)" : ""}.</b>
+  b.innerHTML = `<b>Sem acesso direto ao Polymarket${relay() ? " (nem pelo relay)" : ""}.</b>
     <span>Mostrando o retrato que o servidor gera a cada ~10 min; o veredito de "jogo começou" continua sendo recalculado pelo relógio.
     Para tempo real: ative o DNS seguro do navegador (Chrome/Edge: Configurações → Privacidade e segurança → Usar DNS seguro → Cloudflare)
     ou publique o relay do repositório e cole a URL em Ajustes.</span>
@@ -205,6 +207,8 @@ function avisar(lista) {
 (async function iniciar() {
   try {
     [{ traders }, prefixos] = await Promise.all([json("data/traders.json"), json("data/prefixos.json")]);
+    relayPadrao = (await json("data/config.json").catch(() => ({}))).relay || "";
+    if (relayPadrao) $("#cfg-relay").placeholder = `${relayPadrao} (padrão do repositório)`;
   } catch (e) {
     $("#lista-agora").innerHTML = `<div class="vazio"><b>Não consegui carregar a lista de traders.</b><span>${esc(e.message)}</span></div>`;
     return;
@@ -227,7 +231,7 @@ function avisar(lista) {
   $("#tab-vivo").addEventListener("click", () => abrir("vivo"));
   try {
     const { traders: tv } = await json("data/traders_live.json");
-    vivo = iniciarAoVivo({ getCfg: () => cfg, esc, usd, prefixos, traders: tv, ativa: () => !$("#aba-vivo").hidden });
+    vivo = iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, ativa: () => !$("#aba-vivo").hidden });
   } catch (e) {
     $("#vivo-lista").innerHTML = `<div class="vazio"><b>Lista de traders ao vivo indisponível.</b><span>${esc(e.message)}</span></div>`;
   }

@@ -35,12 +35,44 @@ A aba ao vivo **precisa de acesso em tempo real** (DNS seguro ou relay). O retra
 2. **Retrato do servidor:** uma GitHub Action roda `scripts/snapshot.mjs` a cada ~10 minutos e publica `data/snapshot.json`. A página usa esse retrato quando não consegue acessar o Polymarket direto.
 3. **Relay (opcional):** vários provedores no Brasil bloqueiam o DNS do Polymarket. Para ter tempo real mesmo assim, publique `relay/cloudflare-worker.js` como Cloudflare Worker (grátis) e cole a URL em **Ajustes**. Outra saída é ativar o DNS seguro do navegador (Chrome/Edge: Configurações → Privacidade e segurança → Usar DNS seguro → Cloudflare).
 
+## Alertas no Telegram (e tempo real no site)
+
+Um Cloudflare Worker (grátis) faz duas coisas:
+- **Relay:** o site passa a buscar os dados por ele, contornando o bloqueio de DNS. Com isso, o site fica em tempo real e a aba Ao vivo funciona.
+- **Alertas:** a cada minuto ele procura entradas ao vivo novas, e a cada 5 minutos as posições pré-jogo copiáveis. Cada sinal vai **uma vez** para o seu Telegram, com a odd mínima, o prazo da janela e o link.
+
+### 1. Criar o bot no Telegram
+
+1. No Telegram, fale com **@BotFather** → `/newbot` → escolha um nome. Ele devolve o **token** (`123456:ABC...`).
+2. Abra o seu bot novo e mande qualquer mensagem (ex.: `oi`).
+3. No navegador, abra `https://api.telegram.org/bot<SEU_TOKEN>/getUpdates` e copie o número em `"chat":{"id": ...}`. Esse é o **chat id**.
+
+### 2. Publicar o Worker
+
+1. https://dash.cloudflare.com → **Workers & Pages → Create → Create Worker** → Deploy.
+2. **Edit code** → apague tudo → cole o conteúdo de `relay/cloudflare-worker.js` → **Deploy**.
+3. **Settings → Variables and Secrets**, adicione:
+   - `TELEGRAM_TOKEN` (Secret): o token do bot
+   - `TELEGRAM_CHAT_ID` (Secret): o chat id
+   - `BANCA` e `PCT` (Text, opcional): ex. `1000` e `1.5`, para a mensagem sugerir o valor da aposta
+4. **Storage & Databases → KV → Create** um namespace (ex.: `trader-poly`). No Worker: **Settings → Bindings → Add → KV namespace**, nome da variável **`ENVIADOS`**. É isso que impede mensagens repetidas.
+5. **Settings → Triggers → Cron Triggers → Add**: `* * * * *` (a cada minuto).
+6. Teste: abra `https://SEU-WORKER.workers.dev/teste`. Deve chegar "Trader Poly conectado" no Telegram. Em `/verificar`, você vê o que ele encontrou agora.
+
+### 3. Ligar o site ao Worker
+
+Coloque a URL do Worker em `data/config.json` (`{"relay": "https://SEU-WORKER.workers.dev"}`) e faça commit. Todos os aparelhos passam a usar o relay. Para um aparelho só, cole a URL em **Ajustes → Relay**.
+
+Depois de mudar `core.js` ou `relay/worker.src.js`, rode `node scripts/build-worker.mjs` e cole de novo o `relay/cloudflare-worker.js` no painel.
+
 ## Publicar no GitHub Pages (uma vez)
 
 1. No repositório, abra **Settings → Pages**.
 2. Em **Build and deployment → Source**, escolha **GitHub Actions**.
 3. Abra **Actions → Atualizar e publicar → Run workflow**.
 4. O site fica em `https://maxmox.github.io/Trader_Poly/`.
+
+Se o Source ficar em "Deploy from a branch", o site mostra sempre o `data/snapshot.json` do repositório, um retrato parado. A Action até gera o retrato novo, mas ele não vai ao ar.
 
 Se o repositório ficar 60 dias sem commits, o GitHub desliga a atualização agendada. Para religar, use **Run workflow** ou faça qualquer commit.
 
@@ -56,7 +88,10 @@ Se o repositório ficar 60 dias sem commits, o GitHub desliga a atualização ag
 | `data/prefixos.json` | Prefixo do mercado → esporte (`nfl` → Futebol Americano, `cs2` → CS2…) |
 | `data/snapshot.json` | Retrato gerado pela Action |
 | `scripts/snapshot.mjs` | Gera o retrato |
-| `relay/cloudflare-worker.js` | Relay opcional para quem tem o Polymarket bloqueado |
+| `relay/cloudflare-worker.js` | Worker da Cloudflare: relay + alertas no Telegram (gerado, não edite) |
+| `relay/worker.src.js` | Código do Worker (sem o core) |
+| `scripts/build-worker.mjs` | Gera `relay/cloudflare-worker.js` |
+| `data/config.json` | Relay padrão do site |
 
 ## Trocar os traders
 
