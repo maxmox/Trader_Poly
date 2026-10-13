@@ -1,0 +1,277 @@
+{
+ "gerado_em": "2026-10-13",
+ "traders": [
+  {
+   "carteira": "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f",
+   "nome": "GamblingOdyssey",
+   "nivel": "copiar",
+   "esportes": [
+    "Futebol",
+    "Tenis"
+   ],
+   "nota": "O mais consistente: 11 de 13 meses positivos, lucro espalhado. Entra ~1 h antes do jogo.",
+   "stats": {
+    "lucro": 724874,
+    "lucro_sem_top5": 372857,
+    "meses": 13,
+    "meses_positivos": 11,
+    "apostas": 1879,
+    "roi_copia_5min": 12.28,
+    "roi_dele": 16.53,
+    "antecedencia_h": 1.2,
+    "por_esporte": {
+     "Tenis": {
+      "n": 310,
+      "roi_pct": 10.59,
+      "meses": 10,
+      "meses_pos_pct": 70.0
+     },
+     "Futebol": {
+      "n": 1101,
+      "roi_pct": 12.6,
+      "meses": 12,
+      "meses_pos_pct": 83.3
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0x54ce7dd357766fc3255645e55ef41edd51cc9f80",
+   "nome": "mde4life1986",
+   "nivel": "copiar",
+   "esportes": [
+    "Futebol Americano",
+    "Futebol"
+   ],
+   "nota": "Entra ~13 h antes do jogo: dá tempo de copiar com calma. Evite o basquete dele (ROI -28%).",
+   "stats": {
+    "lucro": 171652,
+    "lucro_sem_top5": 47523,
+    "meses": 10,
+    "meses_positivos": 7,
+    "apostas": 308,
+    "roi_copia_5min": 13.0,
+    "roi_dele": 16.15,
+    "antecedencia_h": 13.3,
+    "por_esporte": {
+     "Futebol Americano": {
+      "n": 130,
+      "roi_pct": 17.65,
+      "meses": 4,
+      "meses_pos_pct": 100.0
+     },
+     "Futebol": {
+      "n": 129,
+      "roi_pct": 20.29,
+      "meses": 5,
+      "meses_pos_pct": 100.0
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0x924379a79c64b77ad5816ad362122a5f6228658e",
+   "nome": "Kch-Temp",
+   "nivel": "copiar",
+   "esportes": [
+    "Futebol Americano"
+   ],
+   "nota": "Apostas grandes na NFL, todos os meses positivos. O preço quase não se mexe depois da entrada.",
+   "stats": {
+    "lucro": 2993805,
+    "lucro_sem_top5": 1521427,
+    "meses": 5,
+    "meses_positivos": 5,
+    "apostas": 381,
+    "roi_copia_5min": 5.99,
+    "roi_dele": 8.22,
+    "antecedencia_h": 3.0,
+    "por_esporte": {
+     "Futebol Americano": {
+      "n": 125,
+      "roi_pct": 32.11,
+      "meses": 2,
+      "meses_pos_pct": 100.0
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0xc49fe658479db29e1a2fefebf0735f657dca9e05",
+   "nome": "jizzbucket57",
+   "nivel": "copiar",
+   "esportes": [
+    "LoL",
+    "Hoquei",
+    "CS2"
+   ],
+   "nota": "Ganha em eSports e hóquei; perde em basquete e futebol. Copie só os esportes certos.",
+   "stats": {
+    "lucro": 251721,
+    "lucro_sem_top5": 192496,
+    "meses": 10,
+    "meses_positivos": 6,
+    "apostas": 2685,
+    "roi_copia_5min": 10.89,
+    "roi_dele": 12.85,
+    "antecedencia_h": 1.0,
+    "por_esporte": {
+     "CS2": {
+      "n": 412,
+      "roi_pct": 3.4,
+      "meses": 10,
+      "meses_pos_pct": 70.0
+     },
+     "LoL": {
+      "n": 184,
+      "roi_pct": 22.69,
+      "meses": 9,
+      "meses_pos_pct": 88.9
+     },
+     "Hoquei": {
+      "n": 277,
+      "roi_pct": 11.19,
+      "meses": 5,
+      "meses_pos_pct": 60.0
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0x5966db1fe50763c9e3c014d756369bad07e1f804",
+   "nome": "0x5966…F804",
+   "nivel": "observar",
+   "esportes": [
+    "Futebol",
+    "CS2",
+    "Beisebol"
+   ],
+   "nota": "ROI alto (21–42%) mas só 4,5 meses e 38 posições simuladas. Estava parado desde 16/09.",
+   "stats": {
+    "lucro": 2560167,
+    "lucro_sem_top5": 1047718,
+    "meses": 4,
+    "meses_positivos": 4,
+    "apostas": 187,
+    "roi_copia_5min": 36.97,
+    "roi_dele": 39.79,
+    "antecedencia_h": 0.2,
+    "por_esporte": {
+     "Futebol": {
+      "n": 81,
+      "roi_pct": 20.94,
+      "meses": 4,
+      "meses_pos_pct": 100.0
+     },
+     "Beisebol": {
+      "n": 35,
+      "roi_pct": 36.97,
+      "meses": 3,
+      "meses_pos_pct": 66.7
+     },
+     "CS2": {
+      "n": 41,
+      "roi_pct": 42.46,
+      "meses": 2,
+      "meses_pos_pct": 100.0
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0x32ed517a571c01b6e9adecf61ba81ca48ff2f960",
+   "nome": "sportmaster777",
+   "nivel": "observar",
+   "esportes": [
+    "Futebol",
+    "Tenis",
+    "CS2"
+   ],
+   "nota": "Curva excelente (Sharpe 3,8), mas ~41 trades/dia e histórico por esporte incompleto.",
+   "stats": {
+    "lucro": 1375379,
+    "lucro_sem_top5": 1135470,
+    "meses": 12,
+    "meses_positivos": 9,
+    "apostas": 8000,
+    "roi_copia_5min": 34.43,
+    "roi_dele": 39.99,
+    "antecedencia_h": 4.7,
+    "por_esporte": {
+     "CS2": {
+      "n": 141,
+      "roi_pct": 31.29,
+      "meses": 4,
+      "meses_pos_pct": 75.0
+     },
+     "Tenis": {
+      "n": 62,
+      "roi_pct": 15.38,
+      "meses": 2,
+      "meses_pos_pct": 100.0
+     },
+     "Futebol": {
+      "n": 171,
+      "roi_pct": 22.12,
+      "meses": 5,
+      "meses_pos_pct": 40.0
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0x2ce8505aa641791eb8460f6ac6bf5c0511e34527",
+   "nome": "0x2cE8…4527",
+   "nivel": "observar",
+   "esportes": [
+    "Tenis"
+   ],
+   "nota": "Só o tênis presta (ROI 26% em 109 apostas). O beisebol dele é muito volátil.",
+   "stats": {
+    "lucro": 254253,
+    "lucro_sem_top5": -418851,
+    "meses": 18,
+    "meses_positivos": 9,
+    "apostas": 728,
+    "roi_copia_5min": 17.19,
+    "roi_dele": 19.58,
+    "antecedencia_h": 5.2,
+    "por_esporte": {
+     "Tenis": {
+      "n": 109,
+      "roi_pct": 26.17,
+      "meses": 10,
+      "meses_pos_pct": 60.0
+     }
+    }
+   }
+  },
+  {
+   "carteira": "0x84dbb7103982e3617704a2ed7d5b39691952aeeb",
+   "nome": "Soarin22",
+   "nivel": "observar",
+   "esportes": [
+    "Basquete"
+   ],
+   "nota": "Especialista de NBA regular (9 de 11 meses +), mas a margem copiando é fina (3,4%).",
+   "stats": {
+    "lucro": 1587552,
+    "lucro_sem_top5": 681745,
+    "meses": 18,
+    "meses_positivos": 11,
+    "apostas": 2650,
+    "roi_copia_5min": 3.36,
+    "roi_dele": 7.69,
+    "antecedencia_h": 0.9,
+    "por_esporte": {
+     "Basquete": {
+      "n": 1952,
+      "roi_pct": 4.87,
+      "meses": 11,
+      "meses_pos_pct": 81.8
+     }
+    }
+   }
+  }
+ ]
+}

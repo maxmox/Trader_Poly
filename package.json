@@ -1,0 +1,8 @@
+{
+  "name": "trader-poly",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "snapshot": "node scripts/snapshot.mjs"
+  }
+}
