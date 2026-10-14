@@ -1,0 +1,173 @@
+{
+ "versao": 2,
+ "escala": 6,
+ "media": 0.015222966714563479,
+ "n": 10286,
+ "faixas_odd": [
+  [
+   0,
+   0.25,
+   "odd > 4"
+  ],
+  [
+   0.25,
+   0.4,
+   "odd 2,5–4"
+  ],
+  [
+   0.4,
+   0.55,
+   "odd 1,8–2,5"
+  ],
+  [
+   0.55,
+   0.7,
+   "odd 1,43–1,8"
+  ],
+  [
+   0.7,
+   1.01,
+   "odd < 1,43"
+  ]
+ ],
+ "faixas_lead": [
+  [
+   0,
+   1,
+   "menos de 1 h"
+  ],
+  [
+   1,
+   6,
+   "1–6 h"
+  ],
+  [
+   6,
+   24,
+   "6–24 h"
+  ],
+  [
+   24,
+   1000000000.0,
+   "mais de 24 h"
+  ]
+ ],
+ "efeitos": {
+  "conviccao": {
+   "aposta < metade da mediana dele": {
+    "efeito": -0.0012,
+    "n": 2650
+   },
+   "aposta normal": {
+    "efeito": -0.0077,
+    "n": 4180
+   },
+   "aposta > 2x a mediana dele": {
+    "efeito": 0.0102,
+    "n": 3456
+   }
+  },
+  "entrada": {
+   "pagou no nível do mercado": {
+    "efeito": -0.003,
+    "n": 2923
+   },
+   "pagou acima do mercado (>1¢)": {
+    "efeito": 0.0023,
+    "n": 3098
+   },
+   "pagou abaixo do mercado (>1¢)": {
+    "efeito": -0.0191,
+    "n": 1160
+   }
+  },
+  "momento": {
+   "pré-jogo": {
+    "efeito": -0.0099,
+    "n": 4297
+   },
+   "ao vivo": {
+    "efeito": 0.0085,
+    "n": 4745
+   }
+  },
+  "liquidez": {
+   "> $500 mil": {
+    "efeito": -0.0042,
+    "n": 4761
+   },
+   "$50–500 mil": {
+    "efeito": -0.002,
+    "n": 3581
+   },
+   "mercado < $50 mil": {
+    "efeito": 0.0164,
+    "n": 1868
+   }
+  },
+  "faixa_odd": {
+   "odd < 1,43": {
+    "efeito": -0.0012,
+    "n": 2397
+   },
+   "odd 1,8–2,5": {
+    "efeito": 0.0014,
+    "n": 3330
+   },
+   "odd 1,43–1,8": {
+    "efeito": 0.0244,
+    "n": 2355
+   },
+   "odd 2,5–4": {
+    "efeito": -0.0296,
+    "n": 1401
+   },
+   "odd > 4": {
+    "efeito": -0.018,
+    "n": 803
+   }
+  },
+  "deriva": {
+   "igual (±0,5¢)": {
+    "efeito": -0.0071,
+    "n": 2881
+   },
+   "odd piorou até 2¢": {
+    "efeito": -0.0083,
+    "n": 3200
+   },
+   "odd melhorou (preço caiu)": {
+    "efeito": 0.0113,
+    "n": 4205
+   }
+  },
+  "antecedencia": {}
+ },
+ "grupos": {
+  "conviccao": "trader",
+  "entrada": "trader",
+  "momento": "mercado",
+  "liquidez": "mercado",
+  "faixa_odd": "odd",
+  "deriva": "odd",
+  "antecedencia": "odd"
+ },
+ "mediana_usd": {
+  "0xc49fe658479db29e1a2fefebf0735f657dca9e05": 2721.28,
+  "0x5966db1fe50763c9e3c014d756369bad07e1f804": 49680.1,
+  "0xee00ba338c59557141789b127927a55f5cc5cea1": 30510.27,
+  "0x84dbb7103982e3617704a2ed7d5b39691952aeeb": 4294.64,
+  "0x9bf7b81568ae59dafcb6a233a1d4cdeb593ce41f": 980,
+  "0x924379a79c64b77ad5816ad362122a5f6228658e": 24774.21,
+  "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f": 473.79,
+  "0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a": 5950.04,
+  "0xb31e41965df4ab8014de4c4d8da9deff0a6ac120": 702.68,
+  "0x38181f43e5802391522583a82d05893df3039797": 1124.58,
+  "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28": 2541.06,
+  "0xc1de5ffb02d2b354932ccf5e31172545965e21f5": 3202.05,
+  "0x32ed517a571c01b6e9adecf61ba81ca48ff2f960": 89.0,
+  "0x54ce7dd357766fc3255645e55ef41edd51cc9f80": 192.03,
+  "0xafd492974cd531aae7786210438ae46b42047e61": 2291.02,
+  "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38": 1923.91
+ }
+}

@@ -1,11 +1,12 @@
 // Aba "Ao vivo": sinais de entrada durante o jogo que ainda dá para replicar.
 // Só funciona com acesso em tempo real (direto ou relay): o sinal vale 1–2 minutos.
-import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, PADRAO } from "./core.js";
+import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, PADRAO } from "./core.js";
+import { blocoNota, pilulaNota } from "./nota.js";
 
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
 
-export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, aoRenderizar }) {
+export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, aoRenderizar }) {
   // traders pode encolher quando um trader de teste expira
   let dados = null, erro = null, timer = null, rodando = false, avisados = new Set(), primeira = true;
   const cacheEventos = new Map();
@@ -84,6 +85,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, aoRenderiza
             <div><small>Livre na odd</small><b>${usd(s.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(s.entrouEm)}</b></div>
           </div>
+          ${blocoNota(notaEntrada(s, t, indices), esc)}
           <div class="ordem">Entrar: <b>${esc(s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / s.teto)}</b> se ganhar. Segure até o fim.
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
             ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} disponível nessa odd: pode preencher em parte.</span>` : ""}</div>
@@ -109,10 +111,10 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, aoRenderiza
         </div>
         <p class="nota">${esc(t.nota)}</p>
         ${d.erro ? `<p class="erro">Não foi possível ler este trader: ${esc(d.erro)}</p>` : ""}
-        ${recentes.length ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th></tr></thead><tbody>
+        ${recentes.length ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th><th class="n">Nota</th></tr></thead><tbody>
           ${recentes.map(({ s }) => `<tr><td><span class="st ${s.status}">${s.status === "COPIAR" ? "Copiar" : "Não"}</span></td>
             <td><a href="${link(s)}" target="_blank" rel="noopener">${esc(s.tituloEvento)}</a><div class="motivo">${esc(s.motivos.join(" · "))}</div></td>
-            <td>${esc(s.lado)}</td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td></tr>`).join("")}
+            <td>${esc(s.lado)}</td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.status === "COPIAR" ? pilulaNota(notaEntrada(s, t, indices)) : "–"}</td></tr>`).join("")}
           </tbody></table></div>` : `<p class="sem">Nenhuma entrada nos últimos 15 min.</p>`}
       </article>`;
     }).join("");

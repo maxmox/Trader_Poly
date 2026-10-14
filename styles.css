@@ -140,3 +140,32 @@ td .motivo { color: var(--ink-3); font-size: 12px; }
 .momento.pre { background: var(--accent); }
 .card-top { align-items: center; }
 .card-top .quem { flex-basis: 100%; }
+
+/* nota da entrada */
+.nota { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 8px; }
+.nota-top { display: flex; align-items: center; gap: 10px; }
+.nota-num { font-family: var(--mono); font-size: 26px; font-weight: 600; line-height: 1; min-width: 44px; text-align: center; padding: 6px 4px; border-radius: 6px; }
+.nota-top strong { display: block; font-size: 14px; }
+.nota-top small { color: var(--ink-3); font-size: 12px; }
+.nota.forte .nota-num { background: var(--good-bg); color: var(--good); }
+.nota.boa .nota-num { background: var(--accent-soft); color: var(--accent); }
+.nota.neutra .nota-num { background: var(--bg); color: var(--ink-2); }
+.nota.fraca .nota-num { background: var(--bad-bg); color: var(--bad); }
+.barras { display: grid; gap: 4px; }
+.barra { display: grid; grid-template-columns: 82px 1fr 28px; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.barra i { display: block; height: 6px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
+.barra i::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--ink-3); }
+.barra em { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.barra b { font-family: var(--mono); text-align: right; color: var(--ink); }
+.nota details { font-size: 12px; color: var(--ink-2); }
+.nota summary { cursor: pointer; color: var(--accent); }
+.nota ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.nota li { display: flex; justify-content: space-between; gap: 8px; }
+.nota li b { font-family: var(--mono); }
+.nota li b.pos { color: var(--good); } .nota li b.neg { color: var(--bad); }
+.nota .falta { margin-top: 6px; color: var(--ink-3); }
+.nota-pill { display: inline-block; min-width: 30px; text-align: center; font-family: var(--mono); font-weight: 600; font-size: 12px; padding: 1px 6px; border-radius: 4px; }
+.nota-pill.forte { background: var(--good-bg); color: var(--good); }
+.nota-pill.boa { background: var(--accent-soft); color: var(--accent); }
+.nota-pill.neutra { background: var(--bg); color: var(--ink-2); }
+.nota-pill.fraca { background: var(--bad-bg); color: var(--bad); }

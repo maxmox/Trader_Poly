@@ -64,6 +64,26 @@ export const NOME_TIPO = {
 export const rotuloTipo = (t) => NOME_TIPO[t] || t || "outro";
 export const rotuloNicho = (n) => [rotuloEsporte(n.area), n.tipo ? rotuloTipo(n.tipo) : null, n.momento || null].filter(Boolean).join(" · ");
 
+function volumeMercado(evento, slug) {
+  const mk = (evento?.markets || []).find((m) => m.slug === slug);
+  return Number(mk?.volumeNum ?? mk?.volume ?? 0) || 0;
+}
+
+// Preço médio negociado (no lado dele) nos 2 min antes da entrada, sem as ordens dele.
+// Serve para saber se ele "absorveu" (pagou no/acima do mercado) ou "pescou" preço abaixo.
+export async function nivelAntes(api, cond, asset, carteira, t0seg) {
+  if (!cond || !t0seg) return null;
+  const tr = await api.get("data", `/trades?market=${cond}&limit=500&start=${t0seg - 120}&end=${t0seg - 5}`).catch(() => null);
+  let s = 0, u = 0;
+  for (const x of tr || []) {
+    if ((x.proxyWallet || "").toLowerCase() === carteira.toLowerCase()) continue;
+    const q = x.asset === asset ? x.price : 1 - x.price;
+    const usd = x.size * x.price;
+    s += q * usd; u += usd;
+  }
+  return u > 0 ? s / u : null;
+}
+
 function tipoMercado(evento, slug) {
   const mk = (evento?.markets || []).find((m) => m.slug === slug);
   return mk?.sportsMarketType || "";
@@ -157,18 +177,23 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity } = {}) {
+export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
     limiteAtividade ? api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`) : Promise.resolve([]),
   ]);
-  const primeiraCompra = {};
+  const primeiraCompra = {}, usdEntrada = {};
   const ultimaAtividade = (atividade || []).reduce((m, t) => Math.max(m, t.timestamp), 0);
   for (const t of atividade || []) {
     if (t.side !== "BUY") continue;
     primeiraCompra[t.asset] = Math.min(primeiraCompra[t.asset] ?? Infinity, t.timestamp);
   }
+  // valor da primeira entrada (compras no 1º minuto), mesma base do modelo da nota
+  for (const t of atividade || []) {
+    if (t.side === "BUY" && t.timestamp <= primeiraCompra[t.asset] + 60) usdEntrada[t.asset] = (usdEntrada[t.asset] || 0) + t.usdcSize;
+  }
+  const maisAntigo = (atividade || []).length ? Math.min(...atividade.map((t) => t.timestamp)) : Infinity;
   let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
   // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
   if (soEspecialidade) abertas = abertas.filter((p) => areasDo(trader).has(esporte(p.eventSlug || p.slug, null, prefixos)));
@@ -182,10 +207,14 @@ export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, a
     }
     const book = await api.get("clob", `/book?token_id=${pos.asset}`).catch(() => null);
     const v = avaliar({ pos, evento: ev, book, trader, agora, regras, prefixos });
+    // a primeira compra só é confiável se aconteceu depois do início da lista de atividade
+    const t0 = primeiraCompra[pos.asset] && primeiraCompra[pos.asset] > maisAntigo ? primeiraCompra[pos.asset] : null;
+    const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
     return {
-      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset,
+      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId,
       valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
+      usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
       tituloEvento: ev?.title || pos.title, ...v,
     };
   });
@@ -211,7 +240,7 @@ export async function carregarTodos(api, traders, opts = {}) {
 // Um sinal = primeira compra do trader num mercado com o jogo em andamento,
 // feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
-export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false } = {}) {
+export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false, comNivel = true } = {}) {
   const w = trader.carteira;
   const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
   const corte = agora / 1000 - historicoSeg;
@@ -258,7 +287,9 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     else if (ask > teto) nao(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`);
     if (idadeSeg > trader.janelaSeg) nao(`passou da janela de ${Math.round(trader.janelaSeg / 60)} min`);
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
+    const antes = comNivel && status === "COPIAR" ? await nivelAntes(api, t.conditionId, t.asset, w, e.t0) : null;
     return {
+      cond: t.conditionId, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
       tituloEvento: ev?.title || t.title, esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
       entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
@@ -276,4 +307,48 @@ export async function carregarAoVivo(api, traders, opts = {}) {
     catch (e) { return { carteira: t.carteira, erro: String(e.message || e), sinais: [] }; }
   });
   return { geradoEm: Date.now(), traders: res };
+}
+
+// ---------------------------------------------------------------------------
+// NOTA DA ENTRADA (modelo de polymarket_traders/modelo_entrada.py, data/indices.json)
+// Vantagem esperada de quem copia, somando o efeito de fatores que se repetiram no tempo:
+//   trader  = convicção (aposta vs mediana dele) + como entrou (absorveu ou "pescou" preço)
+//   mercado = ao vivo / pré-jogo + liquidez do mercado
+//   odd     = faixa de odd + quanto a odd andou desde a entrada dele + antecedência
+// Índice = 50 + 6 × efeito (em pontos de probabilidade); nota = 50 + 6 × vantagem esperada.
+const faixaDe = (v, faixas) => (faixas.find(([a, b]) => v >= a && v < b) || faixas[faixas.length - 1])[2];
+
+export const ROTULO_FATOR = {
+  conviccao: "Tamanho da aposta dele", entrada: "Como ele entrou", momento: "Momento", liquidez: "Liquidez do mercado",
+  faixa_odd: "Faixa de odd", deriva: "Odd desde a entrada dele", antecedencia: "Antecedência",
+};
+
+export function notaEntrada(x, trader, ind) {
+  if (!ind?.efeitos) return null;
+  const med = ind.mediana_usd?.[trader.carteira];
+  const dEntrada = x.antes != null ? (x.precoDele - x.antes) * 100 : null;
+  const dDeriva = x.ask != null ? (x.ask - x.precoDele) * 100 : null;
+  const faixas = {
+    conviccao: med && x.usdEntrada ? (x.usdEntrada / med < 0.5 ? "aposta < metade da mediana dele" : x.usdEntrada / med <= 2 ? "aposta normal" : "aposta > 2x a mediana dele") : null,
+    entrada: dEntrada == null ? null : dEntrada < -1 ? "pagou abaixo do mercado (>1¢)" : dEntrada <= 1 ? "pagou no nível do mercado" : "pagou acima do mercado (>1¢)",
+    momento: x.momento || null,
+    liquidez: x.volMercado ? (x.volMercado < 5e4 ? "mercado < $50 mil" : x.volMercado < 5e5 ? "$50–500 mil" : "> $500 mil") : null,
+    faixa_odd: faixaDe(x.precoDele, ind.faixas_odd),
+    deriva: dDeriva == null ? null : dDeriva < -0.5 ? "odd melhorou (preço caiu)" : dDeriva <= 0.5 ? "igual (±0,5¢)" : "odd piorou até 2¢",
+    antecedencia: x.momento === "pré-jogo" && x.inicio && x.entrouEm ? faixaDe((x.inicio - x.entrouEm) / 3.6e6, ind.faixas_lead) : null,
+  };
+  const soma = { trader: 0, mercado: 0, odd: 0 };
+  const fatores = [];
+  for (const [nome, faixa] of Object.entries(faixas)) {
+    const e = faixa ? ind.efeitos[nome]?.[faixa]?.efeito ?? 0 : 0;
+    soma[ind.grupos[nome]] += e;
+    fatores.push({ nome, rotulo: ROTULO_FATOR[nome], grupo: ind.grupos[nome], faixa, efeito: e });
+  }
+  const pts = (v) => Math.max(0, Math.min(100, Math.round(50 + ind.escala * 100 * v)));
+  const esperado = ind.media + soma.trader + soma.mercado + soma.odd;
+  const nota = pts(esperado);
+  return {
+    trader: pts(soma.trader), mercado: pts(soma.mercado), odd: pts(soma.odd), nota, esperado,
+    rotulo: nota >= 66 ? "forte" : nota >= 58 ? "boa" : nota >= 50 ? "neutra" : "fraca", fatores,
+  };
 }

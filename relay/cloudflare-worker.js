@@ -69,6 +69,26 @@ const NOME_TIPO = {
 const rotuloTipo = (t) => NOME_TIPO[t] || t || "outro";
 const rotuloNicho = (n) => [rotuloEsporte(n.area), n.tipo ? rotuloTipo(n.tipo) : null, n.momento || null].filter(Boolean).join(" · ");
 
+function volumeMercado(evento, slug) {
+  const mk = (evento?.markets || []).find((m) => m.slug === slug);
+  return Number(mk?.volumeNum ?? mk?.volume ?? 0) || 0;
+}
+
+// Preço médio negociado (no lado dele) nos 2 min antes da entrada, sem as ordens dele.
+// Serve para saber se ele "absorveu" (pagou no/acima do mercado) ou "pescou" preço abaixo.
+async function nivelAntes(api, cond, asset, carteira, t0seg) {
+  if (!cond || !t0seg) return null;
+  const tr = await api.get("data", `/trades?market=${cond}&limit=500&start=${t0seg - 120}&end=${t0seg - 5}`).catch(() => null);
+  let s = 0, u = 0;
+  for (const x of tr || []) {
+    if ((x.proxyWallet || "").toLowerCase() === carteira.toLowerCase()) continue;
+    const q = x.asset === asset ? x.price : 1 - x.price;
+    const usd = x.size * x.price;
+    s += q * usd; u += usd;
+  }
+  return u > 0 ? s / u : null;
+}
+
 function tipoMercado(evento, slug) {
   const mk = (evento?.markets || []).find((m) => m.slug === slug);
   return mk?.sportsMarketType || "";
@@ -162,18 +182,23 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity } = {}) {
+async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
     limiteAtividade ? api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`) : Promise.resolve([]),
   ]);
-  const primeiraCompra = {};
+  const primeiraCompra = {}, usdEntrada = {};
   const ultimaAtividade = (atividade || []).reduce((m, t) => Math.max(m, t.timestamp), 0);
   for (const t of atividade || []) {
     if (t.side !== "BUY") continue;
     primeiraCompra[t.asset] = Math.min(primeiraCompra[t.asset] ?? Infinity, t.timestamp);
   }
+  // valor da primeira entrada (compras no 1º minuto), mesma base do modelo da nota
+  for (const t of atividade || []) {
+    if (t.side === "BUY" && t.timestamp <= primeiraCompra[t.asset] + 60) usdEntrada[t.asset] = (usdEntrada[t.asset] || 0) + t.usdcSize;
+  }
+  const maisAntigo = (atividade || []).length ? Math.min(...atividade.map((t) => t.timestamp)) : Infinity;
   let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
   // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
   if (soEspecialidade) abertas = abertas.filter((p) => areasDo(trader).has(esporte(p.eventSlug || p.slug, null, prefixos)));
@@ -187,10 +212,14 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
     }
     const book = await api.get("clob", `/book?token_id=${pos.asset}`).catch(() => null);
     const v = avaliar({ pos, evento: ev, book, trader, agora, regras, prefixos });
+    // a primeira compra só é confiável se aconteceu depois do início da lista de atividade
+    const t0 = primeiraCompra[pos.asset] && primeiraCompra[pos.asset] > maisAntigo ? primeiraCompra[pos.asset] : null;
+    const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
     return {
-      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset,
+      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId,
       valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
+      usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
       tituloEvento: ev?.title || pos.title, ...v,
     };
   });
@@ -216,7 +245,7 @@ async function carregarTodos(api, traders, opts = {}) {
 // Um sinal = primeira compra do trader num mercado com o jogo em andamento,
 // feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
-async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false } = {}) {
+async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false, comNivel = true } = {}) {
   const w = trader.carteira;
   const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
   const corte = agora / 1000 - historicoSeg;
@@ -263,7 +292,9 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     else if (ask > teto) nao(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`);
     if (idadeSeg > trader.janelaSeg) nao(`passou da janela de ${Math.round(trader.janelaSeg / 60)} min`);
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
+    const antes = comNivel && status === "COPIAR" ? await nivelAntes(api, t.conditionId, t.asset, w, e.t0) : null;
     return {
+      cond: t.conditionId, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
       tituloEvento: ev?.title || t.title, esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
       entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
@@ -281,6 +312,50 @@ async function carregarAoVivo(api, traders, opts = {}) {
     catch (e) { return { carteira: t.carteira, erro: String(e.message || e), sinais: [] }; }
   });
   return { geradoEm: Date.now(), traders: res };
+}
+
+// ---------------------------------------------------------------------------
+// NOTA DA ENTRADA (modelo de polymarket_traders/modelo_entrada.py, data/indices.json)
+// Vantagem esperada de quem copia, somando o efeito de fatores que se repetiram no tempo:
+//   trader  = convicção (aposta vs mediana dele) + como entrou (absorveu ou "pescou" preço)
+//   mercado = ao vivo / pré-jogo + liquidez do mercado
+//   odd     = faixa de odd + quanto a odd andou desde a entrada dele + antecedência
+// Índice = 50 + 6 × efeito (em pontos de probabilidade); nota = 50 + 6 × vantagem esperada.
+const faixaDe = (v, faixas) => (faixas.find(([a, b]) => v >= a && v < b) || faixas[faixas.length - 1])[2];
+
+const ROTULO_FATOR = {
+  conviccao: "Tamanho da aposta dele", entrada: "Como ele entrou", momento: "Momento", liquidez: "Liquidez do mercado",
+  faixa_odd: "Faixa de odd", deriva: "Odd desde a entrada dele", antecedencia: "Antecedência",
+};
+
+function notaEntrada(x, trader, ind) {
+  if (!ind?.efeitos) return null;
+  const med = ind.mediana_usd?.[trader.carteira];
+  const dEntrada = x.antes != null ? (x.precoDele - x.antes) * 100 : null;
+  const dDeriva = x.ask != null ? (x.ask - x.precoDele) * 100 : null;
+  const faixas = {
+    conviccao: med && x.usdEntrada ? (x.usdEntrada / med < 0.5 ? "aposta < metade da mediana dele" : x.usdEntrada / med <= 2 ? "aposta normal" : "aposta > 2x a mediana dele") : null,
+    entrada: dEntrada == null ? null : dEntrada < -1 ? "pagou abaixo do mercado (>1¢)" : dEntrada <= 1 ? "pagou no nível do mercado" : "pagou acima do mercado (>1¢)",
+    momento: x.momento || null,
+    liquidez: x.volMercado ? (x.volMercado < 5e4 ? "mercado < $50 mil" : x.volMercado < 5e5 ? "$50–500 mil" : "> $500 mil") : null,
+    faixa_odd: faixaDe(x.precoDele, ind.faixas_odd),
+    deriva: dDeriva == null ? null : dDeriva < -0.5 ? "odd melhorou (preço caiu)" : dDeriva <= 0.5 ? "igual (±0,5¢)" : "odd piorou até 2¢",
+    antecedencia: x.momento === "pré-jogo" && x.inicio && x.entrouEm ? faixaDe((x.inicio - x.entrouEm) / 3.6e6, ind.faixas_lead) : null,
+  };
+  const soma = { trader: 0, mercado: 0, odd: 0 };
+  const fatores = [];
+  for (const [nome, faixa] of Object.entries(faixas)) {
+    const e = faixa ? ind.efeitos[nome]?.[faixa]?.efeito ?? 0 : 0;
+    soma[ind.grupos[nome]] += e;
+    fatores.push({ nome, rotulo: ROTULO_FATOR[nome], grupo: ind.grupos[nome], faixa, efeito: e });
+  }
+  const pts = (v) => Math.max(0, Math.min(100, Math.round(50 + ind.escala * 100 * v)));
+  const esperado = ind.media + soma.trader + soma.mercado + soma.odd;
+  const nota = pts(esperado);
+  return {
+    trader: pts(soma.trader), mercado: pts(soma.mercado), odd: pts(soma.odd), nota, esperado,
+    rotulo: nota >= 66 ? "forte" : nota >= 58 ? "boa" : nota >= 50 ? "neutra" : "fraca", fatores,
+  };
 }
 
 // ===== Worker: relay do site + alertas no Telegram =====
@@ -317,8 +392,9 @@ async function carregarListas(env) {
   if (listas && Date.now() - listasEm < 5 * 60_000) return listas;
   const base = (env.SITE_URL || SITE_PADRAO).replace(/\/$/, "");
   const get = async (p) => (await fetch(`${base}/${p}?t=${Date.now()}`, { cf: { cacheTtl: 0 } })).json();
-  const [pre, vivo, prefixos] = await Promise.all([get("data/traders.json"), get("data/traders_live.json"), get("data/prefixos.json")]);
-  listas = { pre: pre.traders, vivo: vivo.traders, prefixos };
+  const [pre, vivo, prefixos, indices] = await Promise.all([get("data/traders.json"), get("data/traders_live.json"), get("data/prefixos.json"),
+    get("data/indices.json").catch(() => null)]);
+  listas = { pre: pre.traders, vivo: vivo.traders, prefixos, indices };
   listasEm = Date.now();
   return listas;
 }
@@ -356,12 +432,18 @@ function aposta(env, teto) {
   return `\nAposta: <b>${usd(v)}</b> → retorno <b>${usd(v / teto)}</b> se ganhar`;
 }
 
+function linhaNota(n) {
+  if (!n) return "";
+  const ic = { forte: "🟢", boa: "🔵", neutra: "⚪", fraca: "🔴" }[n.rotulo];
+  return `\n${ic} Nota <b>${n.nota}</b> (${n.rotulo}) · trader ${n.trader} · mercado ${n.mercado} · odd/tempo ${n.odd}`;
+}
+
 function msgVivo(env, t, s) {
   const fim = s.entrouEm + t.janelaSeg * 1000;
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.lado)}</b>
-Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${t.nivel === "teste" ? `
+Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaNota(s.nota)}${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
 Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
@@ -373,7 +455,7 @@ function msgPre(env, t, p) {
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🟢 <b>PRÉ-JOGO · ${h(t.nome)}</b> (${h(rotuloEsporte(p.esporte))}${p.tipo ? " · " + h(rotuloTipo(p.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.lado)}</b>
-Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${aposta(env, p.teto)}
+Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaNota(p.nota)}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
@@ -413,6 +495,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       // trader de teste manda toda entrada nova (com o veredito), para conferir o fluxo
       if (s.status !== "COPIAR" && t.nivel !== "teste") continue;
       const chave = `v:${s.asset}:${s.entrouEm}`;
+      s.nota = notaEntrada(s, t, l.indices);
       if (await jaEnviado(env, chave)) continue;
       const r = await telegram(env, msgVivo(env, t, s));
       if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); } else resumo.erros.push(`telegram: ${r.erro}`);
@@ -435,6 +518,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
         if (p.status !== "COPIAR") continue;
         resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, lado: p.lado });
         const chave = `p:${p.asset}`;
+        p.nota = notaEntrada(p, t, l.indices);
         if (await jaEnviado(env, chave)) continue;
         if (t.nivel === "teste" && resumo.enviados >= 3) continue; // teste: no máximo 3 por execução
         const r = await telegram(env, msgPre(env, t, p));

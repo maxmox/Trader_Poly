@@ -1,5 +1,6 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
+import { blocoNota, pilulaNota } from "./nota.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
 const INTERVALO_RETRATO = 120_000; // sem acesso direto, relê o retrato do servidor a cada 2 min
@@ -35,7 +36,8 @@ $("#btn-atualizar").addEventListener("click", () => atualizar());
 
 // ---------- estado ----------
 let traders = [], prefixos = {}, dados = null, fonte = "carregando", jaAvisados = new Set(), primeiraCarga = true;
-let relayPadrao = ""; // data/config.json: relay do repositório, usado quando Ajustes está vazio
+let relayPadrao = "";
+let indices = null; // data/indices.json: efeitos dos fatores da nota da entrada // data/config.json: relay do repositório, usado quando Ajustes está vazio
 const relay = () => cfg.relay || relayPadrao;
 const regras = () => ({ ...PADRAO, tetoCentavos: cfg.teto });
 
@@ -149,6 +151,7 @@ function render() {
 
   $("#lista-agora").innerHTML = agoraLista.map(({ t, p }) => {
         const cotas = p.teto > 0 ? stake / p.teto : 0;
+        const n = notaEntrada(p, t, indices);
         return `<article class="card ${p.status}">
           <div class="card-top"><span class="momento pre">Pré-jogo</span><span class="st ${p.status}">${p.status === "COPIAR" ? "Copiar" : "Esperar"}</span>
             <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}${p.tipo ? " · " + esc(rotuloTipo(p.tipo)) : ""}</span></div>
@@ -161,6 +164,7 @@ function render() {
             <div><small>Livre até o teto</small><b>${usd(p.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(p.entrouEm)}</b></div>
           </div>
+          ${blocoNota(n, esc)}
           <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
             aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / p.teto)}</b> se ganhar
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
@@ -180,7 +184,7 @@ function render() {
         <td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
         <td>${esc(p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}</td>
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
-        <td class="n">${quando(p.horasParaInicio)}</td></tr>`).join("");
+        <td class="n">${quando(p.horasParaInicio)}</td><td class="n">${p.status === "NAO" ? "–" : pilulaNota(notaEntrada(p, t, indices))}</td></tr>`).join("");
     return `<article class="trader">
       <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
         <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
@@ -194,7 +198,7 @@ function render() {
       <p class="nota">${esc(t.nota)}</p>
       ${d.erro ? `<p class="erro">Não foi possível ler este trader: ${esc(d.erro)}</p>` : ""}
       ${pos.length
-        ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th>Esporte</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Começa</th></tr></thead><tbody>${linhas}</tbody></table></div>`
+        ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th>Esporte</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Começa</th><th class="n">Nota</th></tr></thead><tbody>${linhas}</tbody></table></div>`
         : `<p class="sem">Sem posições abertas em esporte${ocultas ? ` (${ocultas} fora de esporte ocultas)` : ""}.</p>`}
       ${pos.length && ocultas ? `<p class="sem">${ocultas} posições fora de esporte ocultas.</p>` : ""}
     </article>`;
@@ -219,6 +223,7 @@ function avisar(lista) {
     [{ traders }, prefixos] = await Promise.all([json("data/traders.json"), json("data/prefixos.json")]);
     traders = vigentes(traders);
     relayPadrao = (await json("data/config.json").catch(() => ({}))).relay || "";
+    indices = await json("data/indices.json").catch(() => null);
     if (relayPadrao) $("#cfg-relay").placeholder = `${relayPadrao} (padrão do repositório)`;
   } catch (e) {
     $("#quadro-vazio").hidden = false;
@@ -233,7 +238,7 @@ function avisar(lista) {
   // ao vivo: mesmo quadro, consulta a cada 15 s
   try {
     const tv = vigentes((await json("data/traders_live.json")).traders);
-    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv,
+    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, indices,
       aoRenderizar: (c) => { quadro.vivo = c; atualizarQuadro(); } });
   } catch (e) {
     $("#vivo-traders").innerHTML = `<p class="erro">Lista de traders ao vivo indisponível: ${esc(e.message)}</p>`;
