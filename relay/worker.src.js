@@ -11,6 +11,7 @@
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
+//    GET /status -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
@@ -77,7 +78,8 @@ ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.lado)}</b>
 Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
-⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)${aposta(env, s.teto)}
+⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
+Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
 No Polymarket: ordem limitada a ${cents(s.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(s.eventSlug)}`;
 }
@@ -87,8 +89,20 @@ function msgPre(env, t, p) {
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.lado)}</b>
 Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${aposta(env, p.teto)}
+Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
+}
+
+const execucoes = []; // log em memória; vai para o KV a cada 5 min (limite grátis: 1.000 gravações/dia)
+async function registrar(env, item, persistir) {
+  execucoes.unshift(item);
+  execucoes.length = Math.min(execucoes.length, 60);
+  if (!persistir || !env.ENVIADOS) return;
+  const antigo = JSON.parse((await env.ENVIADOS.get("status")) || "[]");
+  const todos = [...execucoes, ...antigo].filter((x, i, a) => a.findIndex((y) => y.inicio === x.inicio) === i)
+    .sort((a, b) => b.inicio.localeCompare(a.inicio)).slice(0, 60);
+  await env.ENVIADOS.put("status", JSON.stringify(todos));
 }
 
 const ORCAMENTO = 40; // consultas à API por execução (limite do plano grátis: 50, sobra para listas e Telegram)
@@ -120,11 +134,15 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     }
   }
 
-  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~8 min)
-  const lista = preTrader ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader) : [pre[minuto % pre.length]];
+  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~10 min);
+  // trader de teste entra em toda execução, limitado a 8 posições
+  const normais = pre.filter((t) => t.nivel !== "teste");
+  const lista = preTrader
+    ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader)
+    : [...pre.filter((t) => t.nivel === "teste"), ...(normais.length ? [normais[minuto % normais.length]] : [])];
   resumo.preTrader = lista.map((t) => t.nome).join(", ");
   {
-    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 0, soEspecialidade: true });
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8 });
     for (const [k, d] of rp.traders.entries()) {
       const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -133,6 +151,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
         resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, lado: p.lado });
         const chave = `p:${p.asset}`;
         if (await jaEnviado(env, chave)) continue;
+        if (t.nivel === "teste" && resumo.enviados >= 3) continue; // teste: no máximo 3 por execução
         const r = await telegram(env, msgPre(env, t, p));
         const ttl = p.inicio ? (p.inicio - Date.now()) / 1000 + 3600 : 3 * 86400;
         if (r.ok) { resumo.enviados++; await marcar(env, chave, ttl); } else resumo.erros.push(`telegram: ${r.erro}`);
@@ -154,6 +173,18 @@ export default {
       const r = await telegram(env, "✅ Trader Poly conectado. Os sinais ao vivo e pré-jogo vão chegar aqui.");
       return json(r, r.ok ? 200 : 500);
     }
+    if (url.pathname === "/status") {
+      const antigo = env.ENVIADOS ? JSON.parse((await env.ENVIADOS.get("status")) || "[]") : [];
+      const todos = [...execucoes, ...antigo].filter((x, i, a) => a.findIndex((y) => y.inicio === x.inicio) === i)
+        .sort((a, b) => b.inicio.localeCompare(a.inicio)).slice(0, 60);
+      const intervalos = todos.slice(0, -1).map((x, i) => Math.round((Date.parse(x.inicio) - Date.parse(todos[i + 1].inicio)) / 1000));
+      return json({
+        agora: new Date().toISOString(),
+        ultima_execucao_ha_seg: todos[0] ? Math.round((Date.now() - Date.parse(todos[0].inicio)) / 1000) : null,
+        intervalos_seg: intervalos, minutos_pulados: intervalos.filter((v) => v > 90).length, execucoes: todos,
+        obs: "intervalos ~60 s = agendamento em dia; buracos maiores = minutos sem execução (o log vai para o KV a cada 5 min)",
+      });
+    }
     if (url.pathname === "/verificar") {
       // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto
       try { return json(await verificar(env, { preTrader: url.searchParams.get("pre") })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
@@ -171,6 +202,10 @@ export default {
 
   async scheduled(event, env, ctx) {
     const minuto = Math.floor(event.scheduledTime / 60000);
-    ctx.waitUntil(verificar(env, { minuto }).catch((e) => console.error("verificar", e)));
+    const t0 = Date.now();
+    ctx.waitUntil(verificar(env, { minuto })
+      .then((r) => ({ consultas: r.consultas, enviados: r.enviados, aoVivo: r.aoVivo.length, erros: r.erros.slice(0, 3) }))
+      .catch((e) => ({ erro: String(e.message || e) }))
+      .then((r) => registrar(env, { inicio: new Date(event.scheduledTime).toISOString(), ms: Date.now() - t0, ...r }, minuto % 5 === 0)));
   },
 };

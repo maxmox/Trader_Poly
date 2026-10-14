@@ -15,7 +15,11 @@ const HOSTS = {
 
 // Regras de cópia (mesmas do backtest): teto de 2 centavos acima do preço dele,
 // nada depois do início do jogo, nada acima de 97 centavos (sem margem).
-const PADRAO = { tetoCentavos: 2, toleranciaCentavos: 5, precoMax: 0.97 };
+// Em azarões o teto é proporcional (no máximo 10% do preço): 2¢ sobre um preço de 2¢
+// dobraria o preço (odd 47 → 24).
+const PADRAO = { tetoCentavos: 2, tetoRelativo: 0.10, toleranciaCentavos: 5, toleranciaRelativa: 0.25, precoMax: 0.97 };
+const tetoDe = (preco, r = PADRAO) => Math.min(preco + Math.min(r.tetoCentavos / 100, preco * (r.tetoRelativo ?? 1)), r.precoMax);
+const toleranciaDe = (preco, r = PADRAO) => preco + Math.min(r.toleranciaCentavos / 100, preco * (r.toleranciaRelativa ?? 1));
 
 function criarApi({ relay = "", fetchFn = globalThis.fetch, timeoutMs = 15000 } = {}) {
   const base = (host) => (relay ? `${relay.replace(/\/$/, "")}/${host}` : HOSTS[host]);
@@ -99,7 +103,7 @@ function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, prefixos }
   const inicio = inicioDoJogo(evento, pos.slug);
   const { asks, ask, bid } = melhorAsk(book);
   const preco = pos.avgPrice;
-  const teto = Math.min(preco + regras.tetoCentavos / 100, regras.precoMax);
+  const teto = tetoDe(preco, regras);
   const motivos = [];
   let status = "COPIAR";
   const piora = (s) => {
@@ -123,7 +127,7 @@ function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, prefixos }
   if (!encerrado) {
     if (ask == null) { piora("NAO"); motivos.push("sem ofertas de venda no livro"); }
     else if (ask >= regras.precoMax) { piora("NAO"); motivos.push(`odd ${odd(ask)} — sem margem`); }
-    else if (ask > preco + regras.toleranciaCentavos / 100) { piora("NAO"); motivos.push(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`); }
+    else if (ask > toleranciaDe(preco, regras)) { piora("NAO"); motivos.push(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`); }
     else if (ask > teto) { piora("ESPERAR"); motivos.push(`odd ${odd(ask)} abaixo da mínima ${odd(teto)} — deixe ordem limitada`); }
   }
   if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
@@ -158,7 +162,7 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false } = {}) {
+async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
@@ -173,6 +177,7 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
   let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
   // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
   if (soEspecialidade) abertas = abertas.filter((p) => areasDo(trader).has(esporte(p.eventSlug || p.slug, null, prefixos)));
+  if (abertas.length > maxPosicoes) abertas = abertas.sort((x, y) => (y.initialValue || 0) - (x.initialValue || 0)).slice(0, maxPosicoes);
   const itens = await emLotes(abertas, 4, async (pos) => {
     let ev = cacheEventos.get(pos.eventSlug);
     if (ev === undefined) {
@@ -243,7 +248,7 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     const inicio = inicioDoJogo(ev, t.slug);
     const { asks, ask } = melhorAsk(book);
     const preco = e.usd / e.cotas;
-    const teto = Math.min(preco + regras.tetoCentavos / 100, regras.precoMax);
+    const teto = tetoDe(preco, regras);
     const idadeSeg = agora / 1000 - e.t0;
     const aoVivo = ev?.live === true || (inicio != null && e.t0 * 1000 >= inicio);
     const motivos = [];
@@ -291,6 +296,7 @@ async function carregarAoVivo(api, traders, opts = {}) {
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
+//    GET /status -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
@@ -357,7 +363,8 @@ ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.lado)}</b>
 Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
-⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)${aposta(env, s.teto)}
+⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
+Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
 No Polymarket: ordem limitada a ${cents(s.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(s.eventSlug)}`;
 }
@@ -367,8 +374,20 @@ function msgPre(env, t, p) {
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.lado)}</b>
 Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${aposta(env, p.teto)}
+Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
+}
+
+const execucoes = []; // log em memória; vai para o KV a cada 5 min (limite grátis: 1.000 gravações/dia)
+async function registrar(env, item, persistir) {
+  execucoes.unshift(item);
+  execucoes.length = Math.min(execucoes.length, 60);
+  if (!persistir || !env.ENVIADOS) return;
+  const antigo = JSON.parse((await env.ENVIADOS.get("status")) || "[]");
+  const todos = [...execucoes, ...antigo].filter((x, i, a) => a.findIndex((y) => y.inicio === x.inicio) === i)
+    .sort((a, b) => b.inicio.localeCompare(a.inicio)).slice(0, 60);
+  await env.ENVIADOS.put("status", JSON.stringify(todos));
 }
 
 const ORCAMENTO = 40; // consultas à API por execução (limite do plano grátis: 50, sobra para listas e Telegram)
@@ -400,11 +419,15 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     }
   }
 
-  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~8 min)
-  const lista = preTrader ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader) : [pre[minuto % pre.length]];
+  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~10 min);
+  // trader de teste entra em toda execução, limitado a 8 posições
+  const normais = pre.filter((t) => t.nivel !== "teste");
+  const lista = preTrader
+    ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader)
+    : [...pre.filter((t) => t.nivel === "teste"), ...(normais.length ? [normais[minuto % normais.length]] : [])];
   resumo.preTrader = lista.map((t) => t.nome).join(", ");
   {
-    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 0, soEspecialidade: true });
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8 });
     for (const [k, d] of rp.traders.entries()) {
       const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -413,6 +436,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
         resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, lado: p.lado });
         const chave = `p:${p.asset}`;
         if (await jaEnviado(env, chave)) continue;
+        if (t.nivel === "teste" && resumo.enviados >= 3) continue; // teste: no máximo 3 por execução
         const r = await telegram(env, msgPre(env, t, p));
         const ttl = p.inicio ? (p.inicio - Date.now()) / 1000 + 3600 : 3 * 86400;
         if (r.ok) { resumo.enviados++; await marcar(env, chave, ttl); } else resumo.erros.push(`telegram: ${r.erro}`);
@@ -434,6 +458,18 @@ export default {
       const r = await telegram(env, "✅ Trader Poly conectado. Os sinais ao vivo e pré-jogo vão chegar aqui.");
       return json(r, r.ok ? 200 : 500);
     }
+    if (url.pathname === "/status") {
+      const antigo = env.ENVIADOS ? JSON.parse((await env.ENVIADOS.get("status")) || "[]") : [];
+      const todos = [...execucoes, ...antigo].filter((x, i, a) => a.findIndex((y) => y.inicio === x.inicio) === i)
+        .sort((a, b) => b.inicio.localeCompare(a.inicio)).slice(0, 60);
+      const intervalos = todos.slice(0, -1).map((x, i) => Math.round((Date.parse(x.inicio) - Date.parse(todos[i + 1].inicio)) / 1000));
+      return json({
+        agora: new Date().toISOString(),
+        ultima_execucao_ha_seg: todos[0] ? Math.round((Date.now() - Date.parse(todos[0].inicio)) / 1000) : null,
+        intervalos_seg: intervalos, minutos_pulados: intervalos.filter((v) => v > 90).length, execucoes: todos,
+        obs: "intervalos ~60 s = agendamento em dia; buracos maiores = minutos sem execução (o log vai para o KV a cada 5 min)",
+      });
+    }
     if (url.pathname === "/verificar") {
       // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto
       try { return json(await verificar(env, { preTrader: url.searchParams.get("pre") })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
@@ -451,6 +487,10 @@ export default {
 
   async scheduled(event, env, ctx) {
     const minuto = Math.floor(event.scheduledTime / 60000);
-    ctx.waitUntil(verificar(env, { minuto }).catch((e) => console.error("verificar", e)));
+    const t0 = Date.now();
+    ctx.waitUntil(verificar(env, { minuto })
+      .then((r) => ({ consultas: r.consultas, enviados: r.enviados, aoVivo: r.aoVivo.length, erros: r.erros.slice(0, 3) }))
+      .catch((e) => ({ erro: String(e.message || e) }))
+      .then((r) => registrar(env, { inicio: new Date(event.scheduledTime).toISOString(), ms: Date.now() - t0, ...r }, minuto % 5 === 0)));
   },
 };

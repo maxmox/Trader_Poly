@@ -10,7 +10,11 @@ export const HOSTS = {
 
 // Regras de cópia (mesmas do backtest): teto de 2 centavos acima do preço dele,
 // nada depois do início do jogo, nada acima de 97 centavos (sem margem).
-export const PADRAO = { tetoCentavos: 2, toleranciaCentavos: 5, precoMax: 0.97 };
+// Em azarões o teto é proporcional (no máximo 10% do preço): 2¢ sobre um preço de 2¢
+// dobraria o preço (odd 47 → 24).
+export const PADRAO = { tetoCentavos: 2, tetoRelativo: 0.10, toleranciaCentavos: 5, toleranciaRelativa: 0.25, precoMax: 0.97 };
+export const tetoDe = (preco, r = PADRAO) => Math.min(preco + Math.min(r.tetoCentavos / 100, preco * (r.tetoRelativo ?? 1)), r.precoMax);
+const toleranciaDe = (preco, r = PADRAO) => preco + Math.min(r.toleranciaCentavos / 100, preco * (r.toleranciaRelativa ?? 1));
 
 export function criarApi({ relay = "", fetchFn = globalThis.fetch, timeoutMs = 15000 } = {}) {
   const base = (host) => (relay ? `${relay.replace(/\/$/, "")}/${host}` : HOSTS[host]);
@@ -94,7 +98,7 @@ export function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, pre
   const inicio = inicioDoJogo(evento, pos.slug);
   const { asks, ask, bid } = melhorAsk(book);
   const preco = pos.avgPrice;
-  const teto = Math.min(preco + regras.tetoCentavos / 100, regras.precoMax);
+  const teto = tetoDe(preco, regras);
   const motivos = [];
   let status = "COPIAR";
   const piora = (s) => {
@@ -118,7 +122,7 @@ export function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, pre
   if (!encerrado) {
     if (ask == null) { piora("NAO"); motivos.push("sem ofertas de venda no livro"); }
     else if (ask >= regras.precoMax) { piora("NAO"); motivos.push(`odd ${odd(ask)} — sem margem`); }
-    else if (ask > preco + regras.toleranciaCentavos / 100) { piora("NAO"); motivos.push(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`); }
+    else if (ask > toleranciaDe(preco, regras)) { piora("NAO"); motivos.push(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`); }
     else if (ask > teto) { piora("ESPERAR"); motivos.push(`odd ${odd(ask)} abaixo da mínima ${odd(teto)} — deixe ordem limitada`); }
   }
   if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
@@ -153,7 +157,7 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false } = {}) {
+export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
@@ -168,6 +172,7 @@ export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, a
   let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
   // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
   if (soEspecialidade) abertas = abertas.filter((p) => areasDo(trader).has(esporte(p.eventSlug || p.slug, null, prefixos)));
+  if (abertas.length > maxPosicoes) abertas = abertas.sort((x, y) => (y.initialValue || 0) - (x.initialValue || 0)).slice(0, maxPosicoes);
   const itens = await emLotes(abertas, 4, async (pos) => {
     let ev = cacheEventos.get(pos.eventSlug);
     if (ev === undefined) {
@@ -238,7 +243,7 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     const inicio = inicioDoJogo(ev, t.slug);
     const { asks, ask } = melhorAsk(book);
     const preco = e.usd / e.cotas;
-    const teto = Math.min(preco + regras.tetoCentavos / 100, regras.precoMax);
+    const teto = tetoDe(preco, regras);
     const idadeSeg = agora / 1000 - e.t0;
     const aoVivo = ev?.live === true || (inicio != null && e.t0 * 1000 >= inicio);
     const motivos = [];

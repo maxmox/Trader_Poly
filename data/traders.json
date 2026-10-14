@@ -2,6 +2,37 @@
  "gerado_em": "2026-10-13",
  "traders": [
   {
+   "carteira": "0x7ea571c40408f340c1c8fc8eaacebab53c1bde7b",
+   "nome": "TESTE · Cannae",
+   "nivel": "teste",
+   "esportes": [
+    "Basquete",
+    "Beisebol",
+    "CS2",
+    "Criquete",
+    "Dota 2",
+    "Esporte outros",
+    "Futebol",
+    "Futebol Americano",
+    "Hoquei",
+    "LoL",
+    "MMA/Boxe",
+    "Tenis",
+    "Valorant",
+    "eSports outros"
+   ],
+   "expira": "2026-10-14T03:30:31Z",
+   "nota": "Trader de TESTE do pré-jogo, só para conferir se os sinais chegam ao site e ao Telegram. Opera centenas de jogos por dia: não copie. Some sozinho às 00:30 (horário de Brasília).",
+   "stats": {
+    "lucro": null,
+    "lucro_sem_top5": null,
+    "meses": 0,
+    "meses_positivos": 0,
+    "apostas": 0,
+    "roi_copia_5min": null
+   }
+  },
+  {
    "carteira": "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f",
    "nome": "GamblingOdyssey",
    "nivel": "copiar",

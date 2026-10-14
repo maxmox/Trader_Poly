@@ -5,14 +5,13 @@ import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotulo
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
 
-export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
+export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, aoRenderizar }) {
   // traders pode encolher quando um trader de teste expira
   let dados = null, erro = null, timer = null, rodando = false, avisados = new Set(), primeira = true;
   const cacheEventos = new Map();
 
   async function tick() {
     clearTimeout(timer);
-    if (!ativa() && !getCfg().aviso) { timer = setTimeout(tick, INTERVALO); return; }
     if (rodando) return;
     rodando = true;
     const cfg = getCfg();
@@ -71,13 +70,12 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
         todos.push({ t, s: { ...sig, restanteSeg: restante } });
       }
     }
-    const ativos = todos.filter((x) => x.s.status === "COPIAR");
-    $("#vivo-titulo").textContent = ativos.length ? `Sinais ao vivo · ${ativos.length}` : "Sinais ao vivo";
-    $("#tab-vivo").textContent = ativos.length ? `Ao vivo (${ativos.length})` : "Ao vivo";
+    const ativos = todos.filter((x) => x.s.status === "COPIAR")
+      .sort((a, b) => (a.t.nivel === "teste") - (b.t.nivel === "teste")); // teste depois dos reais
+    aoRenderizar?.({ n: ativos.length, copiar: ativos.length });
 
-    $("#vivo-lista").innerHTML = ativos.length
-      ? ativos.map(({ t, s }) => `<article class="card vivo">
-          <div class="card-top"><span class="st COPIAR">Copiar já</span><span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(s.esporte))}${s.tipo ? " · " + esc(rotuloTipo(s.tipo)) : ""}</span></div>
+    $("#vivo-lista").innerHTML = ativos.map(({ t, s }) => `<article class="card vivo">
+          <div class="card-top"><span class="momento vivo">Ao vivo</span><span class="st COPIAR">Copiar já</span><span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(s.esporte))}${s.tipo ? " · " + esc(rotuloTipo(s.tipo)) : ""}</span></div>
           <div><div class="evento">${esc(s.tituloEvento)}${s.placar ? ` <span class="placar">${esc(s.placar)}</span>` : ""}</div><div class="lado">${esc(s.lado)}</div></div>
           <div class="kv">
             <div><small>Odd dele</small><b>${odd(s.precoDele)}</b></div>
@@ -91,8 +89,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
             ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} disponível nessa odd: pode preencher em parte.</span>` : ""}</div>
           <div class="card-foot"><span>Não entre depois que a janela fechar</span><a href="${link(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
-        </article>`).join("")
-      : `<div class="vazio"><b>Nenhum sinal ao vivo agora.</b><span>Quando um destes traders entrar num jogo em andamento, o sinal aparece aqui com uma contagem regressiva.${cfg.aviso ? "" : " Ative \"Avisar\" em Ajustes para receber alerta."}</span></div>`;
+        </article>`).join("");
 
     $("#vivo-traders").innerHTML = traders.map((t) => {
       const d = porW[t.carteira] || {};
@@ -101,7 +98,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
       return `<article class="trader">
         <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
           <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
-        <div class="chips">${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}
+        <div class="chips"><span class="momento vivo">Ao vivo</span>${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}
           <span class="chip">janela ${Math.round(t.janelaSeg / 60)} min</span>${t.minUsd ? `<span class="chip">entradas ≥ ${usd(t.minUsd)}</span>` : ""}</div>
         <div class="stats">
           <span>Lucro <b>${usd(s.lucro)}</b></span><span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span>

@@ -37,61 +37,41 @@
     <p class="hint">Tudo fica salvo só neste navegador. O relay serve para quando o seu provedor bloqueia o Polymarket: veja <code>relay/cloudflare-worker.js</code> no repositório.</p>
   </section>
 
-  <nav class="tabs" role="tablist" aria-label="Tipo de entrada">
-    <button id="tab-pre" role="tab" aria-selected="true" aria-controls="aba-pre" type="button">Pré-jogo</button>
-    <button id="tab-vivo" role="tab" aria-selected="false" aria-controls="aba-vivo" type="button">Ao vivo</button>
-  </nav>
-
-  <div id="aba-pre" class="aba" role="tabpanel" aria-labelledby="tab-pre">
   <div id="aviso-dns" class="banner" hidden></div>
+  <div id="vivo-status" class="banner" hidden></div>
 
   <section class="agora">
     <div class="sec-head">
-      <h1 id="titulo-agora">Copiáveis agora</h1>
+      <h1 id="titulo-agora">Sinais agora</h1>
       <span id="atualizado" class="muted"></span>
     </div>
-    <p class="muted lede">Posições abertas dos traders recomendados em que o jogo ainda não começou, o mercado é da especialidade dele e a odd ainda está perto da que ele pegou. Odd decimal: odd 2,00 paga $20 para uma aposta de $10.</p>
-    <div id="lista-agora" class="cards"></div>
+    <p class="muted lede">Entradas dos traders recomendados que ainda dá para copiar. <b>Ao vivo</b>: o trader acabou de entrar com o jogo rolando; vale só durante a contagem regressiva (1–2 min). <b>Pré-jogo</b>: o jogo ainda não começou e a odd está perto da dele. Odd decimal: 2,00 paga $20 numa aposta de $10.</p>
+    <div id="quadro" class="cards">
+      <div id="vivo-lista" class="slot"></div>
+      <div id="lista-agora" class="slot"></div>
+      <div id="quadro-vazio" class="vazio" hidden><b>Nenhum sinal neste momento.</b><span>A página consulta o ao vivo a cada 15 s e o pré-jogo a cada 1 min. Ative "Avisar" em Ajustes para receber alerta.</span></div>
+    </div>
   </section>
 
   <section>
-    <div class="sec-head"><h2>Traders</h2><span class="muted">todas as posições abertas, com o motivo de cada veredito</span></div>
-    <div id="traders" class="traders"></div>
+    <div class="sec-head"><h2>Traders</h2><span class="muted">ao vivo: entradas dos últimos 15 min · pré-jogo: posições abertas, com o motivo de cada veredito</span></div>
+    <div class="traders">
+      <div id="vivo-traders" class="slot"></div>
+      <div id="traders" class="slot"></div>
+    </div>
   </section>
 
   <section class="panel regras">
     <h2>Como o veredito é decidido</h2>
     <ul>
-      <li><span class="st COPIAR">Copiar</span> o jogo ainda não começou, é um esporte em que o trader é bom e a odd disponível ainda está perto da dele: no máximo 2¢ de preço pior (odd 2,00 → mínima 1,92) e nunca abaixo de 1,03.</li>
-      <li><span class="st ESPERAR">Esperar</span> a odd caiu um pouco além disso (até 5¢ de preço). Deixe uma ordem limitada na odd mínima e veja se é preenchida antes do jogo.</li>
-      <li><span class="st NAO">Não copiar</span> o jogo começou, a odd caiu demais, o mercado está fechado ou não é a especialidade dele.</li>
+      <li><span class="st COPIAR">Copiar</span> é um esporte (ou nicho) em que o trader é bom e a odd ainda está perto da dele: no máximo 2¢ de preço pior (odd 2,00 → mínima 1,92), ou 10% do preço em azarões. Ao vivo: só dentro da janela do trader. Pré-jogo: só antes do jogo começar.</li>
+      <li><span class="st ESPERAR">Esperar</span> pré-jogo com a odd um pouco abaixo da mínima: deixe uma ordem limitada na odd mínima.</li>
+      <li><span class="st NAO">Não copiar</span> a odd caiu demais, a janela passou, o jogo começou (pré-jogo), o mercado fechou ou não é a especialidade dele.</li>
+      <li>Traders ao vivo foram escolhidos por segurar até o fim, operar mercados líquidos sem "pescar" preço errado e por a cópia com 1 min de atraso ter dado lucro nas últimas 100 entradas.</li>
       <li>Aposta fixa: a mesma % da banca em cada entrada. Segure até o fim do evento.</li>
     </ul>
-    <p class="hint">Traders e estatísticas vêm da análise de 13/10/2026 (347 carteiras, simulação de cópia com atraso). Isto não é recomendação financeira; o Polymarket tem restrições de acesso no Brasil.</p>
+    <p class="hint">Isto não é recomendação financeira; o Polymarket tem restrições de acesso no Brasil.</p>
   </section>
-  </div>
-
-  <div id="aba-vivo" class="aba" role="tabpanel" aria-labelledby="tab-vivo" hidden>
-    <div id="vivo-status" class="banner" hidden></div>
-    <section class="agora">
-      <div class="sec-head"><h1 id="vivo-titulo">Sinais ao vivo</h1><span id="vivo-atualizado" class="muted"></span></div>
-      <p class="muted lede">Entradas que os traders ao vivo acabaram de fazer num jogo em andamento. Cada uma vale só pela janela do trader (1–2 min): depois disso a odd costuma fugir. Entre e segure até o fim do evento.</p>
-      <div id="vivo-lista" class="cards"></div>
-    </section>
-    <section>
-      <div class="sec-head"><h2>Traders ao vivo</h2><span class="muted">entradas dos últimos 15 min</span></div>
-      <div id="vivo-traders" class="traders"></div>
-    </section>
-    <section class="panel regras">
-      <h2>Como estes traders foram escolhidos</h2>
-      <ul>
-        <li><span class="st COPIAR">Segura</span> vendem menos de 15% do que compram e quase nunca operam os dois lados do mesmo jogo.</li>
-        <li><span class="st COPIAR">Absorve</span> operam mercados com volume alto e compram no nível do mercado, sem pescar preço errado em livro vazio.</li>
-        <li><span class="st COPIAR">Replica</span> nas últimas 100 entradas ao vivo, comprar 1 minuto depois deles, pagando o preço que estava sendo negociado, ainda deu lucro.</li>
-        <li><span class="st NAO">Janela</span> passou a janela, não entre: a vantagem deles some em 2–3 minutos.</li>
-      </ul>
-    </section>
-  </div>
 </main>
 
 <script type="module" src="app.js"></script>

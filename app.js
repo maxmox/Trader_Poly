@@ -110,6 +110,15 @@ const ha = (t) => {
 };
 const link = (p) => `https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
 
+// ---------- quadro único (pré-jogo + ao vivo) ----------
+const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 } };
+function atualizarQuadro() {
+  const copiar = quadro.pre.copiar + quadro.vivo.copiar;
+  document.title = copiar ? `(${copiar}) Trader Poly` : "Trader Poly";
+  $("#titulo-agora").textContent = copiar ? `Sinais agora · ${copiar}` : "Sinais agora";
+  $("#quadro-vazio").hidden = quadro.pre.n + quadro.vivo.n > 0;
+}
+
 // ---------- render ----------
 function render() {
   const pill = $("#fonte");
@@ -130,16 +139,18 @@ function render() {
       if (p.status !== "NAO") agoraLista.push({ t, p });
     }
   }
-  agoraLista.sort((a, b) => (a.p.status === b.p.status ? (a.p.inicio ?? 9e15) - (b.p.inicio ?? 9e15) : a.p.status === "COPIAR" ? -1 : 1));
+  // traders reais primeiro; o trader de teste aparece no máximo 6 vezes, no fim
+  const teste = (x) => x.t.nivel === "teste";
+  agoraLista.sort((a, b) => teste(a) - teste(b) || (a.p.status === b.p.status ? (a.p.inicio ?? 9e15) - (b.p.inicio ?? 9e15) : a.p.status === "COPIAR" ? -1 : 1));
+  for (let i = agoraLista.length - 1, n = agoraLista.filter(teste).length; i >= 0 && n > 6; i--) if (teste(agoraLista[i])) { agoraLista.splice(i, 1); n--; }
   const nCopiar = agoraLista.filter((x) => x.p.status === "COPIAR").length;
-  document.title = nCopiar ? `(${nCopiar}) Trader Poly` : "Trader Poly";
-  $("#titulo-agora").textContent = nCopiar ? `Copiáveis agora · ${nCopiar}` : "Copiáveis agora";
+  quadro.pre = { n: agoraLista.length, copiar: nCopiar };
+  atualizarQuadro();
 
-  $("#lista-agora").innerHTML = agoraLista.length
-    ? agoraLista.map(({ t, p }) => {
+  $("#lista-agora").innerHTML = agoraLista.map(({ t, p }) => {
         const cotas = p.teto > 0 ? stake / p.teto : 0;
         return `<article class="card ${p.status}">
-          <div class="card-top"><span class="st ${p.status}">${p.status === "COPIAR" ? "Copiar" : "Esperar"}</span>
+          <div class="card-top"><span class="momento pre">Pré-jogo</span><span class="st ${p.status}">${p.status === "COPIAR" ? "Copiar" : "Esperar"}</span>
             <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}${p.tipo ? " · " + esc(rotuloTipo(p.tipo)) : ""}</span></div>
           <div><div class="evento">${esc(p.tituloEvento)}</div><div class="lado">${esc(p.lado)}</div></div>
           <div class="kv">
@@ -154,10 +165,9 @@ function render() {
             aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / p.teto)}</b> se ganhar
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
             ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}</div>
-          <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = odd dele piorada em ${cfg.teto}¢ de preço`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
+          <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = no máximo ${cfg.teto}¢ (ou 10%) de preço pior que a dele`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
         </article>`;
-      }).join("")
-    : `<div class="vazio"><b>Nenhuma posição copiável neste momento.</b><span>Os traders recomendados não têm entradas abertas que passem nas regras. A página se atualiza sozinha.</span></div>`;
+      }).join("");
 
   // fichas dos traders
   $("#traders").innerHTML = traders.map((t) => {
@@ -174,7 +184,7 @@ function render() {
     return `<article class="trader">
       <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
         <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
-      <div class="chips">${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}</div>
+      <div class="chips"><span class="momento pre">Pré-jogo</span>${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}</div>
       <div class="stats">
         <span>Lucro <b>${usd(s.lucro)}</b></span><span>Sem top 5 <b>${usd(s.lucro_sem_top5)}</b></span>
         <span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span><span>Apostas <b>${(s.apostas || 0).toLocaleString("pt-BR")}</b></span>
@@ -211,7 +221,8 @@ function avisar(lista) {
     relayPadrao = (await json("data/config.json").catch(() => ({}))).relay || "";
     if (relayPadrao) $("#cfg-relay").placeholder = `${relayPadrao} (padrão do repositório)`;
   } catch (e) {
-    $("#lista-agora").innerHTML = `<div class="vazio"><b>Não consegui carregar a lista de traders.</b><span>${esc(e.message)}</span></div>`;
+    $("#quadro-vazio").hidden = false;
+    $("#quadro-vazio").innerHTML = `<b>Não consegui carregar a lista de traders.</b><span>${esc(e.message)}</span>`;
     return;
   }
   // mostra o retrato na hora e depois tenta o tempo real
@@ -219,22 +230,12 @@ function avisar(lista) {
   atualizar();
   setInterval(render, 30_000); // relógio: "começa em", "há X min" e revalidação
 
-  // aba ao vivo
-  let vivo = null;
-  const abrir = (qual) => {
-    const v = qual === "vivo";
-    $("#aba-pre").hidden = v; $("#aba-vivo").hidden = !v;
-    $("#tab-pre").setAttribute("aria-selected", String(!v)); $("#tab-vivo").setAttribute("aria-selected", String(v));
-    try { history.replaceState(null, "", v ? "#aovivo" : "#"); } catch { /* sem history */ }
-    if (v) vivo?.agora();
-  };
-  $("#tab-pre").addEventListener("click", () => abrir("pre"));
-  $("#tab-vivo").addEventListener("click", () => abrir("vivo"));
+  // ao vivo: mesmo quadro, consulta a cada 15 s
   try {
     const tv = vigentes((await json("data/traders_live.json")).traders);
-    vivo = iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, ativa: () => !$("#aba-vivo").hidden });
+    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv,
+      aoRenderizar: (c) => { quadro.vivo = c; atualizarQuadro(); } });
   } catch (e) {
-    $("#vivo-lista").innerHTML = `<div class="vazio"><b>Lista de traders ao vivo indisponível.</b><span>${esc(e.message)}</span></div>`;
+    $("#vivo-traders").innerHTML = `<p class="erro">Lista de traders ao vivo indisponível: ${esc(e.message)}</p>`;
   }
-  if (location.hash === "#aovivo") abrir("vivo");
 })();
