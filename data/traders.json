@@ -9,7 +9,7 @@
     "Futebol",
     "Tenis"
    ],
-   "nota": "O mais consistente: 11 de 13 meses positivos, lucro espalhado. Entra ~1 h antes do jogo.",
+   "nota": "O mais consistente: 11 de 13 meses positivos, lucro espalhado. Entra ~1 h antes do jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 32,1% em 25 entradas (sem as 3 melhores 7,5%; metades 15,0% / 49,1%).",
    "stats": {
     "lucro": 724874,
     "lucro_sem_top5": 372857,
@@ -33,7 +33,14 @@
       "meses_pos_pct": 83.3
      }
     }
-   }
+   },
+   "nichosFortes": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ]
   },
   {
    "carteira": "0x54ce7dd357766fc3255645e55ef41edd51cc9f80",
@@ -76,7 +83,7 @@
    "esportes": [
     "Futebol Americano"
    ],
-   "nota": "Apostas grandes na NFL, todos os meses positivos. O preço quase não se mexe depois da entrada.",
+   "nota": "Apostas grandes na NFL, todos os meses positivos. O preço quase não se mexe depois da entrada. Nicho Futebol Americano · vencedor · pré-jogo: copiando 1 min depois 31,0% em 27 entradas (sem as 3 melhores 6,8%; metades 6,8% / 53,4%). Nicho Futebol Americano · total (mais/menos) · pré-jogo: copiando 1 min depois 15,3% em 30 entradas (sem as 3 melhores 5,4%; metades 3,7% / 27,0%).",
    "stats": {
     "lucro": 2993805,
     "lucro_sem_top5": 1521427,
@@ -94,7 +101,19 @@
       "meses_pos_pct": 100.0
      }
     }
-   }
+   },
+   "nichosFortes": [
+    {
+     "area": "Futebol Americano",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Futebol Americano",
+     "tipo": "totals",
+     "momento": "pré-jogo"
+    }
+   ]
   },
   {
    "carteira": "0xc49fe658479db29e1a2fefebf0735f657dca9e05",
@@ -105,7 +124,7 @@
     "Hoquei",
     "CS2"
    ],
-   "nota": "Ganha em eSports e hóquei; perde em basquete e futebol. Copie só os esportes certos.",
+   "nota": "Ganha em eSports e hóquei; perde em basquete e futebol. Copie só os esportes certos. Nicho CS2 · vencedor · pré-jogo: copiando 1 min depois 16,0% em 41 entradas (sem as 3 melhores 3,6%; metades 7,5% / 25,0%).",
    "stats": {
     "lucro": 251721,
     "lucro_sem_top5": 192496,
@@ -135,7 +154,14 @@
       "meses_pos_pct": 60.0
      }
     }
-   }
+   },
+   "nichosFortes": [
+    {
+     "area": "CS2",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ]
   },
   {
    "carteira": "0x5966db1fe50763c9e3c014d756369bad07e1f804",
@@ -187,7 +213,7 @@
     "Tenis",
     "CS2"
    ],
-   "nota": "Curva excelente (Sharpe 3,8), mas ~41 trades/dia e histórico por esporte incompleto.",
+   "nota": "Curva excelente (Sharpe 3,8), mas ~41 trades/dia e histórico por esporte incompleto. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 36,6% em 33 entradas (sem as 3 melhores 21,7%; metades 24,8% / 49,9%).",
    "stats": {
     "lucro": 1375379,
     "lucro_sem_top5": 1135470,
@@ -217,7 +243,14 @@
       "meses_pos_pct": 40.0
      }
     }
-   }
+   },
+   "nichos": [
+    {
+     "area": "Futebol Americano",
+     "tipo": "spreads",
+     "momento": "pré-jogo"
+    }
+   ]
   },
   {
    "carteira": "0x2ce8505aa641791eb8460f6ac6bf5c0511e34527",
@@ -271,6 +304,33 @@
       "meses_pos_pct": 81.8
      }
     }
+   }
+  },
+  {
+   "carteira": "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28",
+   "nome": "BoggsFromShawshank",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol Americano",
+     "tipo": "spreads",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol Americano · handicap · pré-jogo. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 12,9% em 67 entradas (sem as 3 melhores 5,0%; metades 0,1% / 29,1%).",
+   "stats": {
+    "lucro": 34221,
+    "lucro_sem_top5": -1279843,
+    "meses": 12,
+    "meses_positivos": 7,
+    "apostas": 67,
+    "n": 67,
+    "roi_copia_5min": 12.2,
+    "roi_dele": 1.71,
+    "roi_copia_60s": 12.88,
+    "preenche_60s_pct": 64.2,
+    "vol_mercado_med": 103545
    }
   }
  ]

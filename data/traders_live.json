@@ -18,7 +18,7 @@
    ],
    "janelaSeg": 120,
    "minUsd": 0,
-   "nota": "Copiando 1 min depois: 17,3% em 100 entradas ao vivo (metade recente 15,6%, metade antiga 18,9%, sem as 3 melhores 7,3%). 12 meses de histórico. Entrada mediana de $804, em mercados com $437.769 de volume.",
+   "nota": "Copiando 1 min depois: 17,3% em 100 entradas ao vivo (metade recente 15,6%, metade antiga 18,9%, sem as 3 melhores 7,3%). 12 meses de histórico. Entrada mediana de $804, em mercados com $437.769 de volume. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 19,4% em 79 entradas (sem as 3 melhores 7,5%; metades 17,5% / 21,2%).",
    "stats": {
     "lucro": 152480,
     "meses": 12,
@@ -36,7 +36,14 @@
     "roi_copia_60s_sem_top3": 7.272467335470858,
     "roi_copia_60s_metade_recente": 15.624719041825202,
     "roi_copia_60s_metade_antiga": 18.91575937465592
-   }
+   },
+   "nichosFortes": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ]
   },
   {
    "carteira": "0x9bf7b81568ae59dafcb6a233a1d4cdeb593ce41f",
@@ -47,7 +54,7 @@
    ],
    "janelaSeg": 120,
    "minUsd": 0,
-   "nota": "Copiando 1 min depois: 46,0% em 65 entradas ao vivo (metade recente 49,0%, metade antiga 43,6%, sem as 3 melhores 28,6%). 3 meses de histórico. Entrada mediana de $1.166, em mercados com $684.812 de volume.",
+   "nota": "Copiando 1 min depois: 46,0% em 65 entradas ao vivo (metade recente 49,0%, metade antiga 43,6%, sem as 3 melhores 28,6%). 3 meses de histórico. Entrada mediana de $1.166, em mercados com $684.812 de volume. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 46,0% em 64 entradas (sem as 3 melhores 28,6%; metades 49,0% / 43,6%).",
    "stats": {
     "lucro": 33142,
     "meses": 3,
@@ -65,7 +72,14 @@
     "roi_copia_60s_sem_top3": 28.557163373932635,
     "roi_copia_60s_metade_recente": 49.02309438306316,
     "roi_copia_60s_metade_antiga": 43.581770708515535
-   }
+   },
+   "nichosFortes": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ]
   },
   {
    "carteira": "0xafd492974cd531aae7786210438ae46b42047e61",
@@ -187,6 +201,64 @@
     "roi_copia_60s_metade_recente": -1.5837247295677679,
     "roi_copia_60s_metade_antiga": 36.78048567868199
    }
+  },
+  {
+   "carteira": "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38",
+   "nome": "SharkbetX-com",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · ao vivo. Nicho Futebol · vencedor · ao vivo: copiando 1 min depois 88,8% em 31 entradas (sem as 3 melhores 29,1%; metades 138,1% / 48,7%).",
+   "stats": {
+    "lucro": 130729,
+    "lucro_sem_top5": -529179,
+    "meses": 10,
+    "meses_positivos": 6,
+    "apostas": 31,
+    "n": 31,
+    "roi_copia_5min": 27.99,
+    "roi_dele": 47.5,
+    "roi_copia_60s": 88.77,
+    "preenche_60s_pct": 93.5,
+    "vol_mercado_med": 433990
+   },
+   "janelaSeg": 120,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xc1de5ffb02d2b354932ccf5e31172545965e21f5",
+   "nome": "Barbozaaa321",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Dota 2",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Dota 2 · vencedor do mapa · ao vivo. Nicho Dota 2 · vencedor do mapa · ao vivo: copiando 1 min depois 21,0% em 64 entradas (sem as 3 melhores 2,7%; metades 26,3% / 16,2%).",
+   "stats": {
+    "lucro": 61667,
+    "lucro_sem_top5": 899,
+    "meses": 4,
+    "meses_positivos": 4,
+    "apostas": 64,
+    "n": 64,
+    "roi_copia_5min": -3.72,
+    "roi_dele": 6.93,
+    "roi_copia_60s": 20.97,
+    "preenche_60s_pct": 56.2,
+    "vol_mercado_med": 592991
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }

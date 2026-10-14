@@ -47,6 +47,27 @@ export function esporte(slug, evento, prefixos) {
 }
 
 export const FORA = "Fora de esporte";
+
+// Nicho = esporte + tipo de mercado + momento. Um trader pode ter "esportes" (qualquer
+// mercado daquele esporte) e/ou "nichos" (só aquele tipo de mercado, naquele momento).
+export const NOME_TIPO = {
+  moneyline: "vencedor", spreads: "handicap", totals: "total (mais/menos)", child_moneyline: "vencedor do mapa",
+  map_handicap: "handicap de mapas", team_totals: "total do time", both_teams_to_score: "ambos marcam",
+};
+export const rotuloTipo = (t) => NOME_TIPO[t] || t || "outro";
+export const rotuloNicho = (n) => [rotuloEsporte(n.area), n.tipo ? rotuloTipo(n.tipo) : null, n.momento || null].filter(Boolean).join(" · ");
+
+function tipoMercado(evento, slug) {
+  const mk = (evento?.markets || []).find((m) => m.slug === slug);
+  return mk?.sportsMarketType || "";
+}
+// esportes em que vale gastar consulta (filtro rápido pelo slug)
+const areasDo = (trader) => new Set([...(trader.esportes || []), ...(trader.nichos || []).map((n) => n.area)]);
+function liberado(trader, sp, tipo, momento) {
+  if ((trader.esportes || []).includes(sp)) return { ok: true, nicho: null };
+  const n = (trader.nichos || []).find((x) => x.area === sp && (!x.tipo || x.tipo === tipo) && (!x.momento || x.momento === momento));
+  return n ? { ok: true, nicho: n } : { ok: false, nicho: null };
+}
 export const NOME_ESPORTE = { Tenis: "Tênis", Hoquei: "Hóquei" };
 export const rotuloEsporte = (s) => NOME_ESPORTE[s] || s;
 
@@ -83,8 +104,13 @@ export function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, pre
   if (encerrado) { piora("NAO"); motivos.push("mercado fechado para ordens"); }
   else if (comecou) { piora("NAO"); motivos.push("jogo já começou — regra: nunca copiar ao vivo"); }
 
-  const daEspecialidade = trader.esportes.includes(sp);
-  if (!daEspecialidade) { piora("NAO"); motivos.push(`${rotuloEsporte(sp)} não é a especialidade dele`); }
+  const tipo = tipoMercado(evento, pos.slug);
+  const lib = liberado(trader, sp, tipo, "pré-jogo");
+  const daEspecialidade = lib.ok;
+  if (!daEspecialidade) {
+    piora("NAO");
+    motivos.push(areasDo(trader).has(sp) ? `${rotuloEsporte(sp)} · ${rotuloTipo(tipo)} não é o nicho dele` : `${rotuloEsporte(sp)} não é a especialidade dele`);
+  }
 
   if (!encerrado) {
     if (ask == null) { piora("NAO"); motivos.push("sem ofertas de venda no livro"); }
@@ -98,7 +124,7 @@ export function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, pre
   const liquidez = asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0);
 
   return {
-    status, motivos, esporte: sp, daEspecialidade, inicio,
+    status, motivos, esporte: sp, tipo, nicho: lib.nicho, daEspecialidade, inicio,
     horasParaInicio: inicio ? (inicio - agora) / 3.6e6 : null,
     ask, bid, teto, liquidez, precoDele: preco,
     placar: evento?.score || null, periodo: evento?.period || null,
@@ -138,7 +164,7 @@ export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, a
   }
   let abertas = (posicoes || []).filter((p) => !p.redeemable && p.curPrice > 0.005 && p.curPrice < 0.995);
   // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
-  if (soEspecialidade) abertas = abertas.filter((p) => trader.esportes.includes(esporte(p.eventSlug || p.slug, null, prefixos)));
+  if (soEspecialidade) abertas = abertas.filter((p) => areasDo(trader).has(esporte(p.eventSlug || p.slug, null, prefixos)));
   const itens = await emLotes(abertas, 4, async (pos) => {
     let ev = cacheEventos.get(pos.eventSlug);
     if (ev === undefined) {
@@ -194,7 +220,7 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
   // modo econômico (Worker): só gasta consulta com entrada da especialidade e ainda dentro da janela
   if (soCopiaveis) {
     novos = novos.filter((e) => agora / 1000 - e.t0 <= trader.janelaSeg
-      && trader.esportes.includes(esporte(e.ex.eventSlug || e.ex.slug, null, prefixos)));
+      && areasDo(trader).has(esporte(e.ex.eventSlug || e.ex.slug, null, prefixos)));
   }
   const sinais = await emLotes(novos, 4, async (e) => {
     const t = e.ex;
@@ -216,7 +242,9 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     let status = "COPIAR";
     const nao = (m) => { status = "NAO"; motivos.push(m); };
     if (!aoVivo) nao("entrada antes do jogo (aparece na aba pré-jogo)");
-    if (!trader.esportes.includes(sp)) nao(`${rotuloEsporte(sp)} não é a especialidade dele`);
+    const tipo = tipoMercado(ev, t.slug);
+    const lib = liberado(trader, sp, tipo, "ao vivo");
+    if (!lib.ok) nao(areasDo(trader).has(sp) ? `${rotuloEsporte(sp)} · ${rotuloTipo(tipo)} não é o nicho dele` : `${rotuloEsporte(sp)} não é a especialidade dele`);
     if (!book || ev?.closed || ev?.ended) nao("mercado fechado");
     else if (ask == null) nao("sem ofertas no livro");
     else if (ask > teto) nao(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`);
@@ -224,7 +252,7 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
     return {
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
-      tituloEvento: ev?.title || t.title, esporte: sp, placar: ev?.score || null, periodo: ev?.period || null,
+      tituloEvento: ev?.title || t.title, esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
       entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
       ask, teto, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), status, motivos,
     };

@@ -1,4 +1,4 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
@@ -140,7 +140,7 @@ function render() {
         const cotas = p.teto > 0 ? stake / p.teto : 0;
         return `<article class="card ${p.status}">
           <div class="card-top"><span class="st ${p.status}">${p.status === "COPIAR" ? "Copiar" : "Esperar"}</span>
-            <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}</span></div>
+            <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}${p.tipo ? " · " + esc(rotuloTipo(p.tipo)) : ""}</span></div>
           <div><div class="evento">${esc(p.tituloEvento)}</div><div class="lado">${esc(p.lado)}</div></div>
           <div class="kv">
             <div><small>Odd dele</small><b>${odd(p.precoDele)}</b></div>
@@ -168,13 +168,13 @@ function render() {
     const linhas = pos.map((p) => `<tr>
         <td><span class="st ${p.status}">${p.status === "NAO" ? "Não" : p.status === "COPIAR" ? "Copiar" : "Esperar"}</span></td>
         <td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
-        <td>${esc(p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}</td>
+        <td>${esc(p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}</td>
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
         <td class="n">${quando(p.horasParaInicio)}</td></tr>`).join("");
     return `<article class="trader">
       <div class="trader-head"><span class="nivel ${t.nivel}">${t.nivel === "copiar" ? "Copiar" : "Observar"}</span><h3>${esc(t.nome)}</h3>
         <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
-      <div class="chips">${t.esportes.map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}</div>
+      <div class="chips">${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}</div>
       <div class="stats">
         <span>Lucro <b>${usd(s.lucro)}</b></span><span>Sem top 5 <b>${usd(s.lucro_sem_top5)}</b></span>
         <span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span><span>Apostas <b>${(s.apostas || 0).toLocaleString("pt-BR")}</b></span>
