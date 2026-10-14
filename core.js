@@ -48,6 +48,9 @@ export function esporte(slug, evento, prefixos) {
 
 export const FORA = "Fora de esporte";
 
+// Trader com "expira" (ISO) some sozinho depois do horário (usado para testes).
+export const vigentes = (traders, agora = Date.now()) => (traders || []).filter((t) => !t.expira || Date.parse(t.expira) > agora);
+
 // Nicho = esporte + tipo de mercado + momento. Um trader pode ter "esportes" (qualquer
 // mercado daquele esporte) e/ou "nichos" (só aquele tipo de mercado, naquele momento).
 export const NOME_TIPO = {

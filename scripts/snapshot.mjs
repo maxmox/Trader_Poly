@@ -3,11 +3,18 @@
 // provedor), assim o site sempre tem dados recentes mesmo sem acesso direto.
 // Local: RELAY=http://localhost:8787 node scripts/snapshot.mjs
 import { readFile, writeFile } from "node:fs/promises";
-import { criarApi, carregarTodos } from "../core.js";
+import { criarApi, carregarTodos, vigentes } from "../core.js";
 
 const raiz = new URL("../", import.meta.url);
 const ler = async (p) => JSON.parse(await readFile(new URL(p, raiz), "utf8"));
 
+// traders de teste expirados saem dos arquivos publicados (segurança extra além do site e do Worker)
+for (const f of ["data/traders.json", "data/traders_live.json"]) {
+  const d = await ler(f);
+  const antes = d.traders.length;
+  d.traders = vigentes(d.traders);
+  if (d.traders.length !== antes) await writeFile(new URL(f, raiz), JSON.stringify(d, null, 1));
+}
 const { traders } = await ler("data/traders.json");
 const prefixos = await ler("data/prefixos.json");
 const api = criarApi({ relay: process.env.RELAY || "" });

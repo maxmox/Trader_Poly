@@ -90,7 +90,7 @@ section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-w
 .trader { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .trader-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
 .nivel { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid currentColor; }
-.nivel.copiar { color: var(--good); } .nivel.observar { color: var(--warn); }
+.nivel.copiar { color: var(--good); } .nivel.observar { color: var(--warn); } .nivel.teste { color: var(--accent); }
 .wallet { font-family: var(--mono); font-size: 12px; color: var(--ink-3); word-break: break-all; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }

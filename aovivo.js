@@ -1,11 +1,12 @@
 // Aba "Ao vivo": sinais de entrada durante o jogo que ainda dá para replicar.
 // Só funciona com acesso em tempo real (direto ou relay): o sinal vale 1–2 minutos.
-import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, PADRAO } from "./core.js";
+import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, PADRAO } from "./core.js";
 
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
 
 export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
+  // traders pode encolher quando um trader de teste expira
   let dados = null, erro = null, timer = null, rodando = false, avisados = new Set(), primeira = true;
   const cacheEventos = new Map();
 
@@ -17,6 +18,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
     const cfg = getCfg();
     try {
       if (cacheEventos.size > 300) cacheEventos.clear();
+      traders = vigentes(traders); // trader de teste some sozinho quando expira
       const res = await carregarAoVivo(criarApi({ relay: cfg.relay }), traders, {
         prefixos, regras: { ...PADRAO, tetoCentavos: cfg.teto }, cacheEventos,
       });
@@ -97,7 +99,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, ativa }) {
       const recentes = todos.filter((x) => x.t === t);
       const s = t.stats;
       return `<article class="trader">
-        <div class="trader-head"><span class="nivel ${t.nivel}">${t.nivel === "copiar" ? "Copiar" : "Observar"}</span><h3>${esc(t.nome)}</h3>
+        <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
           <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
         <div class="chips">${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}
           <span class="chip">janela ${Math.round(t.janelaSeg / 60)} min</span>${t.minUsd ? `<span class="chip">entradas ≥ ${usd(t.minUsd)}</span>` : ""}</div>

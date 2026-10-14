@@ -1,4 +1,4 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
@@ -172,7 +172,7 @@ function render() {
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
         <td class="n">${quando(p.horasParaInicio)}</td></tr>`).join("");
     return `<article class="trader">
-      <div class="trader-head"><span class="nivel ${t.nivel}">${t.nivel === "copiar" ? "Copiar" : "Observar"}</span><h3>${esc(t.nome)}</h3>
+      <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
         <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
       <div class="chips">${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}</div>
       <div class="stats">
@@ -207,6 +207,7 @@ function avisar(lista) {
 (async function iniciar() {
   try {
     [{ traders }, prefixos] = await Promise.all([json("data/traders.json"), json("data/prefixos.json")]);
+    traders = vigentes(traders);
     relayPadrao = (await json("data/config.json").catch(() => ({}))).relay || "";
     if (relayPadrao) $("#cfg-relay").placeholder = `${relayPadrao} (padrão do repositório)`;
   } catch (e) {
@@ -230,7 +231,7 @@ function avisar(lista) {
   $("#tab-pre").addEventListener("click", () => abrir("pre"));
   $("#tab-vivo").addEventListener("click", () => abrir("vivo"));
   try {
-    const { traders: tv } = await json("data/traders_live.json");
+    const tv = vigentes((await json("data/traders_live.json")).traders);
     vivo = iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, ativa: () => !$("#aba-vivo").hidden });
   } catch (e) {
     $("#vivo-lista").innerHTML = `<div class="vazio"><b>Lista de traders ao vivo indisponível.</b><span>${esc(e.message)}</span></div>`;

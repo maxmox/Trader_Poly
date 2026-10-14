@@ -53,6 +53,9 @@ function esporte(slug, evento, prefixos) {
 
 const FORA = "Fora de esporte";
 
+// Trader com "expira" (ISO) some sozinho depois do horário (usado para testes).
+const vigentes = (traders, agora = Date.now()) => (traders || []).filter((t) => !t.expira || Date.parse(t.expira) > agora);
+
 // Nicho = esporte + tipo de mercado + momento. Um trader pode ter "esportes" (qualquer
 // mercado daquele esporte) e/ou "nichos" (só aquele tipo de mercado, naquele momento).
 const NOME_TIPO = {
@@ -305,7 +308,7 @@ const SITE_PADRAO = "https://maxmox.github.io/Trader_Poly";
 
 let listas = null, listasEm = 0;
 async function carregarListas(env) {
-  if (listas && Date.now() - listasEm < 30 * 60_000) return listas;
+  if (listas && Date.now() - listasEm < 5 * 60_000) return listas;
   const base = (env.SITE_URL || SITE_PADRAO).replace(/\/$/, "");
   const get = async (p) => (await fetch(`${base}/${p}?t=${Date.now()}`, { cf: { cacheTtl: 0 } })).json();
   const [pre, vivo, prefixos] = await Promise.all([get("data/traders.json"), get("data/traders_live.json"), get("data/prefixos.json")]);
@@ -349,7 +352,7 @@ function aposta(env, teto) {
 
 function msgVivo(env, t, s) {
   const fim = s.entrouEm + t.janelaSeg * 1000;
-  return `🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
+  return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.lado)}</b>
 Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>
@@ -359,7 +362,7 @@ https://polymarket.com/event/${encodeURIComponent(s.eventSlug)}`;
 }
 
 function msgPre(env, t, p) {
-  return `🟢 <b>PRÉ-JOGO · ${h(t.nome)}</b> (${h(rotuloEsporte(p.esporte))}${p.tipo ? " · " + h(rotuloTipo(p.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
+  return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🟢 <b>PRÉ-JOGO · ${h(t.nome)}</b> (${h(rotuloEsporte(p.esporte))}${p.tipo ? " · " + h(rotuloTipo(p.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.lado)}</b>
 Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${aposta(env, p.teto)}
@@ -375,7 +378,8 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     if (++usadas > ORCAMENTO) return Promise.reject(new Error("orçamento de consultas desta execução esgotado"));
     return fetch(url, opts);
   };
-  const { pre, vivo, prefixos } = await carregarListas(env);
+  const l = await carregarListas(env);
+  const pre = vigentes(l.pre), vivo = vigentes(l.vivo), prefixos = l.prefixos;
   const api = criarApi({ relay: env.RELAY_INTERNO || "", fetchFn: fetchContado });
   const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], preTrader: null, enviados: 0, consultas: 0, erros: [] };
 
