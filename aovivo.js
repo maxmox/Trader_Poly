@@ -57,7 +57,6 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, aoRenderiza
       st.hidden = true;
     }
     if (!dados) return;
-    $("#vivo-atualizado").textContent = `consultado ${ha(dados.geradoEm)} · a cada 15 s`;
 
     const porW = Object.fromEntries(dados.traders.map((t) => [t.carteira, t]));
     const agora = Date.now() / 1000;

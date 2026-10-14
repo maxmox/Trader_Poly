@@ -125,7 +125,7 @@ function render() {
   const rot = { direto: ["ao vivo", "live"], relay: ["ao vivo · relay", "live"], retrato: ["retrato do servidor", "snap"], off: ["sem dados", "off"], carregando: ["carregando…", ""] }[fonte];
   pill.textContent = rot[0]; pill.className = `pill ${rot[1]}`;
   if (!dados) return;
-  $("#atualizado").textContent = `dados de ${dataHora(dados.geradoEm)} (${ha(dados.geradoEm)})`;
+  $("#atualizado").textContent = `pré-jogo: dados de ${dataHora(dados.geradoEm)} (${ha(dados.geradoEm)}) · ao vivo: a cada 15 s`;
 
   const agora = Date.now();
   const porCarteira = Object.fromEntries((dados.traders || []).map((t) => [t.carteira, t]));
