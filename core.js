@@ -211,7 +211,7 @@ export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, a
     const t0 = primeiraCompra[pos.asset] && primeiraCompra[pos.asset] > maisAntigo ? primeiraCompra[pos.asset] : null;
     const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
     return {
-      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId,
+      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId, oi: pos.outcomeIndex,
       valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
       usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
@@ -289,7 +289,7 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
     const antes = comNivel && status === "COPIAR" ? await nivelAntes(api, t.conditionId, t.asset, w, e.t0) : null;
     return {
-      cond: t.conditionId, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
+      cond: t.conditionId, oi: t.outcomeIndex, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
       tituloEvento: ev?.title || t.title, esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
       entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
@@ -353,3 +353,50 @@ export function notaEntrada(x, trader, ind) {
     rotulo: nota >= 66 ? "forte" : nota >= 58 ? "boa" : nota >= 50 ? "neutra" : "fraca", fatores,
   };
 }
+
+// ---------------------------------------------------------------------------
+// PLACAR: reconstruir entradas passadas e conferir resultados
+// (mesma lógica de polymarket_traders/nichos_analise.py)
+
+// 1/0 se o mercado já resolveu para esse lado; null se ainda não
+export function resultadoMercado(evento, slug, oi) {
+  const mk = (evento?.markets || []).find((m) => m.slug === slug);
+  if (!mk || !mk.closed) return null;
+  let p;
+  try { p = JSON.parse(mk.outcomePrices || "[]").map(Number); } catch { return null; }
+  const v = p[oi];
+  return v === 0 || v === 1 ? v : null;
+}
+
+// primeira compra em cada mercado (compras no 1º minuto) a partir da atividade
+export function entradasDe(atividade) {
+  const por = new Map();
+  for (const t of [...atividade].sort((a, b) => a.timestamp - b.timestamp)) {
+    if (t.side !== "BUY") continue;
+    const e = por.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, ex: t };
+    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; }
+    por.set(t.asset, e);
+  }
+  const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
+  return [...por.values()].filter((e) => e.t0 > maisAntigo && e.cotas > 0)
+    .map((e) => ({ ...e, preco: e.usd / e.cotas })).sort((a, b) => b.t0 - a.t0);
+}
+
+// preço que quem copia pagaria 1 min depois (1º negócio de compra no lado dele) e o nível antes
+export async function precosEntrada(api, cond, asset, carteira, t0) {
+  const janela = (a, b) => api.get("data", `/trades?market=${cond}&limit=500&start=${a}&end=${b}`).catch(() => []);
+  const tr = [...((await janela(t0 - 120, t0 + 120)) || []), ...((await janela(t0 + 120, t0 + 660)) || [])];
+  let s = 0, u = 0, p60 = null, t60 = Infinity;
+  for (const x of tr) {
+    if ((x.proxyWallet || "").toLowerCase() === carteira.toLowerCase()) continue;
+    const meu = x.asset === asset;
+    const q = meu ? x.price : 1 - x.price;
+    if (x.timestamp >= t0 - 120 && x.timestamp < t0 - 5) { s += q * x.size * x.price; u += x.size * x.price; }
+    const compra = (meu && x.side === "BUY") || (!meu && x.side === "SELL");
+    if (compra && x.timestamp >= t0 + 60 && x.timestamp < t60) { t60 = x.timestamp; p60 = q; }
+  }
+  return { p60, antes: u > 0 ? s / u : null };
+}
+
+// usados pelo placar (scripts/desempenho.mjs) e pelo Worker
+export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado, volumeMercado as volumeDoMercado };

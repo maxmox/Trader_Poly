@@ -12,6 +12,11 @@
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
 //    GET /status -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
+//    GET /registro -> todos os sinais enviados (últimos 90 dias) com o resultado, para o placar
+//
+// REGISTRO: cada sinal enviado vira uma chave "r:..." no KV, com os dados nos metadados
+// (assim uma única listagem traz tudo). A cada 10 min o Worker confere o resultado dos
+// sinais cujo jogo já acabou (até 8 por vez).
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
@@ -101,6 +106,54 @@ No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
 }
 
+// ---------- registro dos sinais enviados ----------
+const corta = (v, n) => String(v ?? "").slice(0, n);
+async function registrarSinal(env, t, x, tipo) {
+  if (!env.ENVIADOS || t.nivel === "teste") return;
+  const md = {
+    w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.lado, 40), s: corta(x.slug, 90),
+    ev: corta(x.eventSlug, 90), oi: x.oi, p: +x.precoDele.toFixed(4), a: x.ask == null ? null : +x.ask.toFixed(4), mi: +x.teto.toFixed(4),
+    nt: x.nota?.nota ?? null, rt: x.nota?.rotulo ?? null, sp: corta(x.esporte, 20), tp: corta(x.tipo, 20),
+    t: x.entrouEm || Date.now(), i: x.inicio || null, env: Date.now(), r: null,
+  };
+  await env.ENVIADOS.put(`r:${Date.now()}:${corta(x.asset, 12)}`, "", { metadata: md, expirationTtl: 90 * 86400 });
+  cacheRegistro = null; // a próxima leitura busca de novo
+}
+
+let cacheRegistro = null, cacheRegistroEm = 0;
+async function listarRegistro(env, fresco = false) {
+  if (!env.ENVIADOS) return [];
+  if (!fresco && cacheRegistro && Date.now() - cacheRegistroEm < 120_000) return cacheRegistro;
+  const out = [];
+  let cursor;
+  do {
+    const r = await env.ENVIADOS.list({ prefix: "r:", cursor });
+    for (const k of r.keys) out.push({ chave: k.name, ...(k.metadata || {}) });
+    cursor = r.list_complete ? null : r.cursor;
+  } while (cursor);
+  cacheRegistro = out; cacheRegistroEm = Date.now();
+  return out;
+}
+
+// confere o resultado dos sinais cujo jogo já deve ter acabado
+async function resolverRegistro(env, api) {
+  const agora = Date.now();
+  const pend = (await listarRegistro(env, true))
+    .filter((x) => x.r == null && (x.i ? agora > x.i + 2 * 3600e3 : agora > x.env + 6 * 3600e3))
+    .slice(0, 8);
+  let resolvidos = 0;
+  for (const x of pend) {
+    const ev = (await api.get("gamma", `/events?slug=${encodeURIComponent(x.ev)}`).catch(() => null))?.[0];
+    const r = resultadoMercado(ev, x.s, x.oi);
+    if (r == null) continue;
+    const { chave, ...md } = x;
+    await env.ENVIADOS.put(chave, "", { metadata: { ...md, r }, expirationTtl: 90 * 86400 });
+    resolvidos++;
+  }
+  if (resolvidos) cacheRegistro = null;
+  return resolvidos;
+}
+
 const execucoes = []; // log em memória; vai para o KV a cada 5 min (limite grátis: 1.000 gravações/dia)
 async function registrar(env, item, persistir) {
   execucoes.unshift(item);
@@ -138,7 +191,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       s.nota = notaEntrada(s, t, l.indices);
       if (await jaEnviado(env, chave)) continue;
       const r = await telegram(env, msgVivo(env, t, s));
-      if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); } else resumo.erros.push(`telegram: ${r.erro}`);
+      if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); await registrarSinal(env, t, s, "v"); } else resumo.erros.push(`telegram: ${r.erro}`);
     }
   }
 
@@ -163,9 +216,12 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
         if (t.nivel === "teste" && resumo.enviados >= 3) continue; // teste: no máximo 3 por execução
         const r = await telegram(env, msgPre(env, t, p));
         const ttl = p.inicio ? (p.inicio - Date.now()) / 1000 + 3600 : 3 * 86400;
-        if (r.ok) { resumo.enviados++; await marcar(env, chave, ttl); } else resumo.erros.push(`telegram: ${r.erro}`);
+        if (r.ok) { resumo.enviados++; await marcar(env, chave, ttl); await registrarSinal(env, t, p, "p"); } else resumo.erros.push(`telegram: ${r.erro}`);
       }
     }
+  }
+  if (minuto % 10 === 0) {
+    try { resumo.resolvidos = await resolverRegistro(env, api); } catch (e) { resumo.erros.push(`registro: ${e.message || e}`); }
   }
   resumo.consultas = usadas;
   return resumo;
@@ -193,6 +249,9 @@ export default {
         intervalos_seg: intervalos, minutos_pulados: intervalos.filter((v) => v > 90).length, execucoes: todos,
         obs: "intervalos ~60 s = agendamento em dia; buracos maiores = minutos sem execução (o log vai para o KV a cada 5 min)",
       });
+    }
+    if (url.pathname === "/registro") {
+      return json({ agora: Date.now(), sinais: await listarRegistro(env) });
     }
     if (url.pathname === "/verificar") {
       // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto

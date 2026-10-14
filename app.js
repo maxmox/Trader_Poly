@@ -1,6 +1,7 @@
 import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
 import { blocoNota, pilulaNota } from "./nota.js";
+import { linhaPlacar, secaoPlacar } from "./placar.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
 const INTERVALO_RETRATO = 120_000; // sem acesso direto, relê o retrato do servidor a cada 2 min
@@ -37,7 +38,25 @@ $("#btn-atualizar").addEventListener("click", () => atualizar());
 // ---------- estado ----------
 let traders = [], prefixos = {}, dados = null, fonte = "carregando", jaAvisados = new Set(), primeiraCarga = true;
 let relayPadrao = "";
-let indices = null; // data/indices.json: efeitos dos fatores da nota da entrada // data/config.json: relay do repositório, usado quando Ajustes está vazio
+let indices = null; // data/indices.json: efeitos dos fatores da nota da entrada
+let desempenho = null; // data/desempenho.json: últimos 30 dias de cada trader (Action)
+let registro = []; // sinais reais enviados ao Telegram (Worker /registro)
+let tradersVivo = [];
+const sinaisDe = (w) => registro.filter((s) => s.w === w);
+async function carregarPlacar() {
+  desempenho = await json("data/desempenho.json").catch(() => desempenho);
+  if (relay()) {
+    try {
+      const r = await fetch(`${relay().replace(/\/$/, "")}/registro`, { cache: "no-store" });
+      if (r.ok) registro = (await r.json()).sinais || [];
+    } catch { /* sem relay: só o desempenho simulado */ }
+  }
+  renderPlacar();
+}
+function renderPlacar() {
+  $("#placar").innerHTML = secaoPlacar({ desempenho, registro, esc,
+    traders: [...tradersVivo.map((t) => ({ t, momento: "ao vivo" })), ...traders.map((t) => ({ t, momento: "pré-jogo" }))] });
+} // data/config.json: relay do repositório, usado quando Ajustes está vazio
 const relay = () => cfg.relay || relayPadrao;
 const regras = () => ({ ...PADRAO, tetoCentavos: cfg.teto });
 
@@ -195,6 +214,7 @@ function render() {
         <span>Copiando 5 min <b>${s.roi_copia_5min == null ? "–" : s.roi_copia_5min.toFixed(1).replace(".", ",") + "%"}</b></span>
         <span>Última atividade <b>${ha(d.ultimaAtividade)}</b></span>
       </div>
+      ${linhaPlacar(desempenho?.traders?.[t.carteira], sinaisDe(t.carteira), esc)}
       <p class="nota">${esc(t.nota)}</p>
       ${d.erro ? `<p class="erro">Não foi possível ler este trader: ${esc(d.erro)}</p>` : ""}
       ${pos.length
@@ -238,9 +258,13 @@ function avisar(lista) {
   // ao vivo: mesmo quadro, consulta a cada 15 s
   try {
     const tv = vigentes((await json("data/traders_live.json")).traders);
+    tradersVivo = tv;
     iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, indices,
+      placar: (w) => linhaPlacar(desempenho?.traders?.[w], sinaisDe(w), esc),
       aoRenderizar: (c) => { quadro.vivo = c; atualizarQuadro(); } });
   } catch (e) {
     $("#vivo-traders").innerHTML = `<p class="erro">Lista de traders ao vivo indisponível: ${esc(e.message)}</p>`;
   }
+  carregarPlacar().then(render);
+  setInterval(() => carregarPlacar().then(render), 5 * 60_000);
 })();

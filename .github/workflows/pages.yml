@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "*/10 * * * *"   # o GitHub pode atrasar alguns minutos em horário de pico
+    - cron: "*/10 * * * *"   # o GitHub pode atrasar (ou pular) em horário de pico
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,9 @@ jobs:
           node-version: 22
       - name: Buscar posições abertas
         run: node scripts/snapshot.mjs
+      - name: Desempenho dos últimos 30 dias (placar)
+        run: node scripts/desempenho.mjs
+        continue-on-error: true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

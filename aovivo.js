@@ -6,7 +6,7 @@ import { blocoNota, pilulaNota } from "./nota.js";
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
 
-export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, aoRenderizar }) {
+export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, placar, aoRenderizar }) {
   // traders pode encolher quando um trader de teste expira
   let dados = null, erro = null, timer = null, rodando = false, avisados = new Set(), primeira = true;
   const cacheEventos = new Map();
@@ -109,6 +109,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, ao
           <span>Mercado mediano <b>${usd(s.vol_mercado_med)}</b></span>
           <span>Última atividade <b>${d.ultimaAtividade ? ha(d.ultimaAtividade) : "–"}</b></span>
         </div>
+        ${placar ? placar(t.carteira) : ""}
         <p class="nota">${esc(t.nota)}</p>
         ${d.erro ? `<p class="erro">Não foi possível ler este trader: ${esc(d.erro)}</p>` : ""}
         ${recentes.length ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th><th class="n">Nota</th></tr></thead><tbody>

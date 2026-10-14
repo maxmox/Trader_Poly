@@ -216,7 +216,7 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
     const t0 = primeiraCompra[pos.asset] && primeiraCompra[pos.asset] > maisAntigo ? primeiraCompra[pos.asset] : null;
     const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
     return {
-      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId,
+      titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId, oi: pos.outcomeIndex,
       valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
       usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
@@ -294,7 +294,7 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
     const antes = comNivel && status === "COPIAR" ? await nivelAntes(api, t.conditionId, t.asset, w, e.t0) : null;
     return {
-      cond: t.conditionId, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
+      cond: t.conditionId, oi: t.outcomeIndex, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
       tituloEvento: ev?.title || t.title, esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
       entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
@@ -359,6 +359,53 @@ function notaEntrada(x, trader, ind) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// PLACAR: reconstruir entradas passadas e conferir resultados
+// (mesma lógica de polymarket_traders/nichos_analise.py)
+
+// 1/0 se o mercado já resolveu para esse lado; null se ainda não
+function resultadoMercado(evento, slug, oi) {
+  const mk = (evento?.markets || []).find((m) => m.slug === slug);
+  if (!mk || !mk.closed) return null;
+  let p;
+  try { p = JSON.parse(mk.outcomePrices || "[]").map(Number); } catch { return null; }
+  const v = p[oi];
+  return v === 0 || v === 1 ? v : null;
+}
+
+// primeira compra em cada mercado (compras no 1º minuto) a partir da atividade
+function entradasDe(atividade) {
+  const por = new Map();
+  for (const t of [...atividade].sort((a, b) => a.timestamp - b.timestamp)) {
+    if (t.side !== "BUY") continue;
+    const e = por.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, ex: t };
+    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; }
+    por.set(t.asset, e);
+  }
+  const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
+  return [...por.values()].filter((e) => e.t0 > maisAntigo && e.cotas > 0)
+    .map((e) => ({ ...e, preco: e.usd / e.cotas })).sort((a, b) => b.t0 - a.t0);
+}
+
+// preço que quem copia pagaria 1 min depois (1º negócio de compra no lado dele) e o nível antes
+async function precosEntrada(api, cond, asset, carteira, t0) {
+  const janela = (a, b) => api.get("data", `/trades?market=${cond}&limit=500&start=${a}&end=${b}`).catch(() => []);
+  const tr = [...((await janela(t0 - 120, t0 + 120)) || []), ...((await janela(t0 + 120, t0 + 660)) || [])];
+  let s = 0, u = 0, p60 = null, t60 = Infinity;
+  for (const x of tr) {
+    if ((x.proxyWallet || "").toLowerCase() === carteira.toLowerCase()) continue;
+    const meu = x.asset === asset;
+    const q = meu ? x.price : 1 - x.price;
+    if (x.timestamp >= t0 - 120 && x.timestamp < t0 - 5) { s += q * x.size * x.price; u += x.size * x.price; }
+    const compra = (meu && x.side === "BUY") || (!meu && x.side === "SELL");
+    if (compra && x.timestamp >= t0 + 60 && x.timestamp < t60) { t60 = x.timestamp; p60 = q; }
+  }
+  return { p60, antes: u > 0 ? s / u : null };
+}
+
+// usados pelo placar (scripts/desempenho.mjs) e pelo Worker
+export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado, volumeMercado as volumeDoMercado };
+
 // ===== Worker: relay do site + alertas no Telegram =====
 // (o arquivo publicado, relay/cloudflare-worker.js, é gerado por scripts/build-worker.mjs:
 //  core.js + este arquivo num arquivo só, para colar no painel da Cloudflare)
@@ -373,6 +420,11 @@ function notaEntrada(x, trader, ind) {
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
 //    GET /status -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
+//    GET /registro -> todos os sinais enviados (últimos 90 dias) com o resultado, para o placar
+//
+// REGISTRO: cada sinal enviado vira uma chave "r:..." no KV, com os dados nos metadados
+// (assim uma única listagem traz tudo). A cada 10 min o Worker confere o resultado dos
+// sinais cujo jogo já acabou (até 8 por vez).
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
@@ -462,6 +514,54 @@ No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
 }
 
+// ---------- registro dos sinais enviados ----------
+const corta = (v, n) => String(v ?? "").slice(0, n);
+async function registrarSinal(env, t, x, tipo) {
+  if (!env.ENVIADOS || t.nivel === "teste") return;
+  const md = {
+    w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.lado, 40), s: corta(x.slug, 90),
+    ev: corta(x.eventSlug, 90), oi: x.oi, p: +x.precoDele.toFixed(4), a: x.ask == null ? null : +x.ask.toFixed(4), mi: +x.teto.toFixed(4),
+    nt: x.nota?.nota ?? null, rt: x.nota?.rotulo ?? null, sp: corta(x.esporte, 20), tp: corta(x.tipo, 20),
+    t: x.entrouEm || Date.now(), i: x.inicio || null, env: Date.now(), r: null,
+  };
+  await env.ENVIADOS.put(`r:${Date.now()}:${corta(x.asset, 12)}`, "", { metadata: md, expirationTtl: 90 * 86400 });
+  cacheRegistro = null; // a próxima leitura busca de novo
+}
+
+let cacheRegistro = null, cacheRegistroEm = 0;
+async function listarRegistro(env, fresco = false) {
+  if (!env.ENVIADOS) return [];
+  if (!fresco && cacheRegistro && Date.now() - cacheRegistroEm < 120_000) return cacheRegistro;
+  const out = [];
+  let cursor;
+  do {
+    const r = await env.ENVIADOS.list({ prefix: "r:", cursor });
+    for (const k of r.keys) out.push({ chave: k.name, ...(k.metadata || {}) });
+    cursor = r.list_complete ? null : r.cursor;
+  } while (cursor);
+  cacheRegistro = out; cacheRegistroEm = Date.now();
+  return out;
+}
+
+// confere o resultado dos sinais cujo jogo já deve ter acabado
+async function resolverRegistro(env, api) {
+  const agora = Date.now();
+  const pend = (await listarRegistro(env, true))
+    .filter((x) => x.r == null && (x.i ? agora > x.i + 2 * 3600e3 : agora > x.env + 6 * 3600e3))
+    .slice(0, 8);
+  let resolvidos = 0;
+  for (const x of pend) {
+    const ev = (await api.get("gamma", `/events?slug=${encodeURIComponent(x.ev)}`).catch(() => null))?.[0];
+    const r = resultadoMercado(ev, x.s, x.oi);
+    if (r == null) continue;
+    const { chave, ...md } = x;
+    await env.ENVIADOS.put(chave, "", { metadata: { ...md, r }, expirationTtl: 90 * 86400 });
+    resolvidos++;
+  }
+  if (resolvidos) cacheRegistro = null;
+  return resolvidos;
+}
+
 const execucoes = []; // log em memória; vai para o KV a cada 5 min (limite grátis: 1.000 gravações/dia)
 async function registrar(env, item, persistir) {
   execucoes.unshift(item);
@@ -499,7 +599,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       s.nota = notaEntrada(s, t, l.indices);
       if (await jaEnviado(env, chave)) continue;
       const r = await telegram(env, msgVivo(env, t, s));
-      if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); } else resumo.erros.push(`telegram: ${r.erro}`);
+      if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); await registrarSinal(env, t, s, "v"); } else resumo.erros.push(`telegram: ${r.erro}`);
     }
   }
 
@@ -524,9 +624,12 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
         if (t.nivel === "teste" && resumo.enviados >= 3) continue; // teste: no máximo 3 por execução
         const r = await telegram(env, msgPre(env, t, p));
         const ttl = p.inicio ? (p.inicio - Date.now()) / 1000 + 3600 : 3 * 86400;
-        if (r.ok) { resumo.enviados++; await marcar(env, chave, ttl); } else resumo.erros.push(`telegram: ${r.erro}`);
+        if (r.ok) { resumo.enviados++; await marcar(env, chave, ttl); await registrarSinal(env, t, p, "p"); } else resumo.erros.push(`telegram: ${r.erro}`);
       }
     }
+  }
+  if (minuto % 10 === 0) {
+    try { resumo.resolvidos = await resolverRegistro(env, api); } catch (e) { resumo.erros.push(`registro: ${e.message || e}`); }
   }
   resumo.consultas = usadas;
   return resumo;
@@ -554,6 +657,9 @@ export default {
         intervalos_seg: intervalos, minutos_pulados: intervalos.filter((v) => v > 90).length, execucoes: todos,
         obs: "intervalos ~60 s = agendamento em dia; buracos maiores = minutos sem execução (o log vai para o KV a cada 5 min)",
       });
+    }
+    if (url.pathname === "/registro") {
+      return json({ agora: Date.now(), sinais: await listarRegistro(env) });
     }
     if (url.pathname === "/verificar") {
       // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto

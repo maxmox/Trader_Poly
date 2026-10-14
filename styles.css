@@ -142,30 +142,45 @@ td .motivo { color: var(--ink-3); font-size: 12px; }
 .card-top .quem { flex-basis: 100%; }
 
 /* nota da entrada */
-.nota { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 8px; }
+.nota-ent { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 8px; }
 .nota-top { display: flex; align-items: center; gap: 10px; }
 .nota-num { font-family: var(--mono); font-size: 26px; font-weight: 600; line-height: 1; min-width: 44px; text-align: center; padding: 6px 4px; border-radius: 6px; }
 .nota-top strong { display: block; font-size: 14px; }
 .nota-top small { color: var(--ink-3); font-size: 12px; }
-.nota.forte .nota-num { background: var(--good-bg); color: var(--good); }
-.nota.boa .nota-num { background: var(--accent-soft); color: var(--accent); }
-.nota.neutra .nota-num { background: var(--bg); color: var(--ink-2); }
-.nota.fraca .nota-num { background: var(--bad-bg); color: var(--bad); }
+.nota-ent.forte .nota-num { background: var(--good-bg); color: var(--good); }
+.nota-ent.boa .nota-num { background: var(--accent-soft); color: var(--accent); }
+.nota-ent.neutra .nota-num { background: var(--bg); color: var(--ink-2); }
+.nota-ent.fraca .nota-num { background: var(--bad-bg); color: var(--bad); }
 .barras { display: grid; gap: 4px; }
 .barra { display: grid; grid-template-columns: 82px 1fr 28px; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
 .barra i { display: block; height: 6px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
 .barra i::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--ink-3); }
 .barra em { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .barra b { font-family: var(--mono); text-align: right; color: var(--ink); }
-.nota details { font-size: 12px; color: var(--ink-2); }
-.nota summary { cursor: pointer; color: var(--accent); }
-.nota ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
-.nota li { display: flex; justify-content: space-between; gap: 8px; }
-.nota li b { font-family: var(--mono); }
-.nota li b.pos { color: var(--good); } .nota li b.neg { color: var(--bad); }
-.nota .falta { margin-top: 6px; color: var(--ink-3); }
+.nota-ent details { font-size: 12px; color: var(--ink-2); }
+.nota-ent summary { cursor: pointer; color: var(--accent); }
+.nota-ent ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.nota-ent li { display: flex; justify-content: space-between; gap: 8px; }
+.nota-ent li b { font-family: var(--mono); }
+.nota-ent li b.pos { color: var(--good); } .nota-ent li b.neg { color: var(--bad); }
+.nota-ent .falta { margin-top: 6px; color: var(--ink-3); }
 .nota-pill { display: inline-block; min-width: 30px; text-align: center; font-family: var(--mono); font-weight: 600; font-size: 12px; padding: 1px 6px; border-radius: 4px; }
 .nota-pill.forte { background: var(--good-bg); color: var(--good); }
 .nota-pill.boa { background: var(--accent-soft); color: var(--accent); }
 .nota-pill.neutra { background: var(--bg); color: var(--ink-2); }
 .nota-pill.fraca { background: var(--bad-bg); color: var(--bad); }
+
+/* placar */
+.placar { font-family: var(--body); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 13px; color: var(--ink-2); padding: 8px 10px; background: var(--bg); border-radius: 6px; }
+.placar b { font-family: var(--mono); color: var(--ink); }
+.placar b.pos, td .pos { color: var(--good); } .placar b.neg, td .neg { color: var(--bad); }
+.forma { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; }
+.forma.good { background: var(--good-bg); color: var(--good); }
+.forma.mid { background: var(--accent-soft); color: var(--accent); }
+.forma.bad { background: var(--bad-bg); color: var(--bad); }
+.forma.none { background: var(--line); color: var(--ink-2); }
+.bolinhas { display: inline-flex; gap: 3px; }
+.bol { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.bol.win { background: var(--good); } .bol.loss { background: var(--bad); } .bol.open { background: var(--line); }
+table.estreita { min-width: 0; max-width: 560px; }
+#placar h3 { margin-top: 8px; }

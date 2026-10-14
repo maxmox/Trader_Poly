@@ -11,7 +11,7 @@ export function blocoNota(n, esc) {
     .sort((a, b) => Math.abs(b.efeito) - Math.abs(a.efeito))
     .map((f) => `<li><span>${esc(f.rotulo)}: ${esc(f.faixa)}</span><b class="${f.efeito >= 0 ? "pos" : "neg"}">${pts(f.efeito)}</b></li>`).join("");
   const faltam = n.fatores.filter((f) => !f.faixa).map((f) => f.rotulo.toLowerCase());
-  return `<div class="nota ${n.rotulo}">
+  return `<div class="nota-ent ${n.rotulo}">
     <div class="nota-top"><b class="nota-num">${n.nota}</b><div><strong>${ROT[n.rotulo]}</strong>
       <small>vantagem esperada ${pts(n.esperado)} pts de probabilidade</small></div></div>
     <div class="barras">${barras}</div>
