@@ -10,40 +10,6 @@
  },
  "traders": [
   {
-   "carteira": "0xd9e0aaca471f489be338fd0f91a26e8669a805f2",
-   "nome": "TESTE · robô 0xD9E0",
-   "nivel": "teste",
-   "esportes": [
-    "Basquete",
-    "Beisebol",
-    "CS2",
-    "Criquete",
-    "Dota 2",
-    "Esporte outros",
-    "Futebol",
-    "Futebol Americano",
-    "Hoquei",
-    "LoL",
-    "MMA/Boxe",
-    "Tenis",
-    "Valorant",
-    "eSports outros"
-   ],
-   "janelaSeg": 120,
-   "minUsd": 0,
-   "expira": "2026-10-14T03:30:31Z",
-   "nota": "Trader de TESTE, só para conferir se os sinais chegam ao site e ao Telegram. É um robô de alta frequência: não copie. Some sozinho às 00:30 (horário de Brasília).",
-   "stats": {
-    "lucro": 1534000,
-    "meses": 21,
-    "meses_positivos": 21,
-    "roi_dele": 0,
-    "roi_copia_60s": 0,
-    "preenche_60s_pct": 0,
-    "vol_mercado_med": 0
-   }
-  },
-  {
    "carteira": "0xb31e41965df4ab8014de4c4d8da9deff0a6ac120",
    "nome": "C63AMG",
    "nivel": "copiar",
