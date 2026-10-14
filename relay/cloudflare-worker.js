@@ -355,7 +355,8 @@ function msgVivo(env, t, s) {
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.lado)}</b>
-Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>
+Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${t.nivel === "teste" ? `
+Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)${aposta(env, s.teto)}
 No Polymarket: ordem limitada a ${cents(s.teto)} · segure até o fim
 https://polymarket.com/event/${encodeURIComponent(s.eventSlug)}`;
@@ -390,7 +391,8 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
     for (const s of d.sinais) {
       resumo.aoVivo.push({ trader: t.nome, evento: s.tituloEvento, lado: s.lado, status: s.status, motivos: s.motivos });
-      if (s.status !== "COPIAR") continue;
+      // trader de teste manda toda entrada nova (com o veredito), para conferir o fluxo
+      if (s.status !== "COPIAR" && t.nivel !== "teste") continue;
       const chave = `v:${s.asset}:${s.entrouEm}`;
       if (await jaEnviado(env, chave)) continue;
       const r = await telegram(env, msgVivo(env, t, s));
