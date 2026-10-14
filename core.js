@@ -340,6 +340,7 @@ export function notaEntrada(x, trader, ind) {
   const soma = { trader: 0, mercado: 0, odd: 0 };
   const fatores = [];
   for (const [nome, faixa] of Object.entries(faixas)) {
+    if (!ind.grupos[nome]) continue; // fator testado e deixado fora do modelo
     const e = faixa ? ind.efeitos[nome]?.[faixa]?.efeito ?? 0 : 0;
     soma[ind.grupos[nome]] += e;
     fatores.push({ nome, rotulo: ROTULO_FATOR[nome], grupo: ind.grupos[nome], faixa, efeito: e });

@@ -1,8 +1,8 @@
 {
  "versao": 2,
  "escala": 6,
- "media": 0.015222966714563479,
- "n": 10286,
+ "media": 0.014201740531776162,
+ "n": 12009,
  "faixas_odd": [
   [
    0,
@@ -55,93 +55,92 @@
  "efeitos": {
   "conviccao": {
    "aposta < metade da mediana dele": {
-    "efeito": -0.0012,
-    "n": 2650
+    "efeito": -0.0039,
+    "n": 3190
    },
    "aposta normal": {
-    "efeito": -0.0077,
-    "n": 4180
+    "efeito": -0.0082,
+    "n": 4742
    },
    "aposta > 2x a mediana dele": {
-    "efeito": 0.0102,
-    "n": 3456
+    "efeito": 0.0126,
+    "n": 4077
    }
   },
   "entrada": {
    "pagou no nível do mercado": {
-    "efeito": -0.003,
-    "n": 2923
+    "efeito": -0.0029,
+    "n": 3553
    },
    "pagou acima do mercado (>1¢)": {
-    "efeito": 0.0023,
-    "n": 3098
+    "efeito": -0.0008,
+    "n": 3536
    },
    "pagou abaixo do mercado (>1¢)": {
-    "efeito": -0.0191,
-    "n": 1160
+    "efeito": -0.0145,
+    "n": 1365
    }
   },
   "momento": {
    "pré-jogo": {
-    "efeito": -0.0099,
-    "n": 4297
+    "efeito": -0.0082,
+    "n": 5225
    },
    "ao vivo": {
-    "efeito": 0.0085,
-    "n": 4745
+    "efeito": 0.0071,
+    "n": 5530
    }
   },
   "liquidez": {
    "> $500 mil": {
     "efeito": -0.0042,
-    "n": 4761
+    "n": 5521
    },
    "$50–500 mil": {
-    "efeito": -0.002,
-    "n": 3581
+    "efeito": -0.0015,
+    "n": 4360
    },
    "mercado < $50 mil": {
-    "efeito": 0.0164,
-    "n": 1868
+    "efeito": 0.0161,
+    "n": 2052
    }
   },
   "faixa_odd": {
    "odd < 1,43": {
-    "efeito": -0.0012,
-    "n": 2397
+    "efeito": -0.0008,
+    "n": 2638
    },
    "odd 1,8–2,5": {
-    "efeito": 0.0014,
-    "n": 3330
+    "efeito": 0.0038,
+    "n": 4065
    },
    "odd 1,43–1,8": {
-    "efeito": 0.0244,
-    "n": 2355
+    "efeito": 0.0211,
+    "n": 2763
    },
    "odd 2,5–4": {
     "efeito": -0.0296,
-    "n": 1401
+    "n": 1671
    },
    "odd > 4": {
-    "efeito": -0.018,
-    "n": 803
+    "efeito": -0.0211,
+    "n": 872
    }
   },
   "deriva": {
    "igual (±0,5¢)": {
-    "efeito": -0.0071,
-    "n": 2881
+    "efeito": -0.0055,
+    "n": 3390
    },
    "odd piorou até 2¢": {
-    "efeito": -0.0083,
-    "n": 3200
+    "efeito": -0.0085,
+    "n": 3998
    },
    "odd melhorou (preço caiu)": {
-    "efeito": 0.0113,
-    "n": 4205
+    "efeito": 0.0115,
+    "n": 4621
    }
-  },
-  "antecedencia": {}
+  }
  },
  "grupos": {
   "conviccao": "trader",
@@ -149,25 +148,25 @@
   "momento": "mercado",
   "liquidez": "mercado",
   "faixa_odd": "odd",
-  "deriva": "odd",
-  "antecedencia": "odd"
+  "deriva": "odd"
  },
  "mediana_usd": {
-  "0xc49fe658479db29e1a2fefebf0735f657dca9e05": 2721.28,
-  "0x5966db1fe50763c9e3c014d756369bad07e1f804": 49680.1,
-  "0xee00ba338c59557141789b127927a55f5cc5cea1": 30510.27,
-  "0x84dbb7103982e3617704a2ed7d5b39691952aeeb": 4294.64,
+  "0x2ce8505aa641791eb8460f6ac6bf5c0511e34527": 357.9,
+  "0xc49fe658479db29e1a2fefebf0735f657dca9e05": 1624.1,
+  "0x5966db1fe50763c9e3c014d756369bad07e1f804": 74577.2,
+  "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28": 4920,
+  "0xee00ba338c59557141789b127927a55f5cc5cea1": 29929.51,
+  "0x54ce7dd357766fc3255645e55ef41edd51cc9f80": 279.67,
+  "0x924379a79c64b77ad5816ad362122a5f6228658e": 15644.55,
+  "0x84dbb7103982e3617704a2ed7d5b39691952aeeb": 2178.03,
+  "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f": 471.07,
+  "0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a": 3566.15,
+  "0x38181f43e5802391522583a82d05893df3039797": 2251.38,
   "0x9bf7b81568ae59dafcb6a233a1d4cdeb593ce41f": 980,
-  "0x924379a79c64b77ad5816ad362122a5f6228658e": 24774.21,
-  "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f": 473.79,
-  "0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a": 5950.04,
-  "0xb31e41965df4ab8014de4c4d8da9deff0a6ac120": 702.68,
-  "0x38181f43e5802391522583a82d05893df3039797": 1124.58,
-  "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28": 2541.06,
-  "0xc1de5ffb02d2b354932ccf5e31172545965e21f5": 3202.05,
-  "0x32ed517a571c01b6e9adecf61ba81ca48ff2f960": 89.0,
-  "0x54ce7dd357766fc3255645e55ef41edd51cc9f80": 192.03,
-  "0xafd492974cd531aae7786210438ae46b42047e61": 2291.02,
-  "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38": 1923.91
+  "0xb31e41965df4ab8014de4c4d8da9deff0a6ac120": 708.63,
+  "0xc1de5ffb02d2b354932ccf5e31172545965e21f5": 1649.96,
+  "0x32ed517a571c01b6e9adecf61ba81ca48ff2f960": 128.48,
+  "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38": 1606.38,
+  "0xafd492974cd531aae7786210438ae46b42047e61": 2561.32
  }
 }

@@ -17,7 +17,7 @@ export function blocoNota(n, esc) {
     <div class="barras">${barras}</div>
     <details><summary>Por que essa nota</summary><ul>${fatores}</ul>
       ${faltam.length ? `<p class="falta">Sem dado para: ${esc(faltam.join(", "))}.</p>` : ""}
-      <p class="falta">50 = neutro. Em teste com entradas que o modelo não viu, notas fortes renderam +2,7% copiando e fracas −12%.</p></details>
+      <p class="falta">50 = neutro. Em teste com entradas que o modelo não viu, notas fortes (66+) renderam +4% copiando e fracas (abaixo de 50) −16%; entre 50 e 65 a diferença é pequena.</p></details>
   </div>`;
 }
 
