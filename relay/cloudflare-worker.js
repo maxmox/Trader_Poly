@@ -203,6 +203,10 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
   // modo econômico (Worker): o esporte sai do slug, sem gastar consulta com o que nunca seria "Copiar"
   if (soEspecialidade) abertas = abertas.filter((p) => areasDo(trader).has(esporte(p.eventSlug || p.slug, null, prefixos)));
   if (abertas.length > maxPosicoes) abertas = abertas.sort((x, y) => (y.initialValue || 0) - (x.initialValue || 0)).slice(0, maxPosicoes);
+  // dois lados no mesmo mercado = proteção/arbitragem: o lado menor nunca é sinal e o maior
+  // só é se a posição líquida for relevante (lado menor < 50% das cotas do maior)
+  const ladosPorMercado = {};
+  for (const p of posicoes || []) if (!p.redeemable && p.size > 0) (ladosPorMercado[p.conditionId] ||= []).push(p);
   const itens = await emLotes(abertas, 4, async (pos) => {
     let ev = cacheEventos.get(pos.eventSlug);
     if (ev === undefined) {
@@ -212,6 +216,23 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
     }
     const book = await api.get("clob", `/book?token_id=${pos.asset}`).catch(() => null);
     const v = avaliar({ pos, evento: ev, book, trader, agora, regras, prefixos });
+    const outros = (ladosPorMercado[pos.conditionId] || []).filter((o) => o.asset !== pos.asset);
+    if (outros.length) {
+      const maior = Math.max(...outros.map((o) => o.size));
+      if (maior >= pos.size) { v.status = "NAO"; v.motivos = ["ele tem mais cotas no outro lado deste mercado", ...v.motivos.filter((m) => !m.startsWith("aceite"))]; }
+      else if (maior >= 0.5 * pos.size) { v.status = "NAO"; v.motivos = [`posição quase neutra: ele também tem ${Math.round(100 * maior / pos.size)}% disso no outro lado`, ...v.motivos.filter((m) => !m.startsWith("aceite"))]; }
+      else if (maior >= 0.05 * pos.size) v.motivos.push(`ele também tem ${Math.round(100 * maior / pos.size)}% disso no outro lado (aposta líquida continua neste)`);
+    }
+    // "SIM, A vence" + "SIM, B vence" no mesmo jogo é proteção, não palpite (só vale o maior, se dominar)
+    const vence = (p) => /^yes$/i.test(p.outcome) && /^Will .+ win/i.test(p.title || "");
+    if (vence(pos)) {
+      const rivais = (posicoes || []).filter((o) => o.asset !== pos.asset && o.eventSlug === pos.eventSlug && !o.redeemable && vence(o));
+      const maiorRival = rivais.length ? Math.max(...rivais.map((o) => o.initialValue || 0)) : 0;
+      if (rivais.length && maiorRival * 2 > (pos.initialValue || 0)) {
+        v.status = "NAO";
+        v.motivos = ["ele apostou na vitória dos dois times deste jogo (proteção)", ...v.motivos.filter((m) => !m.startsWith("aceite"))];
+      }
+    }
     // a primeira compra só é confiável se aconteceu depois do início da lista de atividade
     const t0 = primeiraCompra[pos.asset] && primeiraCompra[pos.asset] > maisAntigo ? primeiraCompra[pos.asset] : null;
     const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
@@ -220,7 +241,7 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
       valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
       usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
-      tituloEvento: ev?.title || pos.title, ...v,
+      tituloEvento: ev?.title || pos.title, pergunta: pos.title, aposta: descreverAposta(pos.title, pos.outcome), ...v,
     };
   });
   const ordem = { COPIAR: 0, ESPERAR: 1, NAO: 2 };
@@ -291,12 +312,15 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     else if (ask == null) nao("sem ofertas no livro");
     else if (ask > teto) nao(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`);
     if (idadeSeg > trader.janelaSeg) nao(`passou da janela de ${Math.round(trader.janelaSeg / 60)} min`);
+    const outroLado = atividade.some((a) => a.side === "BUY" && a.conditionId === t.conditionId && a.asset !== t.asset);
+    if (outroLado) nao("ele também comprou o outro lado deste mercado (proteção, não é aposta direcional)");
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
     const antes = comNivel && status === "COPIAR" ? await nivelAntes(api, t.conditionId, t.asset, w, e.t0) : null;
     return {
       cond: t.conditionId, oi: t.outcomeIndex, usdEntrada: e.usd, momento: "ao vivo", antes, volMercado: volumeMercado(ev, t.slug), inicio,
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
-      tituloEvento: ev?.title || t.title, esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
+      tituloEvento: ev?.title || t.title, pergunta: t.title, aposta: descreverAposta(t.title, t.outcome),
+      esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
       entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
       ask, teto, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), status, motivos,
     };
@@ -358,6 +382,33 @@ function notaEntrada(x, trader, ind) {
     rotulo: nota >= 66 ? "forte" : nota >= 58 ? "boa" : nota >= 50 ? "neutra" : "fraca", fatores,
   };
 }
+
+
+// ---------------------------------------------------------------------------
+// O QUE APOSTAR, sem ambiguidade. No Polymarket muitos mercados são perguntas de sim/não
+// ("Will Como 1907 win?" -> No = Como NÃO vence), handicaps ("Spread: A (-3.5)" -> lado B
+// = B +3,5) e totais ("O/U 51.5" -> Over = mais de 51,5). Mostrar só o título do jogo e o
+// lado ("No", "Over") faz apostar no mercado errado.
+const num = (v) => String(v).replace(".", ",");
+function descreverAposta(pergunta, lado) {
+  const q = String(pergunta || ""), l = String(lado || "");
+  const sim = /^yes$/i.test(l), nao = /^no$/i.test(l);
+  let m = q.match(/^Will (.+?) win(?: on [\d-]+)?\??$/i);
+  if (m && (sim || nao)) return sim ? `${m[1]} vence` : `${m[1]} NÃO vence (empate ou derrota)`;
+  m = q.match(/^Will (?:the )?(.+?) (?:end in a )?draw\b/i) || q.match(/^(.+?) end in a draw\??$/i);
+  if (m && (sim || nao)) return sim ? "Empate" : "NÃO dá empate";
+  m = q.match(/Spread:\s*(.+?)\s*\(([-+]?\d+(?:\.\d+)?)\)/i);
+  if (m) {
+    const linha = parseFloat(m[2]);
+    if (l === m[1]) return `${l} ${linha > 0 ? "+" : "−"}${num(Math.abs(linha))} (handicap)`;
+    return `${l} ${linha > 0 ? "−" : "+"}${num(Math.abs(linha))} (handicap)`;
+  }
+  m = q.match(/O\/U\s*(\d+(?:\.\d+)?)/i);
+  if (m && /^(over|under)$/i.test(l)) return `${/^over$/i.test(l) ? "Mais" : "Menos"} de ${num(m[1])} (${l.toLowerCase()})`;
+  if (sim || nao) return `${sim ? "SIM" : "NÃO"} para: ${q}`;
+  return `${l} vence`;
+}
+const linkMercado = (x) => `https://polymarket.com/event/${encodeURIComponent(x.eventSlug)}${x.slug && x.slug !== x.eventSlug ? `/${encodeURIComponent(x.slug)}` : ""}`;
 
 // ---------------------------------------------------------------------------
 // PLACAR: reconstruir entradas passadas e conferir resultados
@@ -495,23 +546,25 @@ function msgVivo(env, t, s) {
   const fim = s.entrouEm + t.janelaSeg * 1000;
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
-Entrar: <b>${h(s.lado)}</b>
+Entrar: <b>${h(s.aposta || s.lado)}</b>${s.pergunta && s.pergunta !== s.tituloEvento ? `
+Mercado: ${h(s.pergunta)} · lado ${h(s.lado)}` : ""}
 Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaNota(s.nota)}${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
 Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
 No Polymarket: ordem limitada a ${cents(s.teto)} · segure até o fim
-https://polymarket.com/event/${encodeURIComponent(s.eventSlug)}`;
+${linkMercado(s)}`;
 }
 
 function msgPre(env, t, p) {
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🟢 <b>PRÉ-JOGO · ${h(t.nome)}</b> (${h(rotuloEsporte(p.esporte))}${p.tipo ? " · " + h(rotuloTipo(p.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
-Entrar: <b>${h(p.lado)}</b>
+Entrar: <b>${h(p.aposta || p.lado)}</b>${p.pergunta && p.pergunta !== p.tituloEvento ? `
+Mercado: ${h(p.pergunta)} · lado ${h(p.lado)}` : ""}
 Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaNota(p.nota)}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
-https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
+${linkMercado(p)}`;
 }
 
 // ---------- registro dos sinais enviados ----------
@@ -519,7 +572,7 @@ const corta = (v, n) => String(v ?? "").slice(0, n);
 async function registrarSinal(env, t, x, tipo) {
   if (!env.ENVIADOS || t.nivel === "teste") return;
   const md = {
-    w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.lado, 40), s: corta(x.slug, 90),
+    w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.aposta || x.lado, 60), s: corta(x.slug, 90),
     ev: corta(x.eventSlug, 90), oi: x.oi, p: +x.precoDele.toFixed(4), a: x.ask == null ? null : +x.ask.toFixed(4), mi: +x.teto.toFixed(4),
     nt: x.nota?.nota ?? null, rt: x.nota?.rotulo ?? null, sp: corta(x.esporte, 20), tp: corta(x.tipo, 20),
     t: x.entrouEm || Date.now(), i: x.inicio || null, env: Date.now(), r: null,
@@ -592,7 +645,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
     for (const s of d.sinais) {
-      resumo.aoVivo.push({ trader: t.nome, evento: s.tituloEvento, lado: s.lado, status: s.status, motivos: s.motivos });
+      resumo.aoVivo.push({ trader: t.nome, evento: s.tituloEvento, aposta: s.aposta, status: s.status, motivos: s.motivos });
       // trader de teste manda toda entrada nova (com o veredito), para conferir o fluxo
       if (s.status !== "COPIAR" && t.nivel !== "teste") continue;
       const chave = `v:${s.asset}:${s.entrouEm}`;
@@ -617,7 +670,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
       for (const p of d.posicoes) {
         if (p.status !== "COPIAR") continue;
-        resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, lado: p.lado });
+        resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, aposta: p.aposta });
         const chave = `p:${p.asset}`;
         p.nota = notaEntrada(p, t, l.indices);
         if (await jaEnviado(env, chave)) continue;

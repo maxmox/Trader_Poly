@@ -1,6 +1,6 @@
 // Aba "Ao vivo": sinais de entrada durante o jogo que ainda dá para replicar.
 // Só funciona com acesso em tempo real (direto ou relay): o sinal vale 1–2 minutos.
-import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, PADRAO } from "./core.js";
+import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, PADRAO } from "./core.js";
 import { blocoNota, pilulaNota } from "./nota.js";
 
 const INTERVALO = 15_000;
@@ -41,7 +41,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
     const s = (Date.now() - t) / 1000;
     return s < 90 ? `há ${Math.round(s)} s` : s < 5400 ? `há ${Math.round(s / 60)} min` : s < 172800 ? `há ${Math.round(s / 3600)} h` : `há ${Math.round(s / 86400)} dias`;
   };
-  const link = (p) => `https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
+  const link = linkMercado; // vai direto ao mercado (não só ao evento)
 
   function render() {
     const cfg = getCfg();
@@ -76,7 +76,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
 
     $("#vivo-lista").innerHTML = ativos.map(({ t, s }) => `<article class="card vivo">
           <div class="card-top"><span class="momento vivo">Ao vivo</span><span class="st COPIAR">Copiar já</span><span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(s.esporte))}${s.tipo ? " · " + esc(rotuloTipo(s.tipo)) : ""}</span></div>
-          <div><div class="evento">${esc(s.tituloEvento)}${s.placar ? ` <span class="placar">${esc(s.placar)}</span>` : ""}</div><div class="lado">${esc(s.lado)}</div></div>
+          <div><div class="evento">${esc(s.tituloEvento)}${s.placar ? ` <span class="placar">${esc(s.placar)}</span>` : ""}</div><div class="lado">${esc(s.aposta || s.lado)}</div>${s.pergunta && s.pergunta !== s.tituloEvento ? `<div class="pergunta">Mercado: ${esc(s.pergunta)} · lado <b>${esc(s.lado)}</b></div>` : ""}</div>
           <div class="kv">
             <div><small>Odd dele</small><b>${odd(s.precoDele)}</b></div>
             <div><small>Odd agora</small><b>${odd(s.ask)}</b></div>
@@ -86,7 +86,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
             <div><small>Ele entrou</small><b>${ha(s.entrouEm)}</b></div>
           </div>
           ${blocoNota(notaEntrada(s, t, indices), esc)}
-          <div class="ordem">Entrar: <b>${esc(s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / s.teto)}</b> se ganhar. Segure até o fim.
+          <div class="ordem">Entrar: <b>${esc(s.aposta || s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / s.teto)}</b> se ganhar. Segure até o fim.
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
             ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} disponível nessa odd: pode preencher em parte.</span>` : ""}</div>
           <div class="card-foot"><span>Não entre depois que a janela fechar</span><a href="${link(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
@@ -115,7 +115,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
         ${recentes.length ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th><th class="n">Nota</th></tr></thead><tbody>
           ${recentes.map(({ s }) => `<tr><td><span class="st ${s.status}">${s.status === "COPIAR" ? "Copiar" : "Não"}</span></td>
             <td><a href="${link(s)}" target="_blank" rel="noopener">${esc(s.tituloEvento)}</a><div class="motivo">${esc(s.motivos.join(" · "))}</div></td>
-            <td>${esc(s.lado)}</td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.status === "COPIAR" ? pilulaNota(notaEntrada(s, t, indices)) : "–"}</td></tr>`).join("")}
+            <td>${esc(s.aposta || s.lado)}</td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.status === "COPIAR" ? pilulaNota(notaEntrada(s, t, indices)) : "–"}</td></tr>`).join("")}
           </tbody></table></div>` : `<p class="sem">Nenhuma entrada nos últimos 15 min.</p>`}
       </article>`;
     }).join("");
@@ -140,7 +140,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
     bipe();
     if ("Notification" in window && Notification.permission === "granted") {
       for (const { t, s } of novos) {
-        new Notification(`AO VIVO: ${s.lado} (${t.nome})`, { body: `${s.tituloEvento} — odd mínima ${odd(s.teto)}, janela ${relogio(s.restanteSeg)}`, tag: s.asset });
+        new Notification(`AO VIVO: ${s.aposta || s.lado} (${t.nome})`, { body: `${s.tituloEvento} — odd mínima ${odd(s.teto)}, janela ${relogio(s.restanteSeg)}`, tag: s.asset });
       }
     }
   }

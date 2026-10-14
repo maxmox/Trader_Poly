@@ -1,4 +1,4 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
 import { blocoNota, pilulaNota } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
@@ -129,7 +129,7 @@ const ha = (t) => {
   const m = (Date.now() - t) / 60000;
   return m < 60 ? `há ${Math.max(1, Math.round(m))} min` : m < 2880 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dias`;
 };
-const link = (p) => `https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
+const link = linkMercado; // vai direto ao mercado (não só ao evento)
 
 // ---------- quadro único (pré-jogo + ao vivo) ----------
 const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 } };
@@ -164,6 +164,12 @@ function render() {
   const teste = (x) => x.t.nivel === "teste";
   agoraLista.sort((a, b) => teste(a) - teste(b) || (a.p.status === b.p.status ? (a.p.inicio ?? 9e15) - (b.p.inicio ?? 9e15) : a.p.status === "COPIAR" ? -1 : 1));
   for (let i = agoraLista.length - 1, n = agoraLista.filter(teste).length; i >= 0 && n > 6; i--) if (teste(agoraLista[i])) { agoraLista.splice(i, 1); n--; }
+  // conflito: outro trader recomendado está do lado oposto do mesmo mercado
+  const ladosDoMercado = {};
+  for (const t of traders) for (const q of porCarteira[t.carteira]?.posicoes || []) {
+    if (q.cond) (ladosDoMercado[q.cond] ||= []).push({ t, q });
+  }
+  const conflito = (t, p) => (ladosDoMercado[p.cond] || []).filter((o) => o.q.asset !== p.asset && o.t.carteira !== t.carteira);
   const nCopiar = agoraLista.filter((x) => x.p.status === "COPIAR").length;
   quadro.pre = { n: agoraLista.length, copiar: nCopiar };
   atualizarQuadro();
@@ -174,7 +180,7 @@ function render() {
         return `<article class="card ${p.status}">
           <div class="card-top"><span class="momento pre">Pré-jogo</span><span class="st ${p.status}">${p.status === "COPIAR" ? "Copiar" : "Esperar"}</span>
             <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}${p.tipo ? " · " + esc(rotuloTipo(p.tipo)) : ""}</span></div>
-          <div><div class="evento">${esc(p.tituloEvento)}</div><div class="lado">${esc(p.lado)}</div></div>
+          <div><div class="evento">${esc(p.tituloEvento)}</div><div class="lado">${esc(p.aposta || p.lado)}</div>${p.pergunta && p.pergunta !== p.tituloEvento ? `<div class="pergunta">Mercado: ${esc(p.pergunta)} · lado <b>${esc(p.lado)}</b></div>` : ""}</div>
           <div class="kv">
             <div><small>Odd dele</small><b>${odd(p.precoDele)}</b></div>
             <div><small>Odd agora</small><b>${odd(p.ask)}</b></div>
@@ -183,8 +189,9 @@ function render() {
             <div><small>Livre até o teto</small><b>${usd(p.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(p.entrouEm)}</b></div>
           </div>
+          ${conflito(t, p).map((o) => `<div class="conflito">Conflito: <b>${esc(o.t.nome)}</b> está do lado oposto neste mercado (${esc(o.q.aposta || o.q.lado)}). Copiar os dois anula a aposta.</div>`).join("")}
           ${blocoNota(n, esc)}
-          <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
+          <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.aposta || p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
             aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / p.teto)}</b> se ganhar
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
             ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}</div>
@@ -201,7 +208,7 @@ function render() {
     const linhas = pos.map((p) => `<tr>
         <td><span class="st ${p.status}">${p.status === "NAO" ? "Não" : p.status === "COPIAR" ? "Copiar" : "Esperar"}</span></td>
         <td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
-        <td>${esc(p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}</td>
+        <td>${esc(p.aposta || p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}</td>
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
         <td class="n">${quando(p.horasParaInicio)}</td><td class="n">${p.status === "NAO" ? "–" : pilulaNota(notaEntrada(p, t, indices))}</td></tr>`).join("");
     return `<article class="trader">
@@ -233,7 +240,7 @@ function avisar(lista) {
   if (primeiraCarga) { primeiraCarga = false; return; } // não avisa o que já estava aberto ao entrar
   if (!cfg.aviso || !novos.length || !("Notification" in window) || Notification.permission !== "granted") return;
   for (const { t, p } of novos) {
-    new Notification(`Copiar: ${p.lado} (${t.nome})`, { body: `${p.tituloEvento} — odd mínima ${odd(p.teto)}, começa ${quando(p.horasParaInicio)}`, tag: p.asset });
+    new Notification(`Copiar: ${p.aposta || p.lado} (${t.nome})`, { body: `${p.tituloEvento} — odd mínima ${odd(p.teto)}, começa ${quando(p.horasParaInicio)}`, tag: p.asset });
   }
 }
 

@@ -87,23 +87,25 @@ function msgVivo(env, t, s) {
   const fim = s.entrouEm + t.janelaSeg * 1000;
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
-Entrar: <b>${h(s.lado)}</b>
+Entrar: <b>${h(s.aposta || s.lado)}</b>${s.pergunta && s.pergunta !== s.tituloEvento ? `
+Mercado: ${h(s.pergunta)} · lado ${h(s.lado)}` : ""}
 Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaNota(s.nota)}${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
 Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
 No Polymarket: ordem limitada a ${cents(s.teto)} · segure até o fim
-https://polymarket.com/event/${encodeURIComponent(s.eventSlug)}`;
+${linkMercado(s)}`;
 }
 
 function msgPre(env, t, p) {
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🟢 <b>PRÉ-JOGO · ${h(t.nome)}</b> (${h(rotuloEsporte(p.esporte))}${p.tipo ? " · " + h(rotuloTipo(p.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
-Entrar: <b>${h(p.lado)}</b>
+Entrar: <b>${h(p.aposta || p.lado)}</b>${p.pergunta && p.pergunta !== p.tituloEvento ? `
+Mercado: ${h(p.pergunta)} · lado ${h(p.lado)}` : ""}
 Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaNota(p.nota)}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
-https://polymarket.com/event/${encodeURIComponent(p.eventSlug)}`;
+${linkMercado(p)}`;
 }
 
 // ---------- registro dos sinais enviados ----------
@@ -111,7 +113,7 @@ const corta = (v, n) => String(v ?? "").slice(0, n);
 async function registrarSinal(env, t, x, tipo) {
   if (!env.ENVIADOS || t.nivel === "teste") return;
   const md = {
-    w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.lado, 40), s: corta(x.slug, 90),
+    w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.aposta || x.lado, 60), s: corta(x.slug, 90),
     ev: corta(x.eventSlug, 90), oi: x.oi, p: +x.precoDele.toFixed(4), a: x.ask == null ? null : +x.ask.toFixed(4), mi: +x.teto.toFixed(4),
     nt: x.nota?.nota ?? null, rt: x.nota?.rotulo ?? null, sp: corta(x.esporte, 20), tp: corta(x.tipo, 20),
     t: x.entrouEm || Date.now(), i: x.inicio || null, env: Date.now(), r: null,
@@ -184,7 +186,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
     for (const s of d.sinais) {
-      resumo.aoVivo.push({ trader: t.nome, evento: s.tituloEvento, lado: s.lado, status: s.status, motivos: s.motivos });
+      resumo.aoVivo.push({ trader: t.nome, evento: s.tituloEvento, aposta: s.aposta, status: s.status, motivos: s.motivos });
       // trader de teste manda toda entrada nova (com o veredito), para conferir o fluxo
       if (s.status !== "COPIAR" && t.nivel !== "teste") continue;
       const chave = `v:${s.asset}:${s.entrouEm}`;
@@ -209,7 +211,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
       for (const p of d.posicoes) {
         if (p.status !== "COPIAR") continue;
-        resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, lado: p.lado });
+        resumo.preJogo.push({ trader: t.nome, evento: p.tituloEvento, aposta: p.aposta });
         const chave = `p:${p.asset}`;
         p.nota = notaEntrada(p, t, l.indices);
         if (await jaEnviado(env, chave)) continue;

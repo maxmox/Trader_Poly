@@ -6,7 +6,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import {
   criarApi, vigentes, esporte, liberado, tipoDoMercado, inicioDoMercado, volumeDoMercado,
-  resultadoMercado, entradasDe, precosEntrada, tetoDe, notaEntrada,
+  resultadoMercado, entradasDe, precosEntrada, tetoDe, notaEntrada, descreverAposta,
 } from "../core.js";
 
 const raiz = new URL("../", import.meta.url);
@@ -60,7 +60,7 @@ async function trader({ t, momento }) {
     const mom = inicio == null ? "–" : e.t0 * 1000 >= inicio ? "ao vivo" : "pré-jogo";
     if (mom !== momento || !liberado(t, sp, tipo, mom).ok) continue;
     const res = resultadoMercado(ev, x.slug, x.outcomeIndex);
-    const l = { t0: e.t0 * 1000, evento: ev?.title || x.title, lado: x.outcome, slug: x.slug, eventSlug: x.eventSlug, esporte: sp, tipo,
+    const l = { t0: e.t0 * 1000, evento: ev?.title || x.title, lado: descreverAposta(x.title, x.outcome), slug: x.slug, eventSlug: x.eventSlug, esporte: sp, tipo,
       precoDele: e.preco, usd: e.usd, res, roiDele: res == null ? null : res / e.preco - 1, roiCopia: null, pCopia: null, nota: null };
     if (res != null) {
       const { p60, antes } = await precosEntrada(api, x.conditionId, x.asset, t.carteira, e.t0);
