@@ -32,8 +32,6 @@ jobs:
       - name: Desempenho dos últimos 30 dias (placar)
         run: node scripts/desempenho.mjs
         continue-on-error: true
-      - name: Carimbar a versão (evita cache velho no navegador)
-        run: node scripts/versionar.mjs "${GITHUB_SHA}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
