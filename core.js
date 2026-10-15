@@ -204,6 +204,23 @@ async function emLotes(itens, n, fn) {
   return out;
 }
 
+// VENDAS recentes do trader (para o alerta "SAIR"): agrupa por lado, com a fração vendida.
+// restante[asset] = cotas que ele ainda tem (posições); sem isso, usa as compras da lista.
+export function vendasRecentes(atividade, desdeSeg, restante = {}) {
+  const por = new Map();
+  for (const t of atividade || []) {
+    if (t.side !== "SELL" || t.timestamp < desdeSeg) continue;
+    const v = por.get(t.asset) || { asset: t.asset, cond: t.conditionId, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug, t: t.timestamp, cotas: 0, valor: 0 };
+    v.t = Math.min(v.t, t.timestamp); v.cotas += t.size; v.valor += t.size * t.price;
+    por.set(t.asset, v);
+  }
+  return [...por.values()].map((v) => {
+    const comprou = (atividade || []).filter((t) => t.side === "BUY" && t.asset === v.asset).reduce((s, t) => s + t.size, 0);
+    const base = restante[v.asset] != null ? restante[v.asset] + v.cotas : comprou;
+    return { ...v, preco: v.valor / v.cotas, frac: base > 0 ? Math.min(1, v.cotas / base) : null, aposta: descreverAposta(v.titulo, v.lado) };
+  });
+}
+
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
 export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true, indices = null } = {}) {
   const w = trader.carteira;
@@ -275,7 +292,9 @@ export async function carregarTrader(api, trader, { prefixos, regras = PADRAO, a
   });
   const ordem = { COPIAR: 0, ESPERAR: 1, NAO: 2 };
   itens.sort((a, b) => ordem[a.status] - ordem[b.status] || (a.inicio ?? 9e15) - (b.inicio ?? 9e15));
-  return { carteira: w, posicoes: itens, ultimaAtividade: ultimaAtividade ? ultimaAtividade * 1000 : null };
+  const restante = Object.fromEntries((posicoes || []).map((p) => [p.asset, p.size]));
+  const vendas = vendasRecentes(atividade, agora / 1000 - 3600, restante);
+  return { carteira: w, posicoes: itens, vendas, ultimaAtividade: ultimaAtividade ? ultimaAtividade * 1000 : null };
 }
 
 export async function carregarTodos(api, traders, opts = {}) {
@@ -360,7 +379,7 @@ export async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date
     };
   });
   sinais.sort((a, b) => (a.status === b.status ? b.entrouEm - a.entrouEm : a.status === "COPIAR" ? -1 : 1));
-  return { carteira: w, sinais, ultimaAtividade: atividade[0]?.timestamp ? atividade[0].timestamp * 1000 : null };
+  return { carteira: w, sinais, vendas: vendasRecentes(atividade, corte), ultimaAtividade: atividade[0]?.timestamp ? atividade[0].timestamp * 1000 : null };
 }
 
 export async function carregarAoVivo(api, traders, opts = {}) {

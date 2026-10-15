@@ -196,3 +196,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .kv .tam.pequena { color: var(--warn); font-weight: 600; }
 .kv .tam.simbolica { color: var(--bad); font-weight: 600; }
 .nota-aviso { margin: 6px 0 2px; font-size: 12px; font-weight: 600; color: var(--warn); }
+
+/* trader que vende antes do fim: como ele sai */
+.saida-ent { margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 6px; font-size: 13px; }
+.saida-ent ul { margin: 4px 0; padding-left: 18px; }
+.saida-ent p { margin: 4px 0 0; }

@@ -1,7 +1,7 @@
 // Aba "Ao vivo": sinais de entrada durante o jogo que ainda dá para replicar.
 // Só funciona com acesso em tempo real (direto ou relay): o sinal vale 1–2 minutos.
 import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, PADRAO } from "./core.js";
-import { blocoNota, pilulaNota, tamanhoTxt } from "./nota.js";
+import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida } from "./nota.js";
 
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
@@ -86,7 +86,8 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
             <div><small>Ele entrou</small><b>${ha(s.entrouEm)}</b></div>
           </div>
           ${blocoNota(notaEntrada(s, t, indices), esc)}
-          <div class="ordem">Entrar: <b>${esc(s.aposta || s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). Segure até o fim.
+          ${blocoSaida(t.saida, s.precoDele)}
+          <div class="ordem">Entrar: <b>${esc(s.aposta || s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). ${t.saida ? "Saia junto com ele (veja abaixo)." : "Segure até o fim."}
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
             ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} disponível nessa odd: pode preencher em parte.</span>` : ""}</div>
           <div class="card-foot"><span>Não entre depois que a janela fechar</span><a href="${link(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>

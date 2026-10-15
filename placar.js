@@ -5,12 +5,22 @@ const FORMA = { entregando: "Entregando", "na média": "Na média", abaixo: "Aba
 const classe = (f) => ({ entregando: "good", "na média": "mid", abaixo: "bad" }[f] || "none");
 
 // resumo dos sinais reais de um trader (ROI comprando na odd que estava disponível no envio)
+const fee = (p) => 0.05 * p * (1 - p);
+// valor por cota de quem seguiu o sinal: vendeu nas saídas dele (sx = [[preço, fração], ...], com a taxa)
+// e segurou o resto até o resultado; null se ainda não dá para fechar a conta
+function valorFinal(s) {
+  let resto = 1, v = 0;
+  for (const [p, f] of s.sx || []) { const q = resto * f; v += q * (p - fee(p)); resto -= q; }
+  if (resto <= 0.02) return v;
+  return s.r === 0 || s.r === 1 ? v + resto * s.r : null;
+}
+
 export function resumoRegistro(sinais) {
-  const res = sinais.filter((s) => s.r === 0 || s.r === 1);
-  // ROI comprando na odd disponível no envio, pagando a taxa de taker (5% x p x (1-p))
-  const roi = res.filter((s) => s.a).map((s) => s.r / (s.a + 0.05 * s.a * (1 - s.a)) - 1);
+  const res = sinais.filter((s) => valorFinal(s) != null);
+  // ROI comprando na odd disponível no envio, pagando a taxa de taker (5% x p x (1-p)), com as saídas
+  const roi = res.filter((s) => s.a).map((s) => valorFinal(s) / (s.a + fee(s.a)) - 1);
   return {
-    enviados: sinais.length, abertos: sinais.length - res.length, acertos: res.filter((s) => s.r === 1).length, resolvidos: res.length,
+    enviados: sinais.length, abertos: sinais.length - res.length, acertos: res.filter((s) => valorFinal(s) / (s.a || 1) > 1).length, resolvidos: res.length,
     roi: roi.length ? roi.reduce((a, b) => a + b, 0) / roi.length : null,
   };
 }

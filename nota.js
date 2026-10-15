@@ -29,6 +29,26 @@ export function tamanhoTxt(t) {
   return `<em class="tam ${t.classe}" title="${t.rotulo}${t.mediana ? ` · aposta típica dele: $${Math.round(t.mediana).toLocaleString("pt-BR")}` : ""}">${rel || t.rotulo}</em>`;
 }
 
+// Trader que vende antes do fim: como ele costuma sair e o que fazer (padrão medido em
+// polymarket_traders/saidas_analise.py, gravado em trader.saida)
+const oddTxt = (p) => (1 / p).toFixed(2).replace(".", ",");
+export function blocoSaida(sd, preco) {
+  if (!sd) return "";
+  const alvo = sd.lucro_c && preco ? Math.min(0.99, preco + sd.lucro_c / 100) : null;
+  const stop = sd.perda_c && preco ? Math.max(0.01, preco + sd.perda_c / 100) : null;
+  return `<div class="saida-ent">
+    <strong>🚪 Ele vende antes do fim (em ${sd.pct_sai}% das apostas)</strong>
+    <ul>
+      ${sd.pct_lucro ? `<li>Realiza lucro em ${sd.pct_lucro}% das saídas, com ~+${sd.lucro_c}¢${alvo ? ` → aqui, perto de <b>${Math.round(100 * alvo)}¢ (odd ${oddTxt(alvo)})</b>` : ""}</li>` : ""}
+      ${sd.pct_perda ? `<li>Corta perda em ${sd.pct_perda}% das saídas, com ~${sd.perda_c}¢${stop ? ` → aqui, perto de ${Math.round(100 * stop)}¢ (odd ${oddTxt(stop)})` : ""}</li>` : ""}
+      ${sd.min_med ? `<li>Tempo típico até sair: ~${sd.min_med} min${sd.pct_tudo != null ? ` · vende tudo de uma vez em ${sd.pct_tudo}% das saídas` : ""}</li>` : ""}
+    </ul>
+    <p><b>Como copiar:</b> entre e siga o alerta <b>SAIR</b> do Telegram (chega quando ele vende). Se não puder acompanhar,
+      deixe logo após entrar uma ordem de venda limitada${alvo ? ` a ${Math.round(100 * alvo)}¢` : ""}. Na simulação, copiar a saída dele rendeu ${sd.roi_saida != null ? `${String(sd.roi_saida).replace(".", ",")}%` : "–"}
+      contra ${sd.roi_segurando != null ? `${String(sd.roi_segurando).replace(".", ",")}%` : "–"} segurando até o fim.</p>
+  </div>`;
+}
+
 export function pilulaNota(n) {
   return n ? `<span class="nota-pill ${n.rotulo}" title="trader ${n.trader} · mercado ${n.mercado} · odd e tempo ${n.odd}">${n.nota}</span>` : "–";
 }

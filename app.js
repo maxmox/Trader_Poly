@@ -1,6 +1,6 @@
 import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
-import { blocoNota, pilulaNota, tamanhoTxt } from "./nota.js";
+import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
@@ -191,6 +191,7 @@ function render() {
           </div>
           ${conflito(t, p).map((o) => `<div class="conflito">Conflito: <b>${esc(o.t.nome)}</b> está do lado oposto neste mercado (${esc(o.q.aposta || o.q.lado)}). Copiar os dois anula a aposta.</div>`).join("")}
           ${blocoNota(n, esc)}
+          ${blocoSaida(t.saida, p.precoDele)}
           <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.aposta || p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
             aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(p.teto))}</b> se ganhar (já descontada a taxa)
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
