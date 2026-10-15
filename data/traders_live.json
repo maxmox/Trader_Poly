@@ -82,95 +82,6 @@
    ]
   },
   {
-   "carteira": "0xafd492974cd531aae7786210438ae46b42047e61",
-   "nome": "RevengeRange",
-   "nivel": "observar",
-   "esportes": [
-    "Dota 2",
-    "Valorant",
-    "CS2"
-   ],
-   "janelaSeg": 120,
-   "minUsd": 0,
-   "nota": "Copiando 1 min depois: 11,7% em 91 entradas ao vivo (metade recente 7,9%, metade antiga 15,8%, sem as 3 melhores 2,9%). 10 meses de histórico. Entrada mediana de $2.883, em mercados com $660.006 de volume.",
-   "stats": {
-    "lucro": 237487,
-    "meses": 10,
-    "meses_positivos": 7,
-    "n": 91,
-    "roi_dele": 20.25,
-    "roi_copia_30s": 14.61,
-    "roi_copia_60s": 11.73,
-    "roi_copia_120s": 13.07,
-    "roi_copia_60s_sem_teto": 17.79,
-    "preenche_60s_pct": 76.9,
-    "vol_mercado_med": 660006,
-    "entrada_med_usd": 2883,
-    "deslocamento_med_c": 0.41,
-    "roi_copia_60s_sem_top3": 2.877752152599203,
-    "roi_copia_60s_metade_recente": 7.881832536222955,
-    "roi_copia_60s_metade_antiga": 15.810805075759042
-   }
-  },
-  {
-   "carteira": "0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a",
-   "nome": "Sisyphus-",
-   "nivel": "observar",
-   "esportes": [
-    "Dota 2"
-   ],
-   "janelaSeg": 120,
-   "minUsd": 0,
-   "nota": "Copiando 1 min depois: 10,9% em 100 entradas ao vivo (metade recente 13,2%, metade antiga 8,7%, sem as 3 melhores 1,2%). 8 meses de histórico. Entrada mediana de $5.747, em mercados com $618.694 de volume.",
-   "stats": {
-    "lucro": 430286,
-    "meses": 8,
-    "meses_positivos": 8,
-    "n": 100,
-    "roi_dele": 5.47,
-    "roi_copia_30s": 8.37,
-    "roi_copia_60s": 10.86,
-    "roi_copia_120s": 9.47,
-    "roi_copia_60s_sem_teto": 4.69,
-    "preenche_60s_pct": 76.0,
-    "vol_mercado_med": 618694,
-    "entrada_med_usd": 5747,
-    "deslocamento_med_c": -1.92,
-    "roi_copia_60s_sem_top3": 1.2092144616031935,
-    "roi_copia_60s_metade_recente": 13.151873015646864,
-    "roi_copia_60s_metade_antiga": 8.693681269185841
-   }
-  },
-  {
-   "carteira": "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38",
-   "nome": "SharkbetX-com",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho Futebol · vencedor · ao vivo. Nicho Futebol · vencedor · ao vivo: copiando 1 min depois 88,8% em 31 entradas (sem as 3 melhores 29,1%; metades 138,1% / 48,7%).",
-   "stats": {
-    "lucro": 130729,
-    "lucro_sem_top5": -529179,
-    "meses": 10,
-    "meses_positivos": 6,
-    "apostas": 31,
-    "n": 31,
-    "roi_copia_5min": 27.99,
-    "roi_dele": 47.5,
-    "roi_copia_60s": 88.77,
-    "preenche_60s_pct": 93.5,
-    "vol_mercado_med": 433990
-   },
-   "janelaSeg": 120,
-   "minUsd": 0
-  },
-  {
    "carteira": "0xc1de5ffb02d2b354932ccf5e31172545965e21f5",
    "nome": "Barbozaaa321",
    "nivel": "observar",
@@ -197,35 +108,6 @@
     "vol_mercado_med": 592991
    },
    "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
-   "carteira": "0xc90eb3042c686f8e722af64fb6841dd1077dc7b6",
-   "nome": "henry999999",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "LoL",
-     "tipo": "child_moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando 1 min depois 31,4% em 46 entradas (sem as 3 melhores 3,1%; metades 0,5% / 68,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
-   "stats": {
-    "lucro": 2108.8079,
-    "lucro_sem_top5": null,
-    "meses": 5,
-    "meses_positivos": 1,
-    "apostas": 46,
-    "n": 46,
-    "roi_copia_5min": 9.13,
-    "roi_dele": 19.04,
-    "roi_copia_60s": 31.38,
-    "preenche_60s_pct": 71.7,
-    "vol_mercado_med": 1848524
-   },
-   "janelaSeg": 120,
    "minUsd": 0
   }
  ]
