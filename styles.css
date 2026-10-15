@@ -189,3 +189,10 @@ table.estreita { min-width: 0; max-width: 560px; }
 .pergunta b { color: var(--ink-2); }
 .conflito { background: var(--bad-bg); color: var(--bad); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
 .conflito b { color: var(--bad); }
+
+/* tamanho da aposta dele vs a aposta típica */
+.kv .tam { display: block; font-style: normal; font-size: 11px; margin-top: 2px; color: var(--ink-3); }
+.kv .tam.grande { color: var(--good); font-weight: 600; }
+.kv .tam.pequena { color: var(--warn); font-weight: 600; }
+.kv .tam.simbolica { color: var(--bad); font-weight: 600; }
+.nota-aviso { margin: 6px 0 2px; font-size: 12px; font-weight: 600; color: var(--warn); }

@@ -4,7 +4,7 @@
   {
    "carteira": "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f",
    "nome": "GamblingOdyssey",
-   "nivel": "copiar",
+   "nivel": "observar",
    "esportes": [
     "Futebol",
     "Tenis"
@@ -45,7 +45,7 @@
   {
    "carteira": "0x54ce7dd357766fc3255645e55ef41edd51cc9f80",
    "nome": "mde4life1986",
-   "nivel": "copiar",
+   "nivel": "observar",
    "esportes": [
     "Futebol Americano",
     "Futebol"
@@ -205,54 +205,6 @@
    }
   },
   {
-   "carteira": "0x32ed517a571c01b6e9adecf61ba81ca48ff2f960",
-   "nome": "sportmaster777",
-   "nivel": "observar",
-   "esportes": [
-    "Futebol",
-    "Tenis",
-    "CS2"
-   ],
-   "nota": "Curva excelente (Sharpe 3,8), mas ~41 trades/dia e histórico por esporte incompleto. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 36,6% em 33 entradas (sem as 3 melhores 21,7%; metades 24,8% / 49,9%).",
-   "stats": {
-    "lucro": 1375379,
-    "lucro_sem_top5": 1135470,
-    "meses": 12,
-    "meses_positivos": 9,
-    "apostas": 8000,
-    "roi_copia_5min": 34.43,
-    "roi_dele": 39.99,
-    "antecedencia_h": 4.7,
-    "por_esporte": {
-     "CS2": {
-      "n": 141,
-      "roi_pct": 31.29,
-      "meses": 4,
-      "meses_pos_pct": 75.0
-     },
-     "Tenis": {
-      "n": 62,
-      "roi_pct": 15.38,
-      "meses": 2,
-      "meses_pos_pct": 100.0
-     },
-     "Futebol": {
-      "n": 171,
-      "roi_pct": 22.12,
-      "meses": 5,
-      "meses_pos_pct": 40.0
-     }
-    }
-   },
-   "nichos": [
-    {
-     "area": "Futebol Americano",
-     "tipo": "spreads",
-     "momento": "pré-jogo"
-    }
-   ]
-  },
-  {
    "carteira": "0x2ce8505aa641791eb8460f6ac6bf5c0511e34527",
    "nome": "0x2cE8…4527",
    "nivel": "observar",
@@ -275,33 +227,6 @@
       "roi_pct": 26.17,
       "meses": 10,
       "meses_pos_pct": 60.0
-     }
-    }
-   }
-  },
-  {
-   "carteira": "0x84dbb7103982e3617704a2ed7d5b39691952aeeb",
-   "nome": "Soarin22",
-   "nivel": "observar",
-   "esportes": [
-    "Basquete"
-   ],
-   "nota": "Especialista de NBA regular (9 de 11 meses +), mas a margem copiando é fina (3,4%).",
-   "stats": {
-    "lucro": 1587552,
-    "lucro_sem_top5": 681745,
-    "meses": 18,
-    "meses_positivos": 11,
-    "apostas": 2650,
-    "roi_copia_5min": 3.36,
-    "roi_dele": 7.69,
-    "antecedencia_h": 0.9,
-    "por_esporte": {
-     "Basquete": {
-      "n": 1952,
-      "roi_pct": 4.87,
-      "meses": 11,
-      "meses_pos_pct": 81.8
      }
     }
    }

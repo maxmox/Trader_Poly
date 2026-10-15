@@ -1,6 +1,6 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
-import { blocoNota, pilulaNota } from "./nota.js";
+import { blocoNota, pilulaNota, tamanhoTxt } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
@@ -68,7 +68,7 @@ async function json(path) {
 
 async function buscarVivo() {
   const api = criarApi({ relay: relay() });
-  const res = await carregarTodos(api, traders, { prefixos, regras: regras() });
+  const res = await carregarTodos(api, traders, { prefixos, regras: regras(), indices });
   if (res.traders.every((t) => t.erro)) throw new Error(res.traders[0]?.erro || "sem resposta");
   return res;
 }
@@ -185,14 +185,14 @@ function render() {
             <div><small>Odd dele</small><b>${odd(p.precoDele)}</b></div>
             <div><small>Odd agora</small><b>${odd(p.ask)}</b></div>
             <div><small>Começa</small><b>${quando(p.horasParaInicio)}</b></div>
-            <div><small>Ele apostou</small><b>${usd(p.valorDele)}</b></div>
+            <div><small>Ele apostou</small><b>${usd(p.valorDele)}</b>${tamanhoTxt(p.tamanho)}</div>
             <div><small>Livre até o teto</small><b>${usd(p.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(p.entrouEm)}</b></div>
           </div>
           ${conflito(t, p).map((o) => `<div class="conflito">Conflito: <b>${esc(o.t.nome)}</b> está do lado oposto neste mercado (${esc(o.q.aposta || o.q.lado)}). Copiar os dois anula a aposta.</div>`).join("")}
           ${blocoNota(n, esc)}
           <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.aposta || p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
-            aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / p.teto)}</b> se ganhar
+            aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(p.teto))}</b> se ganhar (já descontada a taxa)
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
             ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}</div>
           <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = no máximo ${cfg.teto}¢ (ou 10%) de preço pior que a dele`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>

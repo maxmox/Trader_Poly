@@ -142,67 +142,6 @@
    }
   },
   {
-   "carteira": "0x38181f43e5802391522583a82d05893df3039797",
-   "nome": "MissingJoy",
-   "nivel": "observar",
-   "esportes": [
-    "LoL",
-    "Valorant"
-   ],
-   "janelaSeg": 60,
-   "minUsd": 0,
-   "nota": "Copiando 1 min depois: 8,7% em 100 entradas ao vivo (metade recente -1,3%, metade antiga 17,8%, sem as 3 melhores 0,3%). 6 meses de histórico. Entrada mediana de $1.172, em mercados com $698.391 de volume.",
-   "stats": {
-    "lucro": 117838,
-    "meses": 6,
-    "meses_positivos": 4,
-    "n": 100,
-    "roi_dele": 1.12,
-    "roi_copia_30s": 4.69,
-    "roi_copia_60s": 8.7,
-    "roi_copia_120s": 0.24,
-    "roi_copia_60s_sem_teto": 1.89,
-    "preenche_60s_pct": 84.0,
-    "vol_mercado_med": 698391,
-    "entrada_med_usd": 1172,
-    "deslocamento_med_c": -1.53,
-    "roi_copia_60s_sem_top3": 0.3108607855719496,
-    "roi_copia_60s_metade_recente": -1.2681137754128324,
-    "roi_copia_60s_metade_antiga": 17.766801104117175
-   }
-  },
-  {
-   "carteira": "0xee00ba338c59557141789b127927a55f5cc5cea1",
-   "nome": "S-Works",
-   "nivel": "observar",
-   "esportes": [
-    "LoL",
-    "Beisebol",
-    "CS2"
-   ],
-   "janelaSeg": 120,
-   "minUsd": 0,
-   "nota": "Copiando 1 min depois: 15,5% em 83 entradas ao vivo (metade recente -1,6%, metade antiga 36,8%, sem as 3 melhores -7,4%). 24 meses de histórico. Entrada mediana de $32.320, em mercados com $1.637.821 de volume.",
-   "stats": {
-    "lucro": 2392170,
-    "meses": 24,
-    "meses_positivos": 19,
-    "n": 83,
-    "roi_dele": 40.41,
-    "roi_copia_30s": 14.44,
-    "roi_copia_60s": 15.54,
-    "roi_copia_120s": 13.5,
-    "roi_copia_60s_sem_teto": 24.12,
-    "preenche_60s_pct": 67.5,
-    "vol_mercado_med": 1637821,
-    "entrada_med_usd": 32320,
-    "deslocamento_med_c": 0.35,
-    "roi_copia_60s_sem_top3": -7.439351960975845,
-    "roi_copia_60s_metade_recente": -1.5837247295677679,
-    "roi_copia_60s_metade_antiga": 36.78048567868199
-   }
-  },
-  {
    "carteira": "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38",
    "nome": "SharkbetX-com",
    "nivel": "observar",
@@ -234,7 +173,7 @@
   {
    "carteira": "0xc1de5ffb02d2b354932ccf5e31172545965e21f5",
    "nome": "Barbozaaa321",
-   "nivel": "copiar",
+   "nivel": "observar",
    "esportes": [],
    "nichos": [
     {
@@ -285,35 +224,6 @@
     "roi_copia_60s": 31.38,
     "preenche_60s_pct": 71.7,
     "vol_mercado_med": 1848524
-   },
-   "janelaSeg": 120,
-   "minUsd": 0
-  },
-  {
-   "carteira": "0xedf1c2756d93349275a1eb9a4fdf122f7b755776",
-   "nome": "Nerdbet",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho Futebol · vencedor · ao vivo. Nicho Futebol · vencedor · ao vivo: copiando 1 min depois 8,4% em 46 entradas (sem as 3 melhores 5,7%; metades 9,5% / 7,4%). Achado no garimpo de apostas grandes em futebol (fora dos rankings); conta nova, vende boa parte antes do fim.",
-   "stats": {
-    "lucro": null,
-    "lucro_sem_top5": null,
-    "meses": 0,
-    "meses_positivos": 0,
-    "apostas": 46,
-    "n": 46,
-    "roi_copia_5min": 9.19,
-    "roi_dele": 7.4,
-    "roi_copia_60s": 8.39,
-    "preenche_60s_pct": 87.0,
-    "vol_mercado_med": 67111
    },
    "janelaSeg": 120,
    "minUsd": 0

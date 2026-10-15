@@ -1,7 +1,7 @@
 // Aba "Ao vivo": sinais de entrada durante o jogo que ainda dá para replicar.
 // Só funciona com acesso em tempo real (direto ou relay): o sinal vale 1–2 minutos.
-import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, PADRAO } from "./core.js";
-import { blocoNota, pilulaNota } from "./nota.js";
+import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, PADRAO } from "./core.js";
+import { blocoNota, pilulaNota, tamanhoTxt } from "./nota.js";
 
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
@@ -20,7 +20,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
       if (cacheEventos.size > 300) cacheEventos.clear();
       traders = vigentes(traders); // trader de teste some sozinho quando expira
       const res = await carregarAoVivo(criarApi({ relay: cfg.relay }), traders, {
-        prefixos, regras: { ...PADRAO, tetoCentavos: cfg.teto }, cacheEventos,
+        prefixos, regras: { ...PADRAO, tetoCentavos: cfg.teto }, cacheEventos, indices,
       });
       if (res.traders.every((t) => t.erro)) throw new Error(res.traders[0]?.erro || "sem resposta");
       dados = res; erro = null;
@@ -81,12 +81,12 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
             <div><small>Odd dele</small><b>${odd(s.precoDele)}</b></div>
             <div><small>Odd agora</small><b>${odd(s.ask)}</b></div>
             <div><small>Janela</small><b class="countdown" data-fim="${Date.now() + s.restanteSeg * 1000}">${relogio(s.restanteSeg)}</b></div>
-            <div><small>Ele apostou</small><b>${usd(s.valorDele)}</b></div>
+            <div><small>Ele apostou</small><b>${usd(s.valorDele)}</b>${tamanhoTxt(s.tamanho)}</div>
             <div><small>Livre na odd</small><b>${usd(s.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(s.entrouEm)}</b></div>
           </div>
           ${blocoNota(notaEntrada(s, t, indices), esc)}
-          <div class="ordem">Entrar: <b>${esc(s.aposta || s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / s.teto)}</b> se ganhar. Segure até o fim.
+          <div class="ordem">Entrar: <b>${esc(s.aposta || s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). Segure até o fim.
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
             ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} disponível nessa odd: pode preencher em parte.</span>` : ""}</div>
           <div class="card-foot"><span>Não entre depois que a janela fechar</span><a href="${link(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>

@@ -6,7 +6,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import {
   criarApi, vigentes, esporte, liberado, tipoDoMercado, inicioDoMercado, volumeDoMercado,
-  resultadoMercado, entradasDe, precosEntrada, tetoDe, notaEntrada, descreverAposta,
+  resultadoMercado, entradasDe, precosEntrada, tetoDe, pisoDe, notaEntrada, descreverAposta, custoCopia, tamanhoAposta,
 } from "../core.js";
 
 const raiz = new URL("../", import.meta.url);
@@ -46,6 +46,8 @@ function resumo(L) {
     entradas: L.length, abertas: L.length - res.length, resolvidas: res.length,
     acertos: res.filter((x) => x.res === 1).length,
     roi_dele: media(res.map((x) => x.roiDele)), copiaveis: cop.length, roi_copia: media(cop.map((x) => x.roiCopia)),
+    // odd média: 35/35 acertos com odd 1,08 é favorito pesado, não habilidade rara
+    odd_media: res.length ? res.length / res.reduce((s, x) => s + x.precoDele, 0) : null,
   };
 }
 
@@ -55,17 +57,21 @@ async function trader({ t, momento }) {
   for (const e of entradasDe(ativ)) {
     if (e.t0 * 1000 < agora - DIAS * 864e5 || linhas.length >= MAX_ENTRADAS) break;
     if (!(e.preco > 0.02 && e.preco < 0.98)) continue;
+    // aposta simbólica nunca vira sinal, então também não entra no placar
+    const tamanho = tamanhoAposta(e.usdTotal, indices?.mediana_total?.[t.carteira]);
+    if (tamanho?.classe === "simbolica") continue;
     const x = e.ex, ev = await evento(x.eventSlug);
     const sp = esporte(x.eventSlug || x.slug, ev, prefixos), tipo = tipoDoMercado(ev, x.slug), inicio = inicioDoMercado(ev, x.slug);
     const mom = inicio == null ? "–" : e.t0 * 1000 >= inicio ? "ao vivo" : "pré-jogo";
     if (mom !== momento || !liberado(t, sp, tipo, mom).ok) continue;
     const res = resultadoMercado(ev, x.slug, x.outcomeIndex);
     const l = { t0: e.t0 * 1000, evento: ev?.title || x.title, lado: descreverAposta(x.title, x.outcome), slug: x.slug, eventSlug: x.eventSlug, esporte: sp, tipo,
-      precoDele: e.preco, usd: e.usd, res, roiDele: res == null ? null : res / e.preco - 1, roiCopia: null, pCopia: null, nota: null };
+      precoDele: e.preco, usd: e.usd, res, roiDele: res == null ? null : res / e.precoPago - 1, roiCopia: null, pCopia: null, nota: null };
     if (res != null) {
       const { p60, antes } = await precosEntrada(api, x.conditionId, x.asset, t.carteira, e.t0);
-      if (p60 != null && p60 <= tetoDe(e.preco) && p60 + SLIP < 0.99) { l.pCopia = p60; l.roiCopia = res / (p60 + SLIP) - 1; }
-      const n = notaEntrada({ precoDele: e.preco, usdEntrada: e.usd, antes, momento: mom, volMercado: volumeDoMercado(ev, x.slug),
+      // quem copia paga o preço negociado 1 min depois + a taxa de taker
+      if (p60 != null && p60 <= tetoDe(e.preco) && p60 >= pisoDe(e.preco) && custoCopia(p60) < 0.99) { l.pCopia = p60; l.roiCopia = res / custoCopia(p60) - 1; }
+      const n = notaEntrada({ precoDele: e.preco, usdEntrada: e.usd, valorDele: e.usdTotal, tamanho, antes, momento: mom, volMercado: volumeDoMercado(ev, x.slug),
         ask: p60 ?? e.preco, inicio, entrouEm: e.t0 * 1000 }, t, indices);
       if (n) l.nota = { nota: n.nota, rotulo: n.rotulo };
     }

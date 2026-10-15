@@ -17,7 +17,34 @@ const HOSTS = {
 // nada depois do início do jogo, nada acima de 97 centavos (sem margem).
 // Em azarões o teto é proporcional (no máximo 10% do preço): 2¢ sobre um preço de 2¢
 // dobraria o preço (odd 47 → 24).
-const PADRAO = { tetoCentavos: 2, tetoRelativo: 0.10, toleranciaCentavos: 5, toleranciaRelativa: 0.25, precoMax: 0.97 };
+const PADRAO = { tetoCentavos: 2, tetoRelativo: 0.10, toleranciaCentavos: 5, toleranciaRelativa: 0.25, precoMax: 0.97, pisoCentavos: 10 };
+// Piso: se o preço caiu mais de 10¢ desde a entrada dele (a odd subiu muito), o cenário mudou
+// (ex.: gol contra) e copiar é outra aposta. Na auditoria, essas cópias ao vivo deram -22% de ROI.
+const pisoDe = (preco, r = PADRAO) => preco - (r.pisoCentavos ?? 10) / 100;
+
+// TAMANHO DA APOSTA DELE: quanto ele pôs neste mercado (total, não só o 1º minuto) contra a
+// aposta típica dele (mediana, data/indices.json). Profissional que marca entrada com $1 para
+// conferir depois não está apostando: isso não é sinal.
+//   simbólica = menos de $20 ou menos de 10% da mediana -> não vira sinal
+//   pequena   = menos de 50% da mediana                 -> só aviso (no histórico não rendeu menos)
+// Histórico (5.443 entradas, total por mercado): < $20 copiando -15%; < 10% do normal -2%;
+// 10–50% +7,7%; normal +2,7%; > 2x +5,6% (acerto 66%).
+const APOSTA = { minUsd: 20, simbolica: 0.10, pequena: 0.5, grande: 2 };
+const usdTxt = (v) => "$" + Math.round(v).toLocaleString("pt-BR");
+function tamanhoAposta(valor, mediana) {
+  if (valor == null || !(valor >= 0)) return null;
+  const r = mediana ? valor / mediana : null;
+  const classe = valor < APOSTA.minUsd || (r != null && r < APOSTA.simbolica) ? "simbolica"
+    : r == null ? "sem-ref" : r < APOSTA.pequena ? "pequena" : r <= APOSTA.grande ? "normal" : "grande";
+  const rel = r == null ? "" : r < 0.995 ? (r < 0.01 ? "menos de 1%" : `${Math.round(100 * r)}%`) + " da aposta típica dele" : `${r.toFixed(1).replace(".", ",")}× a aposta típica dele`;
+  const ref = mediana ? ` (${usdTxt(mediana)})` : "";
+  const rot = { simbolica: "aposta simbólica", pequena: "aposta pequena para ele", normal: "aposta normal dele", grande: "aposta grande, acima do normal dele", "sem-ref": "sem histórico para comparar" }[classe];
+  return { valor, mediana: mediana || null, razao: r, classe, rotulo: rot, texto: `${usdTxt(valor)}${rel ? ` = ${rel}${ref}` : ""}` };
+}
+// Taxa de taker do Polymarket: 5% x p x (1 - p) por cota (quem compra do livro paga; quem deixa
+// ordem parada no livro e é executado não paga). Medida na auditoria de out/2026.
+const taxa = (p) => 0.05 * p * (1 - p);
+const custoCopia = (p) => p + taxa(p);
 const tetoDe = (preco, r = PADRAO) => Math.min(preco + Math.min(r.tetoCentavos / 100, preco * (r.tetoRelativo ?? 1)), r.precoMax);
 const toleranciaDe = (preco, r = PADRAO) => preco + Math.min(r.toleranciaCentavos / 100, preco * (r.toleranciaRelativa ?? 1));
 
@@ -146,6 +173,7 @@ function avaliar({ pos, evento, book, trader, agora, regras = PADRAO, prefixos }
 
   if (!encerrado) {
     if (ask == null) { piora("NAO"); motivos.push("sem ofertas de venda no livro"); }
+    else if (ask < pisoDe(preco, regras)) { piora("NAO"); motivos.push(`o cenário mudou: a odd subiu de ${odd(preco)} para ${odd(ask)} desde a entrada dele`); }
     else if (ask >= regras.precoMax) { piora("NAO"); motivos.push(`odd ${odd(ask)} — sem margem`); }
     else if (ask > toleranciaDe(preco, regras)) { piora("NAO"); motivos.push(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`); }
     else if (ask > teto) { piora("ESPERAR"); motivos.push(`odd ${odd(ask)} abaixo da mínima ${odd(teto)} — deixe ordem limitada`); }
@@ -182,7 +210,7 @@ async function emLotes(itens, n, fn) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true } = {}) {
+async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true, indices = null } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
@@ -233,12 +261,18 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
         v.motivos = ["ele apostou na vitória dos dois times deste jogo (proteção)", ...v.motivos.filter((m) => !m.startsWith("aceite"))];
       }
     }
+    // aposta simbólica (ex.: $1 só para marcar a entrada) não é sinal
+    const tamanho = tamanhoAposta(pos.initialValue, indices?.mediana_total?.[w]);
+    if (tamanho?.classe === "simbolica") {
+      v.status = "NAO";
+      v.motivos = [`aposta simbólica: ${tamanho.texto}`, ...v.motivos.filter((m) => !m.startsWith("aceite"))];
+    }
     // a primeira compra só é confiável se aconteceu depois do início da lista de atividade
     const t0 = primeiraCompra[pos.asset] && primeiraCompra[pos.asset] > maisAntigo ? primeiraCompra[pos.asset] : null;
     const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
     return {
       titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId, oi: pos.outcomeIndex,
-      valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl,
+      valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl, tamanho,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
       usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
       tituloEvento: ev?.title || pos.title, pergunta: pos.title, aposta: descreverAposta(pos.title, pos.outcome), ...v,
@@ -266,7 +300,7 @@ async function carregarTodos(api, traders, opts = {}) {
 // Um sinal = primeira compra do trader num mercado com o jogo em andamento,
 // feita há menos de `janelaSeg`, com a odd atual ainda perto da dele.
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
-async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false, comNivel = true } = {}) {
+async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false, comNivel = true, indices = null } = {}) {
   const w = trader.carteira;
   const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
   const corte = agora / 1000 - historicoSeg;
@@ -274,8 +308,10 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
   const porAtivo = new Map();
   for (const t of [...atividade].sort((a, b) => a.timestamp - b.timestamp)) {
     if (t.side !== "BUY") continue;
-    const e = porAtivo.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, ex: t };
-    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; }
+    const e = porAtivo.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, valor: 0, usdTotal: 0, ex: t };
+    // usd inclui a taxa (se ele foi taker); valor = cotas x preço de mercado (sem taxa)
+    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; e.valor += t.size * t.price; }
+    e.usdTotal += t.usdcSize; // tudo o que ele pôs neste lado até agora
     porAtivo.set(t.asset, e);
   }
   const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
@@ -297,7 +333,7 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     const sp = esporte(t.eventSlug || t.slug, ev, prefixos);
     const inicio = inicioDoJogo(ev, t.slug);
     const { asks, ask } = melhorAsk(book);
-    const preco = e.usd / e.cotas;
+    const preco = e.valor / e.cotas; // preço de mercado da entrada dele (sem taxa)
     const teto = tetoDe(preco, regras);
     const idadeSeg = agora / 1000 - e.t0;
     const aoVivo = ev?.live === true || (inicio != null && e.t0 * 1000 >= inicio);
@@ -310,10 +346,13 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
     if (!lib.ok) nao(areasDo(trader).has(sp) ? `${rotuloEsporte(sp)} · ${rotuloTipo(tipo)} não é o nicho dele` : `${rotuloEsporte(sp)} não é a especialidade dele`);
     if (!book || ev?.closed || ev?.ended) nao("mercado fechado");
     else if (ask == null) nao("sem ofertas no livro");
+    else if (ask < pisoDe(preco, regras)) nao(`o cenário mudou: a odd subiu de ${odd(preco)} para ${odd(ask)} desde a entrada dele`);
     else if (ask > teto) nao(`odd caiu: ${odd(ask)} vs ${odd(preco)} dele`);
     if (idadeSeg > trader.janelaSeg) nao(`passou da janela de ${Math.round(trader.janelaSeg / 60)} min`);
     const outroLado = atividade.some((a) => a.side === "BUY" && a.conditionId === t.conditionId && a.asset !== t.asset);
     if (outroLado) nao("ele também comprou o outro lado deste mercado (proteção, não é aposta direcional)");
+    const tamanho = tamanhoAposta(e.usdTotal, indices?.mediana_total?.[w]);
+    if (tamanho?.classe === "simbolica") nao(`aposta simbólica: ${tamanho.texto}`);
     if (status === "COPIAR") motivos.push(`aceite odd a partir de ${odd(teto)}`);
     const antes = comNivel && status === "COPIAR" ? await nivelAntes(api, t.conditionId, t.asset, w, e.t0) : null;
     return {
@@ -321,7 +360,7 @@ async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(),
       carteira: w, asset: t.asset, titulo: t.title, lado: t.outcome, slug: t.slug, eventSlug: t.eventSlug,
       tituloEvento: ev?.title || t.title, pergunta: t.title, aposta: descreverAposta(t.title, t.outcome),
       esporte: sp, tipo, nicho: lib.nicho, placar: ev?.score || null, periodo: ev?.period || null,
-      entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usd, precoDele: preco,
+      entrouEm: e.t0 * 1000, idadeSeg, restanteSeg: trader.janelaSeg - idadeSeg, valorDele: e.usdTotal, tamanho, precoDele: preco,
       ask, teto, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), status, motivos,
     };
   });
@@ -376,9 +415,15 @@ function notaEntrada(x, trader, ind) {
   }
   const pts = (v) => Math.max(0, Math.min(100, Math.round(50 + ind.escala * 100 * v)));
   const esperado = ind.media + soma.trader + soma.mercado + soma.odd;
-  const nota = pts(esperado);
+  let nota = pts(esperado), aviso = null;
+  // o modelo mede o tamanho em faixas largas; a regra abaixo garante que aposta pequena
+  // nunca sai como "boa"/"forte" e que aposta simbólica sai como "fraca"
+  const tamanho = x.tamanho || tamanhoAposta(x.valorDele, ind.mediana_total?.[trader.carteira]);
+  if (tamanho?.classe === "simbolica") { nota = Math.min(nota, 49); aviso = `Aposta simbólica: ${tamanho.texto}. Não é sinal.`; }
+  // aposta "pequena" (10–50% do normal) não rendeu menos no histórico (+7,7% copiando, n=588): só avisa
+  else if (tamanho?.classe === "pequena") aviso = `Aposta pequena para ele: ${tamanho.texto}.`;
   return {
-    trader: pts(soma.trader), mercado: pts(soma.mercado), odd: pts(soma.odd), nota, esperado,
+    trader: pts(soma.trader), mercado: pts(soma.mercado), odd: pts(soma.odd), nota, esperado, tamanho, aviso,
     rotulo: nota >= 66 ? "forte" : nota >= 58 ? "boa" : nota >= 50 ? "neutra" : "fraca", fatores,
   };
 }
@@ -429,13 +474,25 @@ function entradasDe(atividade) {
   const por = new Map();
   for (const t of [...atividade].sort((a, b) => a.timestamp - b.timestamp)) {
     if (t.side !== "BUY") continue;
-    const e = por.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, ex: t };
-    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; }
+    const e = por.get(t.asset) || { t0: t.timestamp, usd: 0, cotas: 0, valor: 0, usdTotal: 0, ex: t };
+    if (t.timestamp <= e.t0 + 60) { e.usd += t.usdcSize; e.cotas += t.size; e.valor += t.size * t.price; }
+    e.usdTotal += t.usdcSize;
     por.set(t.asset, e);
   }
   const maisAntigo = atividade.length ? Math.min(...atividade.map((t) => t.timestamp)) : 0;
-  return [...por.values()].filter((e) => e.t0 > maisAntigo && e.cotas > 0)
-    .map((e) => ({ ...e, preco: e.usd / e.cotas })).sort((a, b) => b.t0 - a.t0);
+  const lista = [...por.values()].filter((e) => e.t0 > maisAntigo && e.cotas > 0)
+    // preco = preço de mercado (sem taxa); precoPago = custo dele (com a taxa, se foi taker)
+    .map((e) => ({ ...e, preco: e.valor / e.cotas, precoPago: e.usd / e.cotas }));
+  // dois lados do mesmo mercado: só o lado dominante conta, e só se o outro for < 50% dele
+  const porCond = new Map();
+  for (const e of lista) (porCond.get(e.ex.conditionId) || porCond.set(e.ex.conditionId, []).get(e.ex.conditionId)).push(e);
+  const limpo = [];
+  for (const L of porCond.values()) {
+    if (L.length === 1) { limpo.push(L[0]); continue; }
+    L.sort((a, b) => b.usdTotal - a.usdTotal);
+    if (L.slice(1).reduce((s, e) => s + e.usdTotal, 0) < 0.5 * L[0].usdTotal) limpo.push(L[0]);
+  }
+  return limpo.sort((a, b) => b.t0 - a.t0);
 }
 
 // preço que quem copia pagaria 1 min depois (1º negócio de compra no lado dele) e o nível antes
@@ -533,7 +590,7 @@ function aposta(env, teto) {
   const banca = parseFloat(env.BANCA || "0"), pct = parseFloat(env.PCT || "0");
   if (!banca || !pct) return "";
   const v = (banca * pct) / 100;
-  return `\nAposta: <b>${usd(v)}</b> → retorno <b>${usd(v / teto)}</b> se ganhar`;
+  return `\nAposta: <b>${usd(v)}</b> → retorno <b>${usd(v / custoCopia(teto))}</b> se ganhar (com a taxa)`;
 }
 
 function linhaNota(n) {
@@ -542,13 +599,21 @@ function linhaNota(n) {
   return `\n${ic} Nota <b>${n.nota}</b> (${n.rotulo}) · trader ${n.trader} · mercado ${n.mercado} · odd/tempo ${n.odd}`;
 }
 
+// o quanto ele apostou pesa tanto quanto a odd: $1 de um profissional é só marcação
+function linhaTamanho(x) {
+  const tm = x.tamanho;
+  if (!tm) return x.valorDele ? `\n💵 Ele apostou <b>${usd(x.valorDele)}</b>` : "";
+  const ic = { grande: "💰", normal: "💵", pequena: "⚠️", simbolica: "⛔", "sem-ref": "💵" }[tm.classe];
+  return `\n${ic} Ele apostou <b>${h(tm.texto)}</b> · ${h(tm.rotulo)}`;
+}
+
 function msgVivo(env, t, s) {
   const fim = s.entrouEm + t.janelaSeg * 1000;
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.aposta || s.lado)}</b>${s.pergunta && s.pergunta !== s.tituloEvento ? `
 Mercado: ${h(s.pergunta)} · lado ${h(s.lado)}` : ""}
-Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaNota(s.nota)}${t.nivel === "teste" ? `
+Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaTamanho(s)}${linhaNota(s.nota)}${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
 Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
@@ -561,7 +626,7 @@ function msgPre(env, t, p) {
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.aposta || p.lado)}</b>${p.pergunta && p.pergunta !== p.tituloEvento ? `
 Mercado: ${h(p.pergunta)} · lado ${h(p.lado)}` : ""}
-Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaNota(p.nota)}${aposta(env, p.teto)}
+Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaTamanho(p)}${linhaNota(p.nota)}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 ${linkMercado(p)}`;
@@ -575,6 +640,7 @@ async function registrarSinal(env, t, x, tipo) {
     w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.aposta || x.lado, 60), s: corta(x.slug, 90),
     ev: corta(x.eventSlug, 90), oi: x.oi, p: +x.precoDele.toFixed(4), a: x.ask == null ? null : +x.ask.toFixed(4), mi: +x.teto.toFixed(4),
     nt: x.nota?.nota ?? null, rt: x.nota?.rotulo ?? null, sp: corta(x.esporte, 20), tp: corta(x.tipo, 20),
+    u: x.valorDele == null ? null : Math.round(x.valorDele), tc: x.tamanho?.classe ?? null,
     t: x.entrouEm || Date.now(), i: x.inicio || null, env: Date.now(), r: null,
   };
   await env.ENVIADOS.put(`r:${Date.now()}:${corta(x.asset, 12)}`, "", { metadata: md, expirationTtl: 90 * 86400 });
@@ -640,7 +706,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], preTrader: null, enviados: 0, consultas: 0, erros: [] };
 
   // pouca atividade por trader: entradas novas cabem nas últimas 30 e o plano grátis tem pouco CPU
-  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true });
+  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true, indices: l.indices });
   for (const [k, d] of rv.traders.entries()) {
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -664,7 +730,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     : [...pre.filter((t) => t.nivel === "teste"), ...(normais.length ? [normais[minuto % normais.length]] : [])];
   resumo.preTrader = lista.map((t) => t.nome).join(", ");
   {
-    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8 });
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8, indices: l.indices });
     for (const [k, d] of rp.traders.entries()) {
       const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);

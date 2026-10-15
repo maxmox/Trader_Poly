@@ -74,7 +74,7 @@ function aposta(env, teto) {
   const banca = parseFloat(env.BANCA || "0"), pct = parseFloat(env.PCT || "0");
   if (!banca || !pct) return "";
   const v = (banca * pct) / 100;
-  return `\nAposta: <b>${usd(v)}</b> → retorno <b>${usd(v / teto)}</b> se ganhar`;
+  return `\nAposta: <b>${usd(v)}</b> → retorno <b>${usd(v / custoCopia(teto))}</b> se ganhar (com a taxa)`;
 }
 
 function linhaNota(n) {
@@ -83,13 +83,21 @@ function linhaNota(n) {
   return `\n${ic} Nota <b>${n.nota}</b> (${n.rotulo}) · trader ${n.trader} · mercado ${n.mercado} · odd/tempo ${n.odd}`;
 }
 
+// o quanto ele apostou pesa tanto quanto a odd: $1 de um profissional é só marcação
+function linhaTamanho(x) {
+  const tm = x.tamanho;
+  if (!tm) return x.valorDele ? `\n💵 Ele apostou <b>${usd(x.valorDele)}</b>` : "";
+  const ic = { grande: "💰", normal: "💵", pequena: "⚠️", simbolica: "⛔", "sem-ref": "💵" }[tm.classe];
+  return `\n${ic} Ele apostou <b>${h(tm.texto)}</b> · ${h(tm.rotulo)}`;
+}
+
 function msgVivo(env, t, s) {
   const fim = s.entrouEm + t.janelaSeg * 1000;
   return `${t.nivel === "teste" ? "🧪 <b>TESTE</b> (não é recomendação) · " : ""}🔴 <b>AO VIVO · ${h(t.nome)}</b> (${h(rotuloEsporte(s.esporte))}${s.tipo ? " · " + h(rotuloTipo(s.tipo)) : ""})${t.nivel === "observar" ? " · em observação" : ""}
 ${h(s.tituloEvento)}${s.placar ? ` · ${h(s.placar)}` : ""}
 Entrar: <b>${h(s.aposta || s.lado)}</b>${s.pergunta && s.pergunta !== s.tituloEvento ? `
 Mercado: ${h(s.pergunta)} · lado ${h(s.lado)}` : ""}
-Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaNota(s.nota)}${t.nivel === "teste" ? `
+Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}</b>${linhaTamanho(s)}${linhaNota(s.nota)}${t.nivel === "teste" ? `
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
 Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
@@ -102,7 +110,7 @@ function msgPre(env, t, p) {
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.aposta || p.lado)}</b>${p.pergunta && p.pergunta !== p.tituloEvento ? `
 Mercado: ${h(p.pergunta)} · lado ${h(p.lado)}` : ""}
-Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaNota(p.nota)}${aposta(env, p.teto)}
+Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaTamanho(p)}${linhaNota(p.nota)}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · segure até o fim
 ${linkMercado(p)}`;
@@ -116,6 +124,7 @@ async function registrarSinal(env, t, x, tipo) {
     w: t.carteira, n: corta(t.nome, 30), m: tipo, e: corta(x.tituloEvento, 70), l: corta(x.aposta || x.lado, 60), s: corta(x.slug, 90),
     ev: corta(x.eventSlug, 90), oi: x.oi, p: +x.precoDele.toFixed(4), a: x.ask == null ? null : +x.ask.toFixed(4), mi: +x.teto.toFixed(4),
     nt: x.nota?.nota ?? null, rt: x.nota?.rotulo ?? null, sp: corta(x.esporte, 20), tp: corta(x.tipo, 20),
+    u: x.valorDele == null ? null : Math.round(x.valorDele), tc: x.tamanho?.classe ?? null,
     t: x.entrouEm || Date.now(), i: x.inicio || null, env: Date.now(), r: null,
   };
   await env.ENVIADOS.put(`r:${Date.now()}:${corta(x.asset, 12)}`, "", { metadata: md, expirationTtl: 90 * 86400 });
@@ -181,7 +190,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], preTrader: null, enviados: 0, consultas: 0, erros: [] };
 
   // pouca atividade por trader: entradas novas cabem nas últimas 30 e o plano grátis tem pouco CPU
-  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true });
+  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true, indices: l.indices });
   for (const [k, d] of rv.traders.entries()) {
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -205,7 +214,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     : [...pre.filter((t) => t.nivel === "teste"), ...(normais.length ? [normais[minuto % normais.length]] : [])];
   resumo.preTrader = lista.map((t) => t.nome).join(", ");
   {
-    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8 });
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8, indices: l.indices });
     for (const [k, d] of rp.traders.entries()) {
       const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);

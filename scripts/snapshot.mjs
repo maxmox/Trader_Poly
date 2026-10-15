@@ -19,7 +19,8 @@ const { traders } = await ler("data/traders.json");
 const prefixos = await ler("data/prefixos.json");
 const api = criarApi({ relay: process.env.RELAY || "" });
 
-const snap = await carregarTodos(api, traders, { prefixos });
+const indices = await ler("data/indices.json").catch(() => null);
+const snap = await carregarTodos(api, traders, { prefixos, indices });
 await writeFile(new URL("data/snapshot.json", raiz), JSON.stringify(snap));
 
 const n = snap.traders.reduce((s, t) => s + t.posicoes.length, 0);
