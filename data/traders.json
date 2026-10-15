@@ -284,6 +284,31 @@
     "preenche_60s_pct": 90.6,
     "vol_mercado_med": 1667755
    }
+  },
+  {
+   "carteira": "0x51c7d30511ed096b39a9392bad97e0dc76c298aa",
+   "nome": "0x51c7d305",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "CS2",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho CS2 · vencedor · pré-jogo. Nicho CS2 · vencedor · pré-jogo: copiando 1 min depois 15,0% em 101 jogos (sem as 3 melhores 9,7%; metades 13,0% / 16,9%; chance de ser sorte 3%). Achado no garimpo de esports.",
+   "stats": {
+    "lucro": 41069.988423,
+    "meses": 14,
+    "meses_positivos": 14,
+    "apostas": 101,
+    "n": 101,
+    "roi_copia_60s": 14.96,
+    "preenche_60s_pct": 96.2,
+    "aposta_tipica": 1484.4526895,
+    "chance_sorte": 0.0255
+   }
   }
  ]
 }

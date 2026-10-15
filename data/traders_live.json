@@ -109,6 +109,60 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0x581abb13f6c2c768c868260d6dec2ee96df8e40d",
+   "nome": "0x581abb13",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "LoL",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando 1 min depois 21,5% em 69 jogos (sem as 3 melhores 13,8%; metades 28,3% / 14,8%; chance de ser sorte 3%). Achado no garimpo de esports.",
+   "stats": {
+    "lucro": 16242.216137,
+    "meses": 4,
+    "meses_positivos": 4,
+    "apostas": 92,
+    "n": 92,
+    "roi_copia_60s": 21.54,
+    "preenche_60s_pct": 80.0,
+    "aposta_tipica": 963.6345,
+    "chance_sorte": 0.0335
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xe21cff72d4004e36d6047e837c198e33fe99b754",
+   "nome": "0xe21cff72",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Dota 2",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Dota 2 · vencedor do mapa · ao vivo. Nicho Dota 2 · vencedor do mapa · ao vivo: copiando 1 min depois 14,6% em 97 jogos (sem as 3 melhores 10,8%; metades 12,4% / 16,8%; chance de ser sorte 1%). Achado no garimpo de esports.",
+   "stats": {
+    "lucro": 19076.386379,
+    "meses": 4,
+    "meses_positivos": 4,
+    "apostas": 134,
+    "n": 134,
+    "roi_copia_60s": 14.63,
+    "preenche_60s_pct": 67.0,
+    "aposta_tipica": 254.375,
+    "chance_sorte": 0.01075
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
