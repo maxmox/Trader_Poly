@@ -1,5 +1,5 @@
 {
- "gerado_em": "2026-10-13",
+ "gerado_em": "2026-10-15",
  "criterios": {
   "n": 40,
   "roi60": 5.0,
@@ -258,6 +258,64 @@
     "vol_mercado_med": 592991
    },
    "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xc90eb3042c686f8e722af64fb6841dd1077dc7b6",
+   "nome": "henry999999",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "LoL",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando 1 min depois 31,4% em 46 entradas (sem as 3 melhores 3,1%; metades 0,5% / 68,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
+   "stats": {
+    "lucro": 2108.8079,
+    "lucro_sem_top5": null,
+    "meses": 5,
+    "meses_positivos": 1,
+    "apostas": 46,
+    "n": 46,
+    "roi_copia_5min": 9.13,
+    "roi_dele": 19.04,
+    "roi_copia_60s": 31.38,
+    "preenche_60s_pct": 71.7,
+    "vol_mercado_med": 1848524
+   },
+   "janelaSeg": 120,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xedf1c2756d93349275a1eb9a4fdf122f7b755776",
+   "nome": "Nerdbet",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · ao vivo. Nicho Futebol · vencedor · ao vivo: copiando 1 min depois 8,4% em 46 entradas (sem as 3 melhores 5,7%; metades 9,5% / 7,4%). Achado no garimpo de apostas grandes em futebol (fora dos rankings); conta nova, vende boa parte antes do fim.",
+   "stats": {
+    "lucro": null,
+    "lucro_sem_top5": null,
+    "meses": 0,
+    "meses_positivos": 0,
+    "apostas": 46,
+    "n": 46,
+    "roi_copia_5min": 9.19,
+    "roi_dele": 7.4,
+    "roi_copia_60s": 8.39,
+    "preenche_60s_pct": 87.0,
+    "vol_mercado_med": 67111
+   },
+   "janelaSeg": 120,
    "minUsd": 0
   }
  ]

@@ -1,5 +1,5 @@
 {
- "gerado_em": "2026-10-13",
+ "gerado_em": "2026-10-15",
  "traders": [
   {
    "carteira": "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f",
@@ -331,6 +331,141 @@
     "roi_copia_60s": 12.88,
     "preenche_60s_pct": 64.2,
     "vol_mercado_med": 103545
+   }
+  },
+  {
+   "carteira": "0x0b0e1eb890038cc0f98d26d34842bbe4d1434826",
+   "nome": "beautifulobsession",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 18,1% em 69 entradas (sem as 3 melhores 13,3%; metades 3,3% / 32,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
+   "stats": {
+    "lucro": 60926,
+    "lucro_sem_top5": 12219,
+    "meses": 2,
+    "meses_positivos": 2,
+    "apostas": 69,
+    "n": 69,
+    "roi_copia_5min": 16.97,
+    "roi_dele": 18.18,
+    "roi_copia_60s": 18.06,
+    "preenche_60s_pct": 100.0,
+    "vol_mercado_med": 658516
+   }
+  },
+  {
+   "carteira": "0x755ab1b66743ec425157ef91e8b5b52f3e8c82c4",
+   "nome": "0x755ab1b6",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 16,6% em 65 entradas (sem as 3 melhores 3,7%; metades 11,8% / 21,8%). Indicado pelo FutOdds; aprovado só neste nicho.",
+   "stats": {
+    "lucro": 7061.3447,
+    "lucro_sem_top5": null,
+    "meses": 2,
+    "meses_positivos": 1,
+    "apostas": 65,
+    "n": 65,
+    "roi_copia_5min": 18.88,
+    "roi_dele": 8.69,
+    "roi_copia_60s": 16.56,
+    "preenche_60s_pct": 70.8,
+    "vol_mercado_med": 611933
+   }
+  },
+  {
+   "carteira": "0x46c5aa9e0e3afea63874dd609414250eb3c73188",
+   "nome": "Wristony",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 36,8% em 32 entradas (sem as 3 melhores 17,2%; metades 30,7% / 43,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
+   "stats": {
+    "lucro": 23479.7,
+    "lucro_sem_top5": null,
+    "meses": 4,
+    "meses_positivos": 4,
+    "apostas": 32,
+    "n": 32,
+    "roi_copia_5min": 35.62,
+    "roi_dele": 28.16,
+    "roi_copia_60s": 36.84,
+    "preenche_60s_pct": 90.6,
+    "vol_mercado_med": 1667755
+   }
+  },
+  {
+   "carteira": "0x2c832c3eef5bfa5cff18a691152c5f289ddbfca2",
+   "nome": "0x2c832c3e",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 27,6% em 38 entradas (sem as 3 melhores 19,0%; metades 14,7% / 42,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
+   "stats": {
+    "lucro": null,
+    "lucro_sem_top5": null,
+    "meses": 0,
+    "meses_positivos": 0,
+    "apostas": 38,
+    "n": 38,
+    "roi_copia_5min": 32.46,
+    "roi_dele": 26.7,
+    "roi_copia_60s": 27.62,
+    "preenche_60s_pct": 78.9,
+    "vol_mercado_med": 188593
+   }
+  },
+  {
+   "carteira": "0x8ae599cc1fdeb17c95e2af00bd75a38034bd4f22",
+   "nome": "0xjames",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 17,5% em 30 entradas (sem as 3 melhores 5,2%; metades 30,4% / 2,2%). Achado no garimpo de apostas grandes em futebol (fora dos rankings); conta nova, vende boa parte antes do fim.",
+   "stats": {
+    "lucro": null,
+    "lucro_sem_top5": null,
+    "meses": 0,
+    "meses_positivos": 0,
+    "apostas": 30,
+    "n": 30,
+    "roi_copia_5min": 17.25,
+    "roi_dele": 16.32,
+    "roi_copia_60s": 17.5,
+    "preenche_60s_pct": 80.0,
+    "vol_mercado_med": 86754
    }
   }
  ]
