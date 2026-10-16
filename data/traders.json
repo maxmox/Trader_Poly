@@ -418,6 +418,44 @@
     "preenche_60s_pct": 40,
     "aposta_tipica": 296
    }
+  },
+  {
+   "carteira": "0xf42d9b66eb8eb074b65c1a1a33dd203934880996",
+   "nome": "0xf42d9b66",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · pré-jogo. Nicho Tênis · vencedor · pré-jogo: copiando entrada e saída dele 1 min depois 50,5% em 25 jogos (sem as 3 melhores 21,3%; metades 49,7% / 51,2%; chance de ser sorte 1%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 2146.399415,
+    "meses": 5,
+    "meses_positivos": 5,
+    "apostas": 25,
+    "n": 25,
+    "roi_copia_60s": 50.5,
+    "preenche_60s_pct": 69.4,
+    "aposta_tipica": 100.899987,
+    "chance_sorte": 0.0085
+   },
+   "saida": {
+    "pct_sai": 28,
+    "n": 25,
+    "pct_lucro": 86,
+    "lucro_c": 24.5,
+    "pct_perda": 14,
+    "perda_c": -17.0,
+    "min_med": 287,
+    "pct_tudo": 86,
+    "pct_antes_jogo": 0,
+    "roi_saida": 50.5,
+    "roi_segurando": 76.0
+   }
   }
  ]
 }

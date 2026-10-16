@@ -205,7 +205,9 @@
   "0x10a6fadcbacd66330862206f6199b197e3ad4d8b": 461.9,
   "0x3e856790872025b26922999651992ea70bfe788b": 87,
   "0x6bb33bdb14cea8f53766539efc6019b55e8a758e": 296,
-  "0xcbef04dead0a5d75b28d2bb4ef149a222da10c11": 304.27
+  "0xcbef04dead0a5d75b28d2bb4ef149a222da10c11": 304.27,
+  "0xe71359d50ea42c73bff065ec47f418506a7ac9a0": 348.48,
+  "0xf42d9b66eb8eb074b65c1a1a33dd203934880996": 100.9
  },
  "mediana_total_base": "total comprado por mercado nas últimas ~1.500 compras (out/2026); usado na regra do tamanho da aposta"
 }
