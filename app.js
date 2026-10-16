@@ -1,6 +1,6 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO, historicoNoMercado, momentoDaEntrada, liberado } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
-import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida } from "./nota.js";
+import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seloMercado } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
@@ -40,6 +40,7 @@ let traders = [], prefixos = {}, dados = null, fonte = "carregando", jaAvisados 
 let relayPadrao = "";
 let indices = null; // data/indices.json: efeitos dos fatores da nota da entrada
 let desempenho = null; // data/desempenho.json: últimos 30 dias de cada trader (Action)
+let mercados = null; // data/mercados_trader.json: como cada trader se sai em cada mercado
 let registro = []; // sinais reais enviados ao Telegram (Worker /registro)
 let tradersVivo = [];
 const sinaisDe = (w) => registro.filter((s) => s.w === w);
@@ -209,7 +210,8 @@ function render() {
     const linhas = pos.map((p) => `<tr>
         <td><span class="st ${p.status}">${p.status === "NAO" ? "Não" : p.status === "COPIAR" ? "Copiar" : "Esperar"}</span></td>
         <td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
-        <td>${esc(p.aposta || p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}</td>
+        <td>${esc(p.aposta || p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}
+          ${p.esporte !== FORA ? seloMercado(historicoNoMercado(mercados, t.carteira, p.esporte, p.tipo, momentoDaEntrada(p)), liberado(t, p.esporte, p.tipo, momentoDaEntrada(p)).ok, esc) : ""}</td>
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
         <td class="n">${quando(p.horasParaInicio)}</td><td class="n">${p.status === "NAO" ? "–" : pilulaNota(notaEntrada(p, t, indices))}</td></tr>`).join("");
     return `<article class="trader">
@@ -252,6 +254,7 @@ function avisar(lista) {
     traders = vigentes(traders);
     relayPadrao = (await json("data/config.json").catch(() => ({}))).relay || "";
     indices = await json("data/indices.json").catch(() => null);
+    mercados = await json("data/mercados_trader.json").catch(() => null);
     if (relayPadrao) $("#cfg-relay").placeholder = `${relayPadrao} (padrão do repositório)`;
   } catch (e) {
     $("#quadro-vazio").hidden = false;
@@ -267,7 +270,7 @@ function avisar(lista) {
   try {
     const tv = vigentes((await json("data/traders_live.json")).traders);
     tradersVivo = tv;
-    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, indices,
+    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, indices, mercados,
       placar: (w) => linhaPlacar(desempenho?.traders?.[w], sinaisDe(w), esc),
       aoRenderizar: (c) => { quadro.vivo = c; atualizarQuadro(); } });
   } catch (e) {

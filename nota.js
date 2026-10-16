@@ -55,6 +55,19 @@ export function blocoSaida(sd, preco) {
   </div>`;
 }
 
+// Selo do histórico dele no mercado da aposta. Dentro do nicho não precisa; fora, diz se ele
+// lucra ali (pode valer a entrada), perde (não vale) ou se não há evidência.
+export function seloMercado(h, dentro, esc) {
+  if (dentro) return `<span class="selo nicho">no nicho dele</span>`;
+  const pct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(0)}%`;
+  const recorte = (k) => k.split("|").filter((v) => v !== "*").length >= 2 ? "neste tipo de mercado" : "neste esporte";
+  if (!h) return `<span class="selo incerto" title="sem histórico dele aqui">fora do nicho · sem histórico</span>`;
+  const det = `cópia ${pct(h.roi_copia)} em ${h.jogos} jogos · acerto ${h.acerto}%`;
+  if (h.veredito === "lucra") return `<span class="selo lucra" title="${esc(det)} (chance de ser sorte ${Math.round(100 * h.p0)}%)">fora do nicho, mas lucra ${recorte(h.chave)}: ${esc(det)}</span>`;
+  if (h.veredito === "perde") return `<span class="selo perde" title="${esc(det)}">fora do nicho e PERDE ${recorte(h.chave)}: ${esc(det)}. Não vale.</span>`;
+  return `<span class="selo incerto" title="poucos jogos ou resultado indefinido">fora do nicho · ${recorte(h.chave)}: ${esc(det)} (sem evidência)</span>`;
+}
+
 export function pilulaNota(n) {
   return n ? `<span class="nota-pill ${n.rotulo}" title="trader ${n.trader} · mercado ${n.mercado} · odd e tempo ${n.odd}">${n.nota}</span>` : "–";
 }

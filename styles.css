@@ -201,3 +201,12 @@ table.estreita { min-width: 0; max-width: 560px; }
 .saida-ent { margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 6px; font-size: 13px; }
 .saida-ent ul { margin: 4px 0; padding-left: 18px; }
 .saida-ent p { margin: 4px 0 0; }
+
+/* histórico do trader no mercado da aposta (dentro/fora do nicho) */
+.selo { display: inline-block; margin-top: 3px; padding: 1px 6px; border-radius: 4px; font-size: 11px; line-height: 1.4; }
+.selo.nicho { background: var(--accent-soft); color: var(--accent); }
+.selo.lucra { background: var(--good-bg); color: var(--good); font-weight: 600; }
+.selo.perde { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+.selo.incerto { background: var(--bg); color: var(--ink-3); border: 1px solid var(--line); }
+
+.trader h4.sub { margin: 12px 0 4px; font-size: 13px; color: var(--ink-2); }

@@ -1,15 +1,28 @@
 // Aba "Ao vivo": sinais de entrada durante o jogo que ainda dá para replicar.
 // Só funciona com acesso em tempo real (direto ou relay): o sinal vale 1–2 minutos.
-import { criarApi, carregarAoVivo, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, PADRAO } from "./core.js";
-import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seguraMelhor } from "./nota.js";
+import { criarApi, carregarAoVivo, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, PADRAO, FORA, historicoNoMercado, momentoDaEntrada, liberado } from "./core.js";
+import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seguraMelhor, seloMercado } from "./nota.js";
 
 const INTERVALO = 15_000;
 const $ = (s) => document.querySelector(s);
 
-export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, placar, aoRenderizar }) {
+export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, mercados, placar, aoRenderizar }) {
   // traders pode encolher quando um trader de teste expira
   let dados = null, erro = null, timer = null, rodando = false, avisados = new Set(), primeira = true;
   const cacheEventos = new Map();
+
+  // posições abertas dos traders ao vivo (onde estão posicionados), a cada 5 min, sem livro de
+  // ofertas (a odd atual vem da posição) e sem segurar o quadro de sinais
+  let posicoes = {}, posEm = 0;
+  function carregarPosicoes() {
+    if (Date.now() - posEm < 300_000) return;
+    posEm = Date.now();
+    carregarTodos(criarApi({ relay: getCfg().relay }), traders, { prefixos, indices, comNivel: false, comLivro: false, limiteAtividade: 200, maxPosicoes: 15, cacheEventos })
+      .then((r) => { posicoes = Object.fromEntries(r.traders.map((d) => [d.carteira, d])); render(); })
+      .catch(() => { posEm = 0; });
+  }
+  const selo = (t, x) => (x.esporte && x.esporte !== FORA
+    ? seloMercado(historicoNoMercado(mercados, t.carteira, x.esporte, x.tipo, momentoDaEntrada(x)), liberado(t, x.esporte, x.tipo, momentoDaEntrada(x)).ok, esc) : "");
 
   async function tick() {
     clearTimeout(timer);
@@ -24,6 +37,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
       });
       if (res.traders.every((t) => t.erro)) throw new Error(res.traders[0]?.erro || "sem resposta");
       dados = res; erro = null;
+      carregarPosicoes();
     } catch (e) {
       erro = e;
     }
@@ -116,12 +130,27 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, pl
         ${recentes.length ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th><th class="n">Nota</th></tr></thead><tbody>
           ${recentes.map(({ s }) => `<tr><td><span class="st ${s.status}">${s.status === "COPIAR" ? "Copiar" : "Não"}</span></td>
             <td><a href="${link(s)}" target="_blank" rel="noopener">${esc(s.tituloEvento)}</a><div class="motivo">${esc(s.motivos.join(" · "))}</div></td>
-            <td>${esc(s.aposta || s.lado)}</td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.status === "COPIAR" ? pilulaNota(notaEntrada(s, t, indices)) : "–"}</td></tr>`).join("")}
+            <td>${esc(s.aposta || s.lado)}<div>${selo(t, s)}</div></td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.status === "COPIAR" ? pilulaNota(notaEntrada(s, t, indices)) : "–"}</td></tr>`).join("")}
           </tbody></table></div>` : `<p class="sem">Nenhuma entrada nos últimos 15 min.</p>`}
+        ${tabelaPosicoes(t)}
       </article>`;
     }).join("");
 
     avisar(ativos);
+  }
+
+  // mesma tabela da ficha pré-jogo: onde ele está posicionado agora, com o selo do mercado
+  function tabelaPosicoes(t) {
+    const d = posicoes[t.carteira];
+    if (!d) return `<p class="sem">Carregando posições abertas…</p>`;
+    const pos = (d.posicoes || []).filter((p) => p.esporte !== FORA);
+    if (!pos.length) return `<p class="sem">Sem posições abertas em esporte.</p>`;
+    return `<h4 class="sub">Posições abertas</h4><div class="tbl-wrap"><table><thead><tr><th>Evento</th><th>Lado</th><th>Mercado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th></tr></thead><tbody>
+      ${pos.map((p) => `<tr><td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a>${p.placar ? `<div class="motivo">${esc(p.placar)}</div>` : ""}</td>
+        <td>${esc(p.aposta || p.lado)}</td>
+        <td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))} · ${momentoDaEntrada(p)}</div>` : ""}${selo(t, p)}</td>
+        <td class="n">${odd(p.precoDele)}</td><td class="n">${p.precoAtual ? odd(p.precoAtual) : "–"}</td><td class="n">${usd(p.valorDele)}</td><td class="n">${ha(p.entrouEm)}</td></tr>`).join("")}
+      </tbody></table></div>`;
   }
 
   function bipe() {

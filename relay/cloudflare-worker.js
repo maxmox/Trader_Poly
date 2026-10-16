@@ -127,6 +127,20 @@ function liberado(trader, sp, tipo, momento) {
   const n = (trader.nichos || []).find((x) => x.area === sp && (!x.tipo || x.tipo === tipo) && (!x.momento || x.momento === momento));
   return n ? { ok: true, nicho: n } : { ok: false, nicho: null };
 }
+// Como o trader se sai num mercado (data/mercados_trader.json, de polymarket_traders/mercados_trader.py):
+// o recorte mais específico com amostra suficiente (esporte·tipo·momento > esporte·tipo > esporte·momento > esporte)
+function historicoNoMercado(mt, carteira, sp, tipo, momento) {
+  const R = mt?.traders?.[carteira];
+  if (!R) return null;
+  const chaves = [`${sp}|${tipo}|${momento}`, `${sp}|${tipo}|*`, `${sp}|*|${momento}`, `${sp}|*|*`];
+  const min = mt.jogos_min || 15;
+  for (const k of chaves) if (R[k]?.jogos >= min) return { chave: k, ...R[k] };
+  for (const k of chaves) if (R[k]) return { chave: k, ...R[k] };
+  return null;
+}
+// momento em que ELE entrou (para o recorte certo do histórico)
+const momentoDaEntrada = (x) => (x.entrouEm && x.inicio ? (x.entrouEm >= x.inicio ? "ao vivo" : "pré-jogo") : x.momento || "pré-jogo");
+
 const NOME_ESPORTE = { Tenis: "Tênis", Hoquei: "Hóquei" };
 const rotuloEsporte = (s) => NOME_ESPORTE[s] || s;
 
@@ -227,7 +241,7 @@ function vendasRecentes(atividade, desdeSeg, restante = {}) {
 }
 
 // Busca tudo de um trader: posições abertas + primeira compra de cada uma + evento + livro
-async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true, indices = null } = {}) {
+async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true, indices = null, comLivro = true } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
     api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
@@ -259,7 +273,8 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
       ev = r?.[0] || null;
       cacheEventos.set(pos.eventSlug, ev);
     }
-    const book = await api.get("clob", `/book?token_id=${pos.asset}`).catch(() => null);
+    // sem livro (só para mostrar onde ele está): economiza uma consulta por posição
+    const book = comLivro ? await api.get("clob", `/book?token_id=${pos.asset}`).catch(() => null) : null;
     const v = avaliar({ pos, evento: ev, book, trader, agora, regras, prefixos });
     const outros = (ladosPorMercado[pos.conditionId] || []).filter((o) => o.asset !== pos.asset);
     if (outros.length) {
@@ -289,7 +304,7 @@ async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = 
     const antes = comNivel && t0 && v.status !== "NAO" ? await nivelAntes(api, pos.conditionId, pos.asset, w, t0) : null;
     return {
       titulo: pos.title, lado: pos.outcome, slug: pos.slug, eventSlug: pos.eventSlug, asset: pos.asset, cond: pos.conditionId, oi: pos.outcomeIndex,
-      valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl, tamanho,
+      valorDele: pos.initialValue, cotasDele: pos.size, pnlDele: pos.cashPnl, tamanho, precoAtual: pos.curPrice,
       entrouEm: primeiraCompra[pos.asset] ? primeiraCompra[pos.asset] * 1000 : null,
       usdEntrada: t0 ? usdEntrada[pos.asset] : null, momento: "pré-jogo", antes, volMercado: volumeMercado(ev, pos.slug),
       tituloEvento: ev?.title || pos.title, pergunta: pos.title, aposta: descreverAposta(pos.title, pos.outcome), ...v,
