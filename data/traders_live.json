@@ -12,13 +12,13 @@
   {
    "carteira": "0xb31e41965df4ab8014de4c4d8da9deff0a6ac120",
    "nome": "C63AMG",
-   "nivel": "copiar",
+   "nivel": "observar",
    "esportes": [
     "Tenis"
    ],
    "janelaSeg": 120,
    "minUsd": 0,
-   "nota": "Copiando 1 min depois: 17,3% em 100 entradas ao vivo (metade recente 15,6%, metade antiga 18,9%, sem as 3 melhores 7,3%). 12 meses de histórico. Entrada mediana de $804, em mercados com $437.769 de volume. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 19,4% em 79 entradas (sem as 3 melhores 7,5%; metades 17,5% / 21,2%).",
+   "nota": "Copiando 1 min depois: 17,3% em 100 entradas ao vivo (metade recente 15,6%, metade antiga 18,9%, sem as 3 melhores 7,3%). 12 meses de histórico. Entrada mediana de $804, em mercados com $437.769 de volume. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 19,4% em 79 entradas (sem as 3 melhores 7,5%; metades 17,5% / 21,2%). Rebaixado em out/2026: na checagem dura, tênis ao vivo deu +12% copiando mas com 15% de chance de ser sorte e só +1,9% sem as 3 maiores apostas.",
    "stats": {
     "lucro": 152480,
     "meses": 12,
@@ -200,6 +200,87 @@
     "pct_antes_jogo": 0,
     "roi_saida": 30.2,
     "roi_segurando": 34.6
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0x8546a601f7c7cc3dae7141f20b0e09e42bbf35b8",
+   "nome": "HVAB",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 18,3% em 80 jogos (sem as 3 melhores 13,9%; metades 13,3% / 23,2%; chance de ser sorte 1%). Achado no garimpo de ranking_nichos.",
+   "stats": {
+    "lucro": 470140,
+    "meses": 7,
+    "meses_positivos": 6,
+    "apostas": 80,
+    "n": 80,
+    "roi_copia_60s": 18.29,
+    "preenche_60s_pct": 58.8,
+    "aposta_tipica": 3772.961437,
+    "chance_sorte": 0.0055
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0x5e5175106a7dbbd92b10f1b56458fc8c1bdd42ce",
+   "nome": "0x5E51…42ce",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "LoL",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando 1 min depois 18,7% em 53 jogos (sem as 3 melhores 12,4%; metades 9,0% / 28,3%; chance de ser sorte 4%). Achado no garimpo de ranking_nichos.",
+   "stats": {
+    "lucro": 104444,
+    "meses": 16,
+    "meses_positivos": 13,
+    "apostas": 99,
+    "n": 99,
+    "roi_copia_60s": 18.73,
+    "preenche_60s_pct": 68.3,
+    "aposta_tipica": 392.75260000000003,
+    "chance_sorte": 0.04225
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a",
+   "nome": "Sisyphus-",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Dota 2",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Dota 2 · vencedor · ao vivo. Nicho Dota 2 · vencedor · ao vivo: copiando 1 min depois 35,3% em 40 jogos (sem as 3 melhores 25,3%; metades 46,7% / 23,8%; chance de ser sorte 0%). Achado no garimpo de ranking_nichos.",
+   "stats": {
+    "lucro": 430286,
+    "meses": 9,
+    "meses_positivos": 9,
+    "apostas": 40,
+    "n": 40,
+    "roi_copia_60s": 35.27,
+    "preenche_60s_pct": 53.3,
+    "aposta_tipica": 4461.5007945,
+    "chance_sorte": 0.004
    },
    "janelaSeg": 60,
    "minUsd": 0
