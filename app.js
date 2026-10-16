@@ -196,7 +196,8 @@ function render() {
           <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.aposta || p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
             aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(p.teto))}</b> se ganhar (já descontada a taxa)
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
-            ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}</div>
+            ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}
+            ${t.props ? `<span class="alerta">Prop de jogador: mercado raso (na temporada passada, só em 1 de cada 4 apostas dele dava para comprar $100 até o teto). Use <b>ordem limitada</b> (quem deixa ordem no livro não paga taxa) e no máximo <b>${usd(t.props.max_usd)}</b>.</span>` : ""}</div>
           <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = no máximo ${cfg.teto}¢ (ou 10%) de preço pior que a dele`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
         </article>`;
       }).join("");
@@ -220,7 +221,7 @@ function render() {
       <div class="chips"><span class="momento pre">Pré-jogo</span>${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}</div>
       <div class="stats">
         <span>Lucro <b>${usd(s.lucro)}</b></span><span>Sem top 5 <b>${usd(s.lucro_sem_top5)}</b></span>
-        <span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span><span>Apostas <b>${(s.apostas || 0).toLocaleString("pt-BR")}</b></span>
+        <span>Meses + <b>${s.meses_positivos ?? "–"}/${s.meses ?? "–"}</b></span><span>Apostas <b>${(s.apostas || 0).toLocaleString("pt-BR")}</b></span>
         ${s.roi_copia_5min != null ? `<span>Copiando 5 min <b>${s.roi_copia_5min.toFixed(1).replace(".", ",")}%</b></span>`
           : s.roi_copia_60s != null ? `<span>Copiando 1 min <b>${s.roi_copia_60s.toFixed(1).replace(".", ",")}%</b></span>` : ""}
         <span>Última atividade <b>${ha(d.ultimaAtividade)}</b></span>

@@ -87,6 +87,7 @@ export const vigentes = (traders, agora = Date.now()) => (traders || []).filter(
 export const NOME_TIPO = {
   moneyline: "vencedor", spreads: "handicap", totals: "total (mais/menos)", child_moneyline: "vencedor do mapa",
   map_handicap: "handicap de mapas", team_totals: "total do time", both_teams_to_score: "ambos marcam",
+  points: "pontos do jogador", rebounds: "rebotes do jogador", assists: "assistências do jogador", threes: "cestas de 3 do jogador",
 };
 export const rotuloTipo = (t) => NOME_TIPO[t] || t || "outro";
 export const rotuloNicho = (n) => [rotuloEsporte(n.area), n.tipo ? rotuloTipo(n.tipo) : null, n.momento || null].filter(Boolean).join(" · ");

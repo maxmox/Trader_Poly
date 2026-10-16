@@ -92,6 +92,7 @@ const vigentes = (traders, agora = Date.now()) => (traders || []).filter((t) => 
 const NOME_TIPO = {
   moneyline: "vencedor", spreads: "handicap", totals: "total (mais/menos)", child_moneyline: "vencedor do mapa",
   map_handicap: "handicap de mapas", team_totals: "total do time", both_teams_to_score: "ambos marcam",
+  points: "pontos do jogador", rebounds: "rebotes do jogador", assists: "assistências do jogador", threes: "cestas de 3 do jogador",
 };
 const rotuloTipo = (t) => NOME_TIPO[t] || t || "outro";
 const rotuloNicho = (n) => [rotuloEsporte(n.area), n.tipo ? rotuloTipo(n.tipo) : null, n.momento || null].filter(Boolean).join(" · ");
@@ -456,7 +457,8 @@ function notaEntrada(x, trader, ind, mt = null) {
     if (!liberado(trader, x.esporte, x.tipo, mom).ok) {
       const h = historicoNoMercado(mt, trader.carteira, x.esporte, x.tipo, mom);
       const peso = h?.edge != null ? h.jogos / (h.jogos + (mt.k_fora || 80)) : 0;
-      efeito = (1 - peso) * (mt.edge_fora ?? 0) + peso * (h?.edge ?? 0) - ind.media;
+      // comparado à vantagem de uma aposta DENTRO do nicho (não à média geral do modelo)
+      efeito = (1 - peso) * (mt.edge_fora ?? 0) + peso * (h?.edge ?? 0) - (mt.edge_nicho ?? 0.05);
       faixa = h?.edge != null
         ? `fora do nicho · histórico dele aqui ${h.roi_copia >= 0 ? "+" : "−"}${Math.abs(h.roi_copia).toFixed(0)}% em ${h.jogos} jogos (peso ${Math.round(100 * peso)}%)`
         : "fora do nicho · sem histórico dele aqui";
@@ -688,7 +690,8 @@ function msgPre(env, t, p) {
 ${h(p.tituloEvento)} · começa ${p.inicio ? dataBR(p.inicio) : "?"}
 Entrar: <b>${h(p.aposta || p.lado)}</b>${p.pergunta && p.pergunta !== p.tituloEvento ? `
 Mercado: ${h(p.pergunta)} · lado ${h(p.lado)}` : ""}
-Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaTamanho(p)}${linhaNota(p.nota)}${linhaSaida(t, p)}${aposta(env, p.teto)}
+Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaTamanho(p)}${linhaNota(p.nota)}${linhaSaida(t, p)}${t.props ? `
+⚠️ Prop de jogador: mercado raso. Ordem limitada (sem taxa) e no máximo <b>${usd(t.props.max_usd)}</b>. Livre até o teto agora: ${usd(p.liquidez || 0)}` : ""}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
 No Polymarket: ordem limitada a ${cents(p.teto)} · ${t.saida && !seguraMelhor(t.saida) ? "saia junto com ele" : "segure até o fim"}
 ${linkMercado(p)}`;

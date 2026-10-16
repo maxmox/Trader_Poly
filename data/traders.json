@@ -334,6 +334,90 @@
     "aposta_tipica": 502.36530500000003,
     "chance_sorte": 0.066
    }
+  },
+  {
+   "carteira": "0x3e856790872025b26922999651992ea70bfe788b",
+   "nome": "brunomedm",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Basquete",
+     "tipo": "points",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Basquete",
+     "tipo": "rebounds",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Basquete",
+     "tipo": "assists",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Basquete",
+     "tipo": "threes",
+     "momento": "pré-jogo"
+    }
+   ],
+   "props": {
+    "max_usd": 50
+   },
+   "nota": "Só props de jogador da NBA, pré-jogo. Temporada 2025-26: 108 apostas, ROI dele +20,9%; copiando 1 min depois +25,4% (metades +24,5% / +26,3%; chance de ser sorte 10%), mas só 32% das apostas tinham negócio para copiar até o teto. Mercado raso: valor pequeno e ordem limitada.",
+   "stats": {
+    "lucro": 2954,
+    "meses": 4,
+    "meses_positivos": null,
+    "apostas": 108,
+    "n": 108,
+    "roi_copia_60s": 25.4,
+    "preenche_60s_pct": 32,
+    "aposta_tipica": 87
+   }
+  },
+  {
+   "carteira": "0x6bb33bdb14cea8f53766539efc6019b55e8a758e",
+   "nome": "lockrobster",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Basquete",
+     "tipo": "points",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Basquete",
+     "tipo": "rebounds",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Basquete",
+     "tipo": "assists",
+     "momento": "pré-jogo"
+    },
+    {
+     "area": "Basquete",
+     "tipo": "threes",
+     "momento": "pré-jogo"
+    }
+   ],
+   "props": {
+    "max_usd": 100
+   },
+   "nota": "Só props de jogador da NBA, pré-jogo (entra ~3 h antes). Temporada 2025-26: 336 apostas, lucro $26,5 mil; copiando 1 min depois +13,6% (chance de ser sorte 5%), mas caiu na segunda metade (+23% -> +4%) e só 40% das apostas tinham negócio para copiar até o teto. Mercado raso: valor pequeno e ordem limitada.",
+   "stats": {
+    "lucro": 26454,
+    "meses": 6,
+    "meses_positivos": null,
+    "apostas": 336,
+    "n": 336,
+    "roi_copia_60s": 13.6,
+    "preenche_60s_pct": 40,
+    "aposta_tipica": 296
+   }
   }
  ]
 }

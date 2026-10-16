@@ -120,7 +120,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
         <div class="chips"><span class="momento vivo">Ao vivo</span>${(t.esportes || []).map((e) => `<span class="chip">${esc(rotuloEsporte(e))}</span>`).join("")}${(t.nichos || []).map((n) => `<span class="chip nicho">só ${esc(rotuloNicho(n))}</span>`).join("")}${(t.nichosFortes || []).map((n) => `<span class="chip forte">forte: ${esc(rotuloNicho(n))}</span>`).join("")}
           <span class="chip">janela ${Math.round(t.janelaSeg / 60)} min</span>${t.minUsd ? `<span class="chip">entradas ≥ ${usd(t.minUsd)}</span>` : ""}</div>
         <div class="stats">
-          <span>Lucro <b>${usd(s.lucro)}</b></span><span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span>
+          <span>Lucro <b>${usd(s.lucro)}</b></span><span>Meses + <b>${s.meses_positivos ?? "–"}/${s.meses ?? "–"}</b></span>
           <span>ROI dele <b>${p1(s.roi_dele)}</b></span>
           <span>Copiando 1 min <b>${p1(s.roi_copia_60s)}</b></span>
           <span>Preenche <b>${s.preenche_60s_pct == null ? "–" : Math.round(s.preenche_60s_pct) + "%"}</b></span>
