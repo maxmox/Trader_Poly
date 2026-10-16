@@ -177,7 +177,7 @@ function render() {
 
   $("#lista-agora").innerHTML = agoraLista.map(({ t, p }) => {
         const cotas = p.teto > 0 ? stake / p.teto : 0;
-        const n = notaEntrada(p, t, indices);
+        const n = notaEntrada(p, t, indices, mercados);
         return `<article class="card ${p.status}">
           <div class="card-top"><span class="momento pre">Pré-jogo</span><span class="st ${p.status}">${p.status === "COPIAR" ? "Copiar" : "Esperar"}</span>
             <span class="quem">${esc(t.nome)} · ${esc(rotuloEsporte(p.esporte))}${p.tipo ? " · " + esc(rotuloTipo(p.tipo)) : ""}</span></div>
@@ -213,7 +213,7 @@ function render() {
         <td>${esc(p.aposta || p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}
           ${p.esporte !== FORA ? seloMercado(historicoNoMercado(mercados, t.carteira, p.esporte, p.tipo, momentoDaEntrada(p)), liberado(t, p.esporte, p.tipo, momentoDaEntrada(p)).ok, esc) : ""}</td>
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
-        <td class="n">${quando(p.horasParaInicio)}</td><td class="n">${p.status === "NAO" ? "–" : pilulaNota(notaEntrada(p, t, indices))}</td></tr>`).join("");
+        <td class="n">${quando(p.horasParaInicio)}</td><td class="n">${p.esporte === FORA ? "–" : pilulaNota(notaEntrada({ ...p, momento: momentoDaEntrada(p) }, t, indices, mercados))}</td></tr>`).join("");
     return `<article class="trader">
       <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
         <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>

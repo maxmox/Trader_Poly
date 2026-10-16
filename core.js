@@ -417,10 +417,10 @@ const faixaDe = (v, faixas) => (faixas.find(([a, b]) => v >= a && v < b) || faix
 
 export const ROTULO_FATOR = {
   conviccao: "Tamanho da aposta dele", entrada: "Como ele entrou", momento: "Momento", liquidez: "Liquidez do mercado",
-  faixa_odd: "Faixa de odd", deriva: "Odd desde a entrada dele", antecedencia: "Antecedência",
+  faixa_odd: "Faixa de odd", deriva: "Odd desde a entrada dele", antecedencia: "Antecedência", mercado_dele: "Mercado da aposta",
 };
 
-export function notaEntrada(x, trader, ind) {
+export function notaEntrada(x, trader, ind, mt = null) {
   if (!ind?.efeitos) return null;
   const med = ind.mediana_usd?.[trader.carteira];
   const dEntrada = x.antes != null ? (x.precoDele - x.antes) * 100 : null;
@@ -441,6 +441,24 @@ export function notaEntrada(x, trader, ind) {
     const e = faixa ? ind.efeitos[nome]?.[faixa]?.efeito ?? 0 : 0;
     soma[ind.grupos[nome]] += e;
     fatores.push({ nome, rotulo: ROTULO_FATOR[nome], grupo: ind.grupos[nome], faixa, efeito: e });
+  }
+  // MERCADO DA APOSTA (data/mercados_trader.json): fora do nicho, a vantagem esperada vai para a
+  // média medida fora do nicho (~0) e só se move para o histórico dele ali com peso jogos/(jogos+K);
+  // K alto porque o histórico fora do nicho quase não se repetiu na validação.
+  if (mt && x.esporte && x.esporte !== FORA) {
+    const mom = momentoDaEntrada(x);
+    let efeito = 0, faixa = "no nicho dele";
+    if (!liberado(trader, x.esporte, x.tipo, mom).ok) {
+      const h = historicoNoMercado(mt, trader.carteira, x.esporte, x.tipo, mom);
+      const peso = h?.edge != null ? h.jogos / (h.jogos + (mt.k_fora || 80)) : 0;
+      // comparado à vantagem de uma aposta DENTRO do nicho (não à média geral do modelo)
+      efeito = (1 - peso) * (mt.edge_fora ?? 0) + peso * (h?.edge ?? 0) - (mt.edge_nicho ?? 0.05);
+      faixa = h?.edge != null
+        ? `fora do nicho · histórico dele aqui ${h.roi_copia >= 0 ? "+" : "−"}${Math.abs(h.roi_copia).toFixed(0)}% em ${h.jogos} jogos (peso ${Math.round(100 * peso)}%)`
+        : "fora do nicho · sem histórico dele aqui";
+    }
+    soma.trader += efeito;
+    fatores.push({ nome: "mercado_dele", rotulo: ROTULO_FATOR.mercado_dele, grupo: "trader", faixa, efeito });
   }
   const pts = (v) => Math.max(0, Math.min(100, Math.round(50 + ind.escala * 100 * v)));
   const esperado = ind.media + soma.trader + soma.mercado + soma.odd;

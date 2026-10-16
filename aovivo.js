@@ -99,7 +99,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
             <div><small>Livre na odd</small><b>${usd(s.liquidez)}</b></div>
             <div><small>Ele entrou</small><b>${ha(s.entrouEm)}</b></div>
           </div>
-          ${blocoNota(notaEntrada(s, t, indices), esc)}
+          ${blocoNota(notaEntrada(s, t, indices, mercados), esc)}
           ${blocoSaida(t.saida, s.precoDele)}
           <div class="ordem">Entrar: <b>${esc(s.aposta || s.lado)}</b> com odd mínima <b>${odd(s.teto)}</b>, aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). ${t.saida && !seguraMelhor(t.saida) ? "Saia junto com ele (veja abaixo)." : "Segure até o fim."}
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
@@ -134,7 +134,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
         ${recentes.length ? `<div class="tbl-wrap"><table><thead><tr><th>Veredito</th><th>Evento</th><th>Lado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th><th class="n">Nota</th></tr></thead><tbody>
           ${recentes.map(({ s }) => `<tr><td><span class="st ${s.status}">${s.status === "COPIAR" ? "Copiar" : "Não"}</span></td>
             <td><a href="${link(s)}" target="_blank" rel="noopener">${esc(s.tituloEvento)}</a><div class="motivo">${esc(s.motivos.join(" · "))}</div></td>
-            <td>${esc(s.aposta || s.lado)}<div>${selo(t, s)}</div></td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.status === "COPIAR" ? pilulaNota(notaEntrada(s, t, indices)) : "–"}</td></tr>`).join("")}
+            <td>${esc(s.aposta || s.lado)}<div>${selo(t, s)}</div></td><td class="n">${odd(s.precoDele)}</td><td class="n">${odd(s.ask)}</td><td class="n">${usd(s.valorDele)}</td><td class="n">${ha(s.entrouEm)}</td><td class="n">${s.esporte === FORA ? "–" : pilulaNota(notaEntrada(s, t, indices, mercados))}</td></tr>`).join("")}
           </tbody></table></div>` : `<p class="sem">Nenhuma entrada nos últimos 15 min.</p>`}
         ${tabelaPosicoes(t)}
       </article>`;
@@ -149,11 +149,12 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
     if (!d) return `<p class="sem">Carregando posições abertas…</p>`;
     const pos = (d.posicoes || []).filter((p) => p.esporte !== FORA);
     if (!pos.length) return `<p class="sem">Sem posições abertas em esporte.</p>`;
-    return `<h4 class="sub">Posições abertas</h4><div class="tbl-wrap"><table><thead><tr><th>Evento</th><th>Lado</th><th>Mercado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th></tr></thead><tbody>
+    return `<h4 class="sub">Posições abertas</h4><div class="tbl-wrap"><table><thead><tr><th>Evento</th><th>Lado</th><th>Mercado</th><th class="n">Odd dele</th><th class="n">Odd agora</th><th class="n">Apostou</th><th class="n">Entrou</th><th class="n">Nota</th></tr></thead><tbody>
       ${pos.map((p) => `<tr><td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a>${p.placar ? `<div class="motivo">${esc(p.placar)}</div>` : ""}</td>
         <td>${esc(p.aposta || p.lado)}</td>
         <td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))} · ${momentoDaEntrada(p)}</div>` : ""}${selo(t, p)}</td>
-        <td class="n">${odd(p.precoDele)}</td><td class="n">${p.precoAtual ? odd(p.precoAtual) : "–"}</td><td class="n">${usd(p.valorDele)}</td><td class="n">${ha(p.entrouEm)}</td></tr>`).join("")}
+        <td class="n">${odd(p.precoDele)}</td><td class="n">${p.precoAtual ? odd(p.precoAtual) : "–"}</td><td class="n">${usd(p.valorDele)}</td><td class="n">${ha(p.entrouEm)}</td>
+        <td class="n">${pilulaNota(notaEntrada({ ...p, ask: p.precoAtual, momento: momentoDaEntrada(p) }, t, indices, mercados))}</td></tr>`).join("")}
       </tbody></table></div>`;
   }
 
