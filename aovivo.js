@@ -110,7 +110,10 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
     $("#vivo-traders").innerHTML = traders.map((t) => {
       const d = porW[t.carteira] || {};
       const recentes = todos.filter((x) => x.t === t);
-      const s = t.stats;
+      const s = t.stats || {};
+      // campos opcionais: traders novos (garimpo) não têm todas as estatísticas; um campo faltando
+      // não pode derrubar os cards de todos
+      const p1 = (v) => (v == null ? "–" : `${v.toFixed(1).replace(".", ",")}%`);
       return `<article class="trader">
         <div class="trader-head"><span class="nivel ${t.nivel}">${{ copiar: "Copiar", observar: "Observar", teste: "Teste" }[t.nivel] || t.nivel}</span><h3>${esc(t.nome)}</h3>
           <a class="wallet" href="https://polymarket.com/profile/${t.carteira}" target="_blank" rel="noopener">${t.carteira}</a></div>
@@ -118,10 +121,11 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
           <span class="chip">janela ${Math.round(t.janelaSeg / 60)} min</span>${t.minUsd ? `<span class="chip">entradas ≥ ${usd(t.minUsd)}</span>` : ""}</div>
         <div class="stats">
           <span>Lucro <b>${usd(s.lucro)}</b></span><span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span>
-          <span>ROI dele <b>${s.roi_dele.toFixed(1).replace(".", ",")}%</b></span>
-          <span>Copiando 1 min <b>${s.roi_copia_60s.toFixed(1).replace(".", ",")}%</b></span>
-          <span>Preenche <b>${Math.round(s.preenche_60s_pct)}%</b></span>
-          <span>Mercado mediano <b>${usd(s.vol_mercado_med)}</b></span>
+          <span>ROI dele <b>${p1(s.roi_dele)}</b></span>
+          <span>Copiando 1 min <b>${p1(s.roi_copia_60s)}</b></span>
+          <span>Preenche <b>${s.preenche_60s_pct == null ? "–" : Math.round(s.preenche_60s_pct) + "%"}</b></span>
+          ${s.vol_mercado_med ? `<span>Mercado mediano <b>${usd(s.vol_mercado_med)}</b></span>` : ""}
+          ${s.aposta_tipica ? `<span>Aposta típica <b>${usd(s.aposta_tipica)}</b></span>` : ""}
           <span>Última atividade <b>${d.ultimaAtividade ? ha(d.ultimaAtividade) : "–"}</b></span>
         </div>
         ${placar ? placar(t.carteira) : ""}

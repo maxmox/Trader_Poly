@@ -204,7 +204,7 @@ function render() {
   // fichas dos traders
   $("#traders").innerHTML = traders.map((t) => {
     const d = porCarteira[t.carteira] || {};
-    const s = t.stats;
+    const s = t.stats || {}; // traders novos (garimpo) não têm todas as estatísticas
     const pos = (d.posicoes || []).map((p) => revalidar(p, agora)).filter((p) => cfg.fora || p.esporte !== FORA);
     const ocultas = (d.posicoes || []).length - pos.length;
     const linhas = pos.map((p) => `<tr>
@@ -221,7 +221,8 @@ function render() {
       <div class="stats">
         <span>Lucro <b>${usd(s.lucro)}</b></span><span>Sem top 5 <b>${usd(s.lucro_sem_top5)}</b></span>
         <span>Meses + <b>${s.meses_positivos}/${s.meses}</b></span><span>Apostas <b>${(s.apostas || 0).toLocaleString("pt-BR")}</b></span>
-        <span>Copiando 5 min <b>${s.roi_copia_5min == null ? "–" : s.roi_copia_5min.toFixed(1).replace(".", ",") + "%"}</b></span>
+        ${s.roi_copia_5min != null ? `<span>Copiando 5 min <b>${s.roi_copia_5min.toFixed(1).replace(".", ",")}%</b></span>`
+          : s.roi_copia_60s != null ? `<span>Copiando 1 min <b>${s.roi_copia_60s.toFixed(1).replace(".", ",")}%</b></span>` : ""}
         <span>Última atividade <b>${ha(d.ultimaAtividade)}</b></span>
       </div>
       ${linhaPlacar(desempenho?.traders?.[t.carteira], sinaisDe(t.carteira), esc)}
