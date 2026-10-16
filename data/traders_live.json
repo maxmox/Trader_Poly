@@ -163,6 +163,46 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0x7bccd2d3dfd370f65aa3cc5d51c7c9649ad9b4fa",
+   "nome": "0x7bccd2d3",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Dota 2",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Dota 2 · vencedor · ao vivo. Nicho Dota 2 · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 30,2% em 25 jogos (sem as 3 melhores 12,3%; metades 17,0% / 42,3%; chance de ser sorte 4%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 26159.950757,
+    "meses": 6,
+    "meses_positivos": 5,
+    "apostas": 25,
+    "n": 25,
+    "roi_copia_60s": 30.2,
+    "preenche_60s_pct": 89.3,
+    "aposta_tipica": 432.04271500000004,
+    "chance_sorte": 0.037
+   },
+   "saida": {
+    "pct_sai": 52,
+    "n": 25,
+    "pct_lucro": 92,
+    "lucro_c": 40.7,
+    "pct_perda": 8,
+    "perda_c": -7.4,
+    "min_med": 56,
+    "pct_tudo": 100,
+    "pct_antes_jogo": 0,
+    "roi_saida": 30.2,
+    "roi_segurando": 34.6
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
