@@ -324,6 +324,33 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0x10a6fadcbacd66330862206f6199b197e3ad4d8b",
+   "nome": "0x10a6fadc",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 50,3% em 35 jogos (sem as 3 melhores 25,8%; metades 55,2% / 45,8%; chance de ser sorte 0%). Achado no garimpo de luta.",
+   "stats": {
+    "lucro": 97599.844197,
+    "meses": 6,
+    "meses_positivos": 6,
+    "apostas": 35,
+    "n": 35,
+    "roi_copia_60s": 50.35,
+    "preenche_60s_pct": 61.4,
+    "aposta_tipica": 461.90360499999997,
+    "chance_sorte": 0.00475
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
