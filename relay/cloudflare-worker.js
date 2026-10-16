@@ -627,12 +627,14 @@ function linhaTamanho(x) {
 }
 
 // trader que vende antes do fim: avisa no sinal de entrada como ele costuma sair
+const seguraMelhor = (sd) => sd?.roi_segurando != null && sd?.roi_saida != null && sd.roi_segurando >= sd.roi_saida + 2;
 function linhaSaida(t, x) {
   const sd = t.saida;
   if (!sd) return "";
   const alvo = sd.lucro_c ? Math.min(0.99, x.precoDele + sd.lucro_c / 100) : null;
   return `\n🚪 Ele vende antes do fim em ${sd.pct_sai}% das apostas${sd.min_med ? ` (em ~${sd.min_med} min)` : ""}.`
-    + (alvo ? ` Realiza lucro perto de odd ${odd(alvo)}.` : "") + " <b>Fique atento ao alerta SAIR.</b>";
+    + (alvo ? ` Realiza lucro perto de odd ${odd(alvo)}.` : "")
+    + (seguraMelhor(sd) ? " Segurar até o fim rendeu mais; o alerta SAIR é informativo." : " <b>Fique atento ao alerta SAIR.</b>");
 }
 
 function msgVivo(env, t, s) {
@@ -645,7 +647,7 @@ Odd dele ${odd(s.precoDele)} · agora ${odd(s.ask)} · <b>mínima ${odd(s.teto)}
 Veredito: <b>${s.status === "COPIAR" ? "copiar" : "não copiar"}</b> — ${h(s.motivos.join("; "))}` : ""}
 ⏱ Vale até <b>${horaBR(fim)}</b> (janela de ${Math.round(t.janelaSeg / 60)} min)
 Entrou às ${horaBR(s.entrouEm)} · detectado às ${horaBR(Date.now())}${aposta(env, s.teto)}
-No Polymarket: ordem limitada a ${cents(s.teto)} · ${t.saida ? "saia junto com ele" : "segure até o fim"}
+No Polymarket: ordem limitada a ${cents(s.teto)} · ${t.saida && !seguraMelhor(t.saida) ? "saia junto com ele" : "segure até o fim"}
 ${linkMercado(s)}`;
 }
 
@@ -656,7 +658,7 @@ Entrar: <b>${h(p.aposta || p.lado)}</b>${p.pergunta && p.pergunta !== p.tituloEv
 Mercado: ${h(p.pergunta)} · lado ${h(p.lado)}` : ""}
 Odd dele ${odd(p.precoDele)} · agora ${odd(p.ask)} · <b>mínima ${odd(p.teto)}</b>${linhaTamanho(p)}${linhaNota(p.nota)}${linhaSaida(t, p)}${aposta(env, p.teto)}
 Detectado às ${horaBR(Date.now())}${p.entrouEm ? ` · ele entrou às ${horaBR(p.entrouEm)}` : ""}
-No Polymarket: ordem limitada a ${cents(p.teto)} · ${t.saida ? "saia junto com ele" : "segure até o fim"}
+No Polymarket: ordem limitada a ${cents(p.teto)} · ${t.saida && !seguraMelhor(t.saida) ? "saia junto com ele" : "segure até o fim"}
 ${linkMercado(p)}`;
 }
 

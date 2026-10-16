@@ -32,6 +32,9 @@ export function tamanhoTxt(t) {
 // Trader que vende antes do fim: como ele costuma sair e o que fazer (padrão medido em
 // polymarket_traders/saidas_analise.py, gravado em trader.saida)
 const oddTxt = (p) => (1 / p).toFixed(2).replace(".", ",");
+const pctTxt = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${String(Math.abs(v)).replace(".", ",")}%`);
+// segurar até o fim rendeu mais que sair junto com ele (diferença de pelo menos 2 pontos)
+export const seguraMelhor = (sd) => sd?.roi_segurando != null && sd?.roi_saida != null && sd.roi_segurando >= sd.roi_saida + 2;
 export function blocoSaida(sd, preco) {
   if (!sd) return "";
   const alvo = sd.lucro_c && preco ? Math.min(0.99, preco + sd.lucro_c / 100) : null;
@@ -43,9 +46,12 @@ export function blocoSaida(sd, preco) {
       ${sd.pct_perda ? `<li>Corta perda em ${sd.pct_perda}% das saídas, com ~${sd.perda_c}¢${stop ? ` → aqui, perto de ${Math.round(100 * stop)}¢ (odd ${oddTxt(stop)})` : ""}</li>` : ""}
       ${sd.min_med ? `<li>Tempo típico até sair: ~${sd.min_med} min${sd.pct_tudo != null ? ` · vende tudo de uma vez em ${sd.pct_tudo}% das saídas` : ""}</li>` : ""}
     </ul>
-    <p><b>Como copiar:</b> entre e siga o alerta <b>SAIR</b> do Telegram (chega quando ele vende). Se não puder acompanhar,
-      deixe logo após entrar uma ordem de venda limitada${alvo ? ` a ${Math.round(100 * alvo)}¢` : ""}. Na simulação, copiar a saída dele rendeu ${sd.roi_saida != null ? `${String(sd.roi_saida).replace(".", ",")}%` : "–"}
-      contra ${sd.roi_segurando != null ? `${String(sd.roi_segurando).replace(".", ",")}%` : "–"} segurando até o fim.</p>
+    ${seguraMelhor(sd)
+      ? `<p><b>Como copiar:</b> no histórico, <b>segurar até o fim rendeu mais</b> (${pctTxt(sd.roi_segurando)} contra ${pctTxt(sd.roi_saida)} saindo junto com ele).
+         O alerta <b>SAIR</b> é só informativo: sair junto garante o lucro dele, segurar rendeu mais na média.</p>`
+      : `<p><b>Como copiar:</b> entre e siga o alerta <b>SAIR</b> do Telegram (chega quando ele vende). Se não puder acompanhar,
+         deixe logo após entrar uma ordem de venda limitada${alvo ? ` a ${Math.round(100 * alvo)}¢` : ""}. Na simulação, copiar a saída dele rendeu ${pctTxt(sd.roi_saida)}
+         contra ${pctTxt(sd.roi_segurando)} segurando até o fim.</p>`}
   </div>`;
 }
 
