@@ -309,6 +309,31 @@
     "aposta_tipica": 1484.4526895,
     "chance_sorte": 0.0255
    }
+  },
+  {
+   "carteira": "0xfd8ff771a52c22a8a29a3156572d9b3e47fd761d",
+   "nome": "0xfd8ff771",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol Americano",
+     "tipo": "spreads",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol Americano · handicap · pré-jogo. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 23,1% em 33 jogos (sem as 3 melhores 15,2%; metades 23,6% / 22,6%; chance de ser sorte 7%). Achado no garimpo de americano.",
+   "stats": {
+    "lucro": 3572.196167,
+    "meses": 5,
+    "meses_positivos": 5,
+    "apostas": 34,
+    "n": 34,
+    "roi_copia_60s": 23.08,
+    "preenche_60s_pct": 65.4,
+    "aposta_tipica": 502.36530500000003,
+    "chance_sorte": 0.066
+   }
   }
  ]
 }
