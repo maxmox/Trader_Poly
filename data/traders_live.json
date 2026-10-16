@@ -351,6 +351,33 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0xcbef04dead0a5d75b28d2bb4ef149a222da10c11",
+   "nome": "0xcbef04de",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 11,0% em 166 jogos (sem as 3 melhores 7,0%; metades 1,2% / 20,9%; chance de ser sorte 3%). Achado no garimpo de tenis_criquete.",
+   "stats": {
+    "lucro": 2245.950295,
+    "meses": 8,
+    "meses_positivos": 6,
+    "apostas": 166,
+    "n": 166,
+    "roi_copia_60s": 11.05,
+    "preenche_60s_pct": 70.9,
+    "aposta_tipica": 304.2749945,
+    "chance_sorte": 0.03225
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
