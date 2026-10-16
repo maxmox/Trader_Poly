@@ -284,6 +284,46 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0xe6a9d2301ed7e1222002d04e9463c5f521d9e35a",
+   "nome": "0xe6a9d230",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 19,7% em 44 jogos (sem as 3 melhores 8,2%; metades 8,8% / 30,7%; chance de ser sorte 9%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 12971.777532,
+    "meses": 8,
+    "meses_positivos": 5,
+    "apostas": 44,
+    "n": 44,
+    "roi_copia_60s": 19.7,
+    "preenche_60s_pct": 72.1,
+    "aposta_tipica": 1629.1070185,
+    "chance_sorte": 0.08625
+   },
+   "saida": {
+    "pct_sai": 36,
+    "n": 44,
+    "pct_lucro": 88,
+    "lucro_c": 41.2,
+    "pct_perda": 12,
+    "perda_c": -30.0,
+    "min_med": 84,
+    "pct_tudo": 100,
+    "pct_antes_jogo": 0,
+    "roi_saida": 19.7,
+    "roi_segurando": 18.6
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
