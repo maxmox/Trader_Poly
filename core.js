@@ -438,6 +438,37 @@ export function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entra
 }
 
 // ---------------------------------------------------------------------------
+// FUTEBOL AO VIVO, CONTRA O MOVIMENTO (polymarket_traders/live_fut_*.py)
+// Em 0 a 0, a odd de vitória sobe sozinha com o tempo. Se nos primeiros 10 min a odd de um time CAIU, no
+// Polymarket isso foi exagero: comprar "NÃO vence" nesse time rendeu, com o 1º negócio real + taxa
+// (90 dias, 3.763 jogos, entrada aos 10 min): jogo >= $200 mil e queda >= 7%: +11,2% (125 sinais, as 2
+// metades positivas); queda >= 5%: +8,8%. SEGUIR o movimento perdeu -20% a -35%.
+export const CONTRA_FUT = { volMin: 200_000, forte: 0.07, moderado: 0.05, entradaMin: 10, janelaMin: 12, salto: 0.07 };
+// mercados = [{hist:[{t,p}], empate:bool}] (3 mercados de vencedor do jogo, preço do "Sim")
+export function avaliarContraFut(mercados, inicioSeg, agoraSeg) {
+  if (mercados.length !== 3 || mercados.filter((m) => m.empate).length !== 1) return null;
+  for (const m of mercados) { // gol ou expulsão = salto de preço desde o início -> não é mais 0 a 0
+    const h = m.hist;
+    for (let i = 1; i < h.length; i++) {
+      if (h[i].t >= inicioSeg - 120 && h[i].t <= agoraSeg && h[i].t - h[i - 1].t <= 180 && Math.abs(h[i].p - h[i - 1].p) >= CONTRA_FUT.salto) return null;
+    }
+  }
+  const emp = mercados.find((m) => m.empate);
+  const e0 = precoEm(emp.hist, inicioSeg, 300), eN = precoEm(emp.hist, agoraSeg, 300);
+  if (e0 == null || eN == null || eN < e0 - 0.02) return null;
+  let melhor = null;
+  mercados.forEach((m, i) => {
+    if (m.empate) return;
+    const p0 = precoEm(m.hist, inicioSeg, 300), pN = precoEm(m.hist, agoraSeg, 300);
+    if (p0 == null || pN == null || !(pN > 0.04 && pN < 0.96)) return;
+    const v = p0 / pN - 1; // variação da odd do time (negativa = odd caiu)
+    if (v <= -CONTRA_FUT.moderado && (!melhor || v < melhor.var)) melhor = { mercado: i, p0, pN, var: v };
+  });
+  if (!melhor) return null;
+  return { ...melhor, precoNao: 1 - melhor.pN, forca: melhor.var <= -CONTRA_FUT.forte ? "forte" : "moderado" };
+}
+
+// ---------------------------------------------------------------------------
 // NOTA DA ENTRADA (modelo de polymarket_traders/modelo_entrada.py, data/indices.json)
 // Vantagem esperada de quem copia, somando o efeito de fatores que se repetiram no tempo:
 //   trader  = convicção (aposta vs mediana dele) + como entrou (absorveu ou "pescou" preço)

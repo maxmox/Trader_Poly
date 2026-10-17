@@ -301,6 +301,67 @@ async function verificarSteam(env, api, prefixos, resumo, maxMercados = 8) {
   }
 }
 
+// ---------- FUTEBOL AO VIVO, CONTRA O MOVIMENTO ----------
+// A cada minuto: jogos de futebol que começaram há 10-12 min, volume >= $200 mil; histórico dos 3
+// mercados de vencedor (3 consultas). Se ainda 0 a 0 e a odd de um time caiu >= 5%, manda "comprar NÃO
+// vence" nesse time. Cada jogo é avaliado uma vez (KV "lv:"). No máximo 4 jogos por execução.
+const CONTRA_TRADER = { carteira: "contra-fut", nome: "Futebol ao vivo: contra o movimento", nivel: "contra" };
+function msgContra(x) {
+  const ic = x.forca === "forte" ? "🟢" : "🟡";
+  return `${ic} <b>AO VIVO · CONTRA O MOVIMENTO ${x.forca === "forte" ? "(forte)" : "(moderado)"}</b> · ${h(x.liga)}
+${h(x.tituloEvento)} · 0 a 0 aos ~${x.minuto} min
+A odd de ${h(x.time)} caiu de ${odd(x.p0)} para ${odd(x.pN)} (−${Math.abs(100 * x.var).toFixed(0)}%) sem gol: no histórico, exagero
+Entrar: <b>${h(x.aposta)}</b>
+Mercado: ${h(x.pergunta)} · lado <b>No</b>
+Odd agora ${x.ask != null ? odd(x.ask) : odd(x.precoDele)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}${x.ask != null && x.ask > x.teto ? "\n⚠️ A melhor oferta já está abaixo da odd mínima: deixe ordem limitada na mínima e não persiga." : ""}
+Volume do jogo ${usd(x.vol)} · segure até o fim
+${x.forca === "forte" ? "Histórico (90 dias, preço real): +11% nesta regra." : "Regra moderada: histórico ~+5%, ainda em teste."}
+${linkMercado(x)}`;
+}
+
+async function verificarContraFut(env, api, resumo, maxJogos = 4) {
+  const agora = Date.now();
+  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+  const evs = (await api.get("gamma", `/events?tag_slug=soccer&closed=false&active=true&start_time_min=${iso(agora - CONTRA_FUT.janelaMin * 60e3)}&start_time_max=${iso(agora - CONTRA_FUT.entradaMin * 60e3)}&limit=50`).catch(() => null) || [])
+    .filter((e) => +(e.volume || 0) >= CONTRA_FUT.volMin).sort((a, b) => +b.volume - +a.volume);
+  resumo.contraFut = { jogos: evs.length, sinais: 0 };
+  let n = 0;
+  for (const ev of evs) {
+    if (n >= maxJogos) break;
+    const ms = (ev.markets || []).filter((m) => m.sportsMarketType === "moneyline" && m.clobTokenIds);
+    if (ms.length !== 3) continue;
+    const chave = `lv:${ev.slug}`;
+    if (await jaEnviado(env, chave)) continue;
+    n++;
+    await marcar(env, chave, 3 * 3600);
+    const ini = Date.parse(ms[0].gameStartTime || ev.startTime) / 1000;
+    const series = [];
+    for (const m of ms) {
+      const tok = JSON.parse(m.clobTokenIds);
+      const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 600)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
+      series.push({ hist: (hp?.history || []).sort((a, b) => a.t - b.t), empate: /draw/i.test(m.question || ""), m, tok });
+    }
+    const sig = avaliarContraFut(series, ini, Math.floor(agora / 1000));
+    if (!sig) continue;
+    const { m, tok } = series[sig.mercado];
+    const book = await api.get("clob", `/book?token_id=${tok[1]}`).catch(() => null);
+    const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
+    const teto = Math.min(sig.precoNao + 0.015, 0.97);
+    const time = (m.question || "").replace(/^Will\s+/i, "").replace(/\s+win.*$/i, "");
+    const x = {
+      ...sig, asset: tok[1], cond: m.conditionId, oi: 1, slug: m.slug, eventSlug: ev.slug, tituloEvento: ev.title, pergunta: m.question,
+      lado: "No", time, aposta: descreverAposta(m.question, "No"), esporte: "Futebol", liga: ev.slug.split("-")[0].toUpperCase(),
+      minuto: Math.round((agora / 1000 - ini) / 60), inicio: ini * 1000, entrouEm: agora, precoDele: sig.precoNao, teto,
+      ask: asks[0]?.p ?? null, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), vol: +ev.volume, tipo: "moneyline",
+    };
+    const r = await telegram(env, msgContra(x));
+    if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
+    resumo.enviados++; resumo.contraFut.sinais++;
+    x.nota = { nota: null, rotulo: x.forca };
+    await registrarSinal(env, CONTRA_TRADER, x, "c");
+  }
+}
+
 async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
   let usadas = 0;
   const fetchContado = (url, opts) => {
@@ -328,6 +389,11 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); await lembrarSinal(env, t, s, await registrarSinal(env, t, s, "v")); } else resumo.erros.push(`telegram: ${r.erro}`);
     }
     if (t.nivel !== "teste") await avisarSaidas(env, t, d.vendas, resumo);
+  }
+
+  // futebol ao vivo, contra o movimento (jogos que começaram há 10-12 min)
+  if (env.CONTRA_FUT !== "0") {
+    try { await verificarContraFut(env, api, resumo); } catch (e) { resumo.erros.push(`contra-fut: ${e.message || e}`); }
   }
 
   // steam antes do rodízio do pré-jogo (poucas consultas: jogos começando em ~10 min)

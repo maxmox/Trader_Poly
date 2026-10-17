@@ -216,3 +216,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .card.steam { border-left-color: var(--warn); }
 .card.steam .ordem { background: var(--warn-bg); }
 .card.steam.moderado { opacity: .92; }
+
+/* futebol ao vivo, contra o movimento */
+.momento.contra { background: var(--good); margin-left: 4px; }
+.card.contra { border-left-color: var(--good); }
+.card.contra .ordem { background: var(--good-bg); }
