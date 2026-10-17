@@ -56,6 +56,14 @@ export function secaoPlacar({ desempenho, registro, traders, esc }) {
       <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
   }).join("");
 
+  // steam (movimento de odd antes do jogo): sinais reais por força da regra
+  const steam = ["forte", "moderado"].map((f) => {
+    const r = resumoRegistro((porW.steam || []).filter((x) => x.rt === f));
+    return `<tr><td>Steam ${f === "forte" ? "🟢 forte (queda ≥ 7%)" : "🟡 moderado (5–7%)"}</td><td>pré-jogo</td><td>–</td><td class="n">–</td><td class="n">–</td><td class="n">–</td>
+      <td class="n">${f === "forte" ? "+30% a +40%*" : "+13%*"}</td><td class="n">–</td>
+      <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
+  }).join("");
+
   // conferência da nota: 30 dias simulados (todos os traders) + sinais reais
   const agg = {};
   for (const d of Object.values(D)) for (const [rot, v] of Object.entries(d.porNota || {})) {
@@ -75,7 +83,8 @@ export function secaoPlacar({ desempenho, registro, traders, esc }) {
   const quando = desempenho?.geradoEm ? new Date(desempenho.geradoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–";
   return `<div class="sec-head"><h2>Placar</h2><span class="muted">últimos 30 dias atualizados em ${quando} · sinais reais desde o início do registro</span></div>
     <p class="muted lede"><b>30 dias</b>: entradas do trader na especialidade/nicho dele, como se tivessem virado sinal; "cópia" = comprar 1 min depois, na odd negociada, só se ainda estava acima da odd mínima. <b>Sinais reais</b>: o que o Telegram mandou, com o resultado conferido depois do jogo (ROI na odd disponível no envio).</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}</tbody></table></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}${steam}</tbody></table></div>
+    <p class="muted">* Steam: ROI do backtest de 90 dias (mercados ≥ $100 mil, lado com odd 1,50–2,00, entrada 10 min antes no preço real + taxa). Os sinais reais mostram se isso se mantém.</p>
     <h3>A nota está acertando?</h3>
     <div class="tbl-wrap"><table class="estreita"><thead><tr><th>Nota</th><th class="n">Acertos 30d</th><th class="n">ROI cópia 30d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${notas}</tbody></table></div>`;
 }

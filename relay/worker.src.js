@@ -236,6 +236,71 @@ async function registrar(env, item, persistir) {
 
 const ORCAMENTO = 40; // consultas à API por execução (limite do plano grátis: 50, sobra para listas e Telegram)
 
+// ---------- STEAM: odd caiu forte na última 1-2 h antes do jogo ----------
+// A cada minuto: jogos que começam em ~9-11 min; mercados de vencedor + handicap/total de maior volume com
+// volume >= $100 mil; histórico de preço (1 consulta por mercado) e, se bater a regra, o livro (1 consulta).
+// Cada mercado é avaliado uma vez (KV "sv:"). Sinais vão para o registro como trader "steam".
+const STEAM_TRADER = { carteira: "steam", nome: "Steam (movimento de odd)", nivel: "steam" };
+function msgSteam(x) {
+  const pct = (v) => (v == null ? "–" : `${v <= 0 ? "−" : "+"}${Math.abs(100 * v).toFixed(0)}%`);
+  const ic = x.forca === "forte" ? "🟢" : "🟡";
+  return `${ic} <b>STEAM ${x.forca === "forte" ? "FORTE" : "moderado"}</b> · ${h(x.esporte)} · começa ${horaBR(x.inicio)}
+${h(x.tituloEvento)}
+Entrar: <b>${h(x.aposta)}</b>
+Mercado: ${h(x.pergunta)} · lado ${h(x.lado)}
+A odd caiu ${pct(x.var120)} desde 2 h antes e ${pct(x.var60)} desde 1 h antes · agora ${odd(x.precoDele)}
+<b>Odd mínima ${odd(x.teto)}</b>${x.ask != null ? ` · melhor oferta ${odd(x.ask)}` : ""} · livre até a mínima ~${usd(x.liquidez || 0)}
+Volume do mercado ${usd(x.vol)} · segure até o fim
+${x.forca === "forte" ? "Histórico (90 dias): +30% a +40% nesta regra." : "Regra moderada: histórico +13%, ainda em teste."}
+${linkMercado(x)}`;
+}
+
+async function verificarSteam(env, api, prefixos, resumo, maxMercados = 8) {
+  const agora = Date.now();
+  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+  const evs = await api.get("gamma", `/events?closed=false&active=true&start_time_min=${iso(agora + 9 * 60e3)}&start_time_max=${iso(agora + 11 * 60e3)}&limit=50`).catch(() => null) || [];
+  const mercados = [];
+  for (const ev of evs) {
+    const ms = (ev.markets || []).filter((m) => m.active && !m.closed && m.clobTokenIds && +(m.volumeNum || 0) >= STEAM.volMin);
+    const sel = ms.filter((m) => m.sportsMarketType === "moneyline");
+    for (const tp of ["spreads", "totals"]) {
+      const c = ms.filter((m) => m.sportsMarketType === tp).sort((a, b) => +b.volumeNum - +a.volumeNum)[0];
+      if (c) sel.push(c);
+    }
+    for (const m of sel) mercados.push({ ev, m });
+  }
+  resumo.steam = { jogos: evs.length, mercados: mercados.length, sinais: 0 };
+  let n = 0;
+  for (const { ev, m } of mercados) {
+    if (n >= maxMercados) break;
+    const chave = `sv:${m.conditionId}`;
+    if (await jaEnviado(env, chave)) continue;
+    n++;
+    await marcar(env, chave, 3 * 3600);
+    const ini = Date.parse(m.gameStartTime || ev.startTime) / 1000;
+    const tok = JSON.parse(m.clobTokenIds);
+    const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 130 * 60)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
+    const hist = (hp?.history || []).sort((a, b) => a.t - b.t);
+    const sig = avaliarSteam(hist, ini, Math.floor(agora / 1000));
+    if (!sig) continue;
+    const outcomes = JSON.parse(m.outcomes || '["Yes","No"]');
+    const book = await api.get("clob", `/book?token_id=${tok[sig.lado]}`).catch(() => null);
+    const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
+    const teto = Math.min(sig.preco + 0.015, 0.97);
+    const x = {
+      ...sig, asset: tok[sig.lado], cond: m.conditionId, oi: sig.lado, slug: m.slug, eventSlug: ev.slug, tituloEvento: ev.title,
+      pergunta: m.question, lado: outcomes[sig.lado], aposta: descreverAposta(m.question, outcomes[sig.lado]), esporte: rotuloEsporte(esporte(ev.slug, ev, prefixos)),
+      inicio: ini * 1000, entrouEm: agora, precoDele: sig.preco, ask: asks[0]?.p ?? null, teto, vol: +m.volumeNum,
+      liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), tipo: m.sportsMarketType,
+    };
+    const r = await telegram(env, msgSteam(x));
+    if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
+    resumo.enviados++; resumo.steam.sinais++;
+    x.nota = { nota: null, rotulo: x.forca };
+    await registrarSinal(env, STEAM_TRADER, x, "s");
+  }
+}
+
 async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
   let usadas = 0;
   const fetchContado = (url, opts) => {
@@ -263,6 +328,11 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); await lembrarSinal(env, t, s, await registrarSinal(env, t, s, "v")); } else resumo.erros.push(`telegram: ${r.erro}`);
     }
     if (t.nivel !== "teste") await avisarSaidas(env, t, d.vendas, resumo);
+  }
+
+  // steam antes do rodízio do pré-jogo (poucas consultas: jogos começando em ~10 min)
+  if (env.STEAM !== "0") {
+    try { await verificarSteam(env, api, prefixos, resumo); } catch (e) { resumo.erros.push(`steam: ${e.message || e}`); }
   }
 
   // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~10 min);

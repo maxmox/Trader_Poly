@@ -408,6 +408,36 @@ export async function carregarAoVivo(api, traders, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// STEAM: movimento de odd na última hora antes do jogo (polymarket_traders/steam_*.py)
+// Backtest de 90 dias (out/2026), mercados com volume >= $100 mil, lado do movimento com odd 1,50-2,00,
+// entrada 10 min antes do início no 1º negócio real + taxa:
+//   queda >= 7% (de 2 h ou de 1 h até a entrada): +30% a +40% (44 e 28 sinais, as 2 metades positivas)
+//   queda 5-7% de 2 h até a entrada: +13%, inconsistente -> "moderado", só para confirmar ao vivo
+//   queda 2-5%: prejuízo (ruído que volta) -> sem sinal
+export const STEAM = { volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: 0.05, entradaMin: 10 };
+const precoEm = (hist, t, velhoSeg = 900) => {
+  let p = null, tt = null;
+  for (const x of hist) { if (x.t <= t) { p = x.p; tt = x.t; } else break; }
+  return p != null && t - tt <= velhoSeg ? p : null;
+};
+// hist = [{t, p}] do 1º lado (ordenado); devolve o sinal ou null
+export function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entradaMin * 60) {
+  const agora = precoEm(hist, agoraSeg);
+  if (agora == null) return null;
+  const var_ = (pa) => (pa == null ? null : [pa / agora - 1, (1 - pa) / (1 - agora) - 1]); // variação da odd de cada lado
+  const v120 = var_(precoEm(hist, inicioSeg - 120 * 60)), v60 = var_(precoEm(hist, inicioSeg - 60 * 60));
+  for (const j of [0, 1]) {
+    const p = j === 0 ? agora : 1 - agora;
+    if (!(1 / p >= STEAM.oddMin && 1 / p < STEAM.oddMax)) continue;
+    const q120 = v120?.[j], q60 = v60?.[j];
+    const pior = Math.min(q120 ?? 0, q60 ?? 0);
+    if (pior <= -STEAM.forte) return { lado: j, preco: p, var120: q120, var60: q60, forca: "forte" };
+    if ((q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // NOTA DA ENTRADA (modelo de polymarket_traders/modelo_entrada.py, data/indices.json)
 // Vantagem esperada de quem copia, somando o efeito de fatores que se repetiram no tempo:
 //   trader  = convicção (aposta vs mediana dele) + como entrou (absorveu ou "pescou" preço)
