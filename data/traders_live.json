@@ -129,7 +129,7 @@
      "momento": "ao vivo"
     }
    ],
-   "nota": "Só o nicho Dota 2 · vencedor · ao vivo. Nicho Dota 2 · vencedor · ao vivo: copiando 1 min depois 35,3% em 40 jogos (sem as 3 melhores 25,3%; metades 46,7% / 23,8%; chance de ser sorte 0%). Achado no garimpo de ranking_nichos.",
+   "nota": "Só o nicho Dota 2 · vencedor · ao vivo. Nicho Dota 2 · vencedor · ao vivo: copiando 1 min depois 35,3% em 40 jogos (sem as 3 melhores 25,3%; metades 46,7% / 23,8%; chance de ser sorte 0%). Achado no garimpo de ranking_nichos. Auditoria 18/10/2026: mantido em copiar, mas a cópia em 1 min só sai em ~47% das entradas (o preço foge); quando sai, +26%.",
    "stats": {
     "lucro": 430286,
     "meses": 9,
@@ -140,6 +140,46 @@
     "preenche_60s_pct": 53.3,
     "aposta_tipica": 4461.5007945,
     "chance_sorte": 0.004
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xb589734f08a5b12a7b6f30b782a5deeace3f91e3",
+   "nome": "0xb589734f",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "LoL",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando entrada e saída dele 1 min depois 16,2% em 67 jogos (sem as 3 melhores 2,2%; metades 24,7% / 7,7%; chance de ser sorte 9%). Achado no garimpo de saidas. Auditoria 18/10/2026: promovido a copiar (79 jogos, P 0,04, +22% copiando, as duas metades positivas).",
+   "stats": {
+    "lucro": 44128.937823,
+    "meses": 9,
+    "meses_positivos": 6,
+    "apostas": 102,
+    "n": 102,
+    "roi_copia_60s": 16.2,
+    "preenche_60s_pct": 61.8,
+    "aposta_tipica": 2686.117052,
+    "chance_sorte": 0.0865
+   },
+   "saida": {
+    "pct_sai": 27,
+    "n": 102,
+    "pct_lucro": 64,
+    "lucro_c": 36.2,
+    "pct_perda": 32,
+    "perda_c": -23.2,
+    "min_med": 12,
+    "pct_tudo": 79,
+    "pct_antes_jogo": 0,
+    "roi_saida": 16.2,
+    "roi_segurando": 22.3
    },
    "janelaSeg": 60,
    "minUsd": 0
@@ -286,46 +326,6 @@
    "minUsd": 0
   },
   {
-   "carteira": "0xe6a9d2301ed7e1222002d04e9463c5f521d9e35a",
-   "nome": "0xe6a9d230",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Tenis",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 19,7% em 44 jogos (sem as 3 melhores 8,2%; metades 8,8% / 30,7%; chance de ser sorte 9%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 12971.777532,
-    "meses": 8,
-    "meses_positivos": 5,
-    "apostas": 44,
-    "n": 44,
-    "roi_copia_60s": 19.7,
-    "preenche_60s_pct": 72.1,
-    "aposta_tipica": 1629.1070185,
-    "chance_sorte": 0.08625
-   },
-   "saida": {
-    "pct_sai": 36,
-    "n": 44,
-    "pct_lucro": 88,
-    "lucro_c": 41.2,
-    "pct_perda": 12,
-    "perda_c": -30.0,
-    "min_med": 84,
-    "pct_tudo": 100,
-    "pct_antes_jogo": 0,
-    "roi_saida": 19.7,
-    "roi_segurando": 18.6
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
    "carteira": "0x10a6fadcbacd66330862206f6199b197e3ad4d8b",
    "nome": "0x10a6fadc",
    "nivel": "observar",
@@ -420,129 +420,9 @@
    "minUsd": 0
   },
   {
-   "carteira": "0xf42d9b66eb8eb074b65c1a1a33dd203934880996",
-   "nome": "0xf42d9b66",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Tenis",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 11,4% em 57 jogos (sem as 3 melhores 4,0%; metades 19,1% / 4,0%; chance de ser sorte 7%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 2146.399415,
-    "meses": 5,
-    "meses_positivos": 5,
-    "apostas": 57,
-    "n": 57,
-    "roi_copia_60s": 11.4,
-    "preenche_60s_pct": 69.5,
-    "aposta_tipica": 100.899987,
-    "chance_sorte": 0.07325
-   },
-   "saida": {
-    "pct_sai": 42,
-    "n": 57,
-    "pct_lucro": 79,
-    "lucro_c": 9.9,
-    "pct_perda": 21,
-    "perda_c": -43.0,
-    "min_med": 62,
-    "pct_tudo": 100,
-    "pct_antes_jogo": 0,
-    "roi_saida": 11.4,
-    "roi_segurando": 4.2
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
-   "carteira": "0x58e40b59c4aa9843f7de8caa58c802ee0e3273f9",
-   "nome": "0x58e40b59",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho Futebol · vencedor · ao vivo. Nicho Futebol · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 15,5% em 28 jogos (sem as 3 melhores 7,9%; metades 28,3% / 2,7%; chance de ser sorte 4%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 1804.009368,
-    "meses": 12,
-    "meses_positivos": 7,
-    "apostas": 28,
-    "n": 28,
-    "roi_copia_60s": 15.5,
-    "preenche_60s_pct": 90.3,
-    "aposta_tipica": 640.2123799999999,
-    "chance_sorte": 0.03525
-   },
-   "saida": {
-    "pct_sai": 54,
-    "n": 28,
-    "pct_lucro": 100,
-    "lucro_c": 16.7,
-    "pct_perda": 0,
-    "perda_c": null,
-    "min_med": 43,
-    "pct_tudo": 93,
-    "pct_antes_jogo": 0,
-    "roi_saida": 15.5,
-    "roi_segurando": 16.6
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
-   "carteira": "0xb589734f08a5b12a7b6f30b782a5deeace3f91e3",
-   "nome": "0xb589734f",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "LoL",
-     "tipo": "child_moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando entrada e saída dele 1 min depois 16,2% em 67 jogos (sem as 3 melhores 2,2%; metades 24,7% / 7,7%; chance de ser sorte 9%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 44128.937823,
-    "meses": 9,
-    "meses_positivos": 6,
-    "apostas": 102,
-    "n": 102,
-    "roi_copia_60s": 16.2,
-    "preenche_60s_pct": 61.8,
-    "aposta_tipica": 2686.117052,
-    "chance_sorte": 0.0865
-   },
-   "saida": {
-    "pct_sai": 27,
-    "n": 102,
-    "pct_lucro": 64,
-    "lucro_c": 36.2,
-    "pct_perda": 32,
-    "perda_c": -23.2,
-    "min_med": 12,
-    "pct_tudo": 79,
-    "pct_antes_jogo": 0,
-    "roi_saida": 16.2,
-    "roi_segurando": 22.3
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
    "carteira": "0xd5e46e732603449341b037b7d059d385b7002c05",
    "nome": "0xd5e46e73",
-   "nivel": "copiar",
+   "nivel": "observar",
    "esportes": [],
    "nichos": [
     {
@@ -551,7 +431,7 @@
      "momento": "ao vivo"
     }
    ],
-   "nota": "Só o nicho Dota 2 · vencedor do mapa · ao vivo. Nicho Dota 2 · vencedor do mapa · ao vivo: copiando entrada e saída dele 1 min depois 9,7% em 72 jogos (sem as 3 melhores 9,0%; metades 9,3% / 10,2%; chance de ser sorte 0%). Achado no garimpo de saidas.",
+   "nota": "Só o nicho Dota 2 · vencedor do mapa · ao vivo. Nicho Dota 2 · vencedor do mapa · ao vivo: copiando entrada e saída dele 1 min depois 9,7% em 72 jogos (sem as 3 melhores 9,0%; metades 9,3% / 10,2%; chance de ser sorte 0%). Achado no garimpo de saidas. Auditoria 18/10/2026: rebaixado a observar: só +7,8% por aposta em odds ~1,15, pouca margem para a taxa.",
    "stats": {
     "lucro": 7529.836528,
     "meses": 8,

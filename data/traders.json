@@ -2,6 +2,83 @@
  "gerado_em": "2026-10-15",
  "traders": [
   {
+   "carteira": "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28",
+   "nome": "BoggsFromShawshank",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol Americano",
+     "tipo": "spreads",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho Futebol Americano · handicap · pré-jogo. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 12,9% em 67 entradas (sem as 3 melhores 5,0%; metades 0,1% / 29,1%).",
+   "stats": {
+    "lucro": 34221,
+    "lucro_sem_top5": -1279843,
+    "meses": 12,
+    "meses_positivos": 7,
+    "apostas": 67,
+    "n": 67,
+    "roi_copia_5min": 12.2,
+    "roi_dele": 1.71,
+    "roi_copia_60s": 12.88,
+    "preenche_60s_pct": 64.2,
+    "vol_mercado_med": 103545
+   }
+  },
+  {
+   "carteira": "0x51c7d30511ed096b39a9392bad97e0dc76c298aa",
+   "nome": "0x51c7d305",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "CS2",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho CS2 · vencedor · pré-jogo. Nicho CS2 · vencedor · pré-jogo: copiando 1 min depois 15,0% em 101 jogos (sem as 3 melhores 9,7%; metades 13,0% / 16,9%; chance de ser sorte 3%). Achado no garimpo de esports.",
+   "stats": {
+    "lucro": 41069.988423,
+    "meses": 14,
+    "meses_positivos": 14,
+    "apostas": 101,
+    "n": 101,
+    "roi_copia_60s": 14.96,
+    "preenche_60s_pct": 96.2,
+    "aposta_tipica": 1484.4526895,
+    "chance_sorte": 0.0255
+   }
+  },
+  {
+   "carteira": "0x4cb03276679d644ec1852f744668f345d41657e0",
+   "nome": "0x4cb03276",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "LoL",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho LoL · vencedor · pré-jogo. Nicho LoL · vencedor · pré-jogo: copiando 1 min depois 41,3% em 59 jogos (sem as 3 melhores 30,0%; metades 42,6% / 40,0%; chance de ser sorte 0%). Achado no garimpo de esports_v2.",
+   "stats": {
+    "lucro": 42107.362852,
+    "meses": 5,
+    "meses_positivos": 4,
+    "apostas": 59,
+    "n": 59,
+    "roi_copia_60s": 41.25,
+    "preenche_60s_pct": 80.8,
+    "aposta_tipica": 1964.08875,
+    "chance_sorte": 0.0
+   }
+  },
+  {
    "carteira": "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f",
    "nome": "GamblingOdyssey",
    "nivel": "observar",
@@ -116,54 +193,6 @@
    ]
   },
   {
-   "carteira": "0xc49fe658479db29e1a2fefebf0735f657dca9e05",
-   "nome": "jizzbucket57",
-   "nivel": "observar",
-   "esportes": [
-    "LoL",
-    "Hoquei",
-    "CS2"
-   ],
-   "nota": "Ganha em eSports e hóquei; perde em basquete e futebol. Copie só os esportes certos. Nicho CS2 · vencedor · pré-jogo: copiando 1 min depois 16,0% em 41 entradas (sem as 3 melhores 3,6%; metades 7,5% / 25,0%).",
-   "stats": {
-    "lucro": 251721,
-    "lucro_sem_top5": 192496,
-    "meses": 10,
-    "meses_positivos": 6,
-    "apostas": 2685,
-    "roi_copia_5min": 10.89,
-    "roi_dele": 12.85,
-    "antecedencia_h": 1.0,
-    "por_esporte": {
-     "CS2": {
-      "n": 412,
-      "roi_pct": 3.4,
-      "meses": 10,
-      "meses_pos_pct": 70.0
-     },
-     "LoL": {
-      "n": 184,
-      "roi_pct": 22.69,
-      "meses": 9,
-      "meses_pos_pct": 88.9
-     },
-     "Hoquei": {
-      "n": 277,
-      "roi_pct": 11.19,
-      "meses": 5,
-      "meses_pos_pct": 60.0
-     }
-    }
-   },
-   "nichosFortes": [
-    {
-     "area": "CS2",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ]
-  },
-  {
    "carteira": "0x5966db1fe50763c9e3c014d756369bad07e1f804",
    "nome": "0x5966…F804",
    "nivel": "observar",
@@ -202,33 +231,6 @@
       "meses_pos_pct": 100.0
      }
     }
-   }
-  },
-  {
-   "carteira": "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28",
-   "nome": "BoggsFromShawshank",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol Americano",
-     "tipo": "spreads",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho Futebol Americano · handicap · pré-jogo. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 12,9% em 67 entradas (sem as 3 melhores 5,0%; metades 0,1% / 29,1%).",
-   "stats": {
-    "lucro": 34221,
-    "lucro_sem_top5": -1279843,
-    "meses": 12,
-    "meses_positivos": 7,
-    "apostas": 67,
-    "n": 67,
-    "roi_copia_5min": 12.2,
-    "roi_dele": 1.71,
-    "roi_copia_60s": 12.88,
-    "preenche_60s_pct": 64.2,
-    "vol_mercado_med": 103545
    }
   },
   {
@@ -283,31 +285,6 @@
     "roi_copia_60s": 36.84,
     "preenche_60s_pct": 90.6,
     "vol_mercado_med": 1667755
-   }
-  },
-  {
-   "carteira": "0x51c7d30511ed096b39a9392bad97e0dc76c298aa",
-   "nome": "0x51c7d305",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "CS2",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho CS2 · vencedor · pré-jogo. Nicho CS2 · vencedor · pré-jogo: copiando 1 min depois 15,0% em 101 jogos (sem as 3 melhores 9,7%; metades 13,0% / 16,9%; chance de ser sorte 3%). Achado no garimpo de esports.",
-   "stats": {
-    "lucro": 41069.988423,
-    "meses": 14,
-    "meses_positivos": 14,
-    "apostas": 101,
-    "n": 101,
-    "roi_copia_60s": 14.96,
-    "preenche_60s_pct": 96.2,
-    "aposta_tipica": 1484.4526895,
-    "chance_sorte": 0.0255
    }
   },
   {
@@ -455,31 +432,6 @@
     "pct_antes_jogo": 0,
     "roi_saida": 50.5,
     "roi_segurando": 76.0
-   }
-  },
-  {
-   "carteira": "0x4cb03276679d644ec1852f744668f345d41657e0",
-   "nome": "0x4cb03276",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "LoL",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho LoL · vencedor · pré-jogo. Nicho LoL · vencedor · pré-jogo: copiando 1 min depois 41,3% em 59 jogos (sem as 3 melhores 30,0%; metades 42,6% / 40,0%; chance de ser sorte 0%). Achado no garimpo de esports_v2.",
-   "stats": {
-    "lucro": 42107.362852,
-    "meses": 5,
-    "meses_positivos": 4,
-    "apostas": 59,
-    "n": 59,
-    "roi_copia_60s": 41.25,
-    "preenche_60s_pct": 80.8,
-    "aposta_tipica": 1964.08875,
-    "chance_sorte": 0.0
    }
   },
   {
