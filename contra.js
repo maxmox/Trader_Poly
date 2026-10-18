@@ -68,7 +68,7 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
           <div><small>Odd de ${esc(s.time)} no início</small><b>${odd(s.p0)}</b></div>
           <div><small>Odd de ${esc(s.time)} agora</small><b>${odd(s.pN)}</b><em class="tam">−${Math.abs(100 * s.var).toFixed(0)}%</em></div>
           <div><small>Odd do NÃO agora</small><b>${s.ask != null ? odd(s.ask) : odd(s.precoNao)}</b></div>
-          <div><small>Volume do jogo</small><b>${usd(s.vol)}</b></div>
+          <div><small>Volume do mercado até agora</small><b>${usd(s.vol)}</b></div>
           <div><small>Livre até a mínima</small><b>${usd(s.liquidez)}</b></div>
         </div>
         <div class="ordem">${ok ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(s.aposta)}</b> com odd mínima <b>${odd(s.teto)}</b>,
@@ -76,8 +76,8 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
           <span class="preco-ref">No Polymarket: lado "No" do mercado, ordem limitada a ${cents(s.teto)}</span>
           ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} à venda até a mínima: a ordem pode ser preenchida em parte.</span>` : ""}</div>
         <div class="card-foot"><span>${s.forca === "forte"
-          ? "Odd de um time caiu ≥ 7% nos primeiros 10 min de um 0 a 0: no Polymarket isso foi exagero. Backtest 90 dias (preço real): +11%."
-          : "Queda de 5–7%: backtest ~+5%, ainda em teste: valor menor."}</span>
+          ? "Odd de um time caiu ≥ 7% nos primeiros 10 min de um 0 a 0: no Polymarket isso foi exagero. Backtest 90 dias (todos os jogos, preço real, início confirmado): +9%."
+          : "Queda de 5–7%: backtest ~+3%, ainda em teste: valor menor."}</span>
           <a href="${linkMercado(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
       </article>`;
     }).join("");

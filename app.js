@@ -2,6 +2,7 @@ import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloN
 import { iniciarAoVivo } from "./aovivo.js";
 import { iniciarSteam } from "./steam.js";
 import { iniciarContraFut } from "./contra.js";
+import { iniciarSeguirBkt } from "./bkt.js";
 import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seloMercado } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
 import { iniciarEntradas } from "./entradas.js";
@@ -138,12 +139,12 @@ const ha = (t) => {
 const link = linkMercado; // vai direto ao mercado (não só ao evento)
 
 // ---------- quadro único (pré-jogo + ao vivo) ----------
-const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 }, steam: { n: 0, copiar: 0 }, contra: { n: 0, copiar: 0 } };
+const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 }, steam: { n: 0, copiar: 0 }, contra: { n: 0, copiar: 0 }, bkt: { n: 0, copiar: 0 } };
 function atualizarQuadro() {
-  const copiar = quadro.pre.copiar + quadro.vivo.copiar + quadro.steam.copiar + quadro.contra.copiar;
+  const copiar = quadro.pre.copiar + quadro.vivo.copiar + quadro.steam.copiar + quadro.contra.copiar + quadro.bkt.copiar;
   document.title = copiar ? `(${copiar}) Trader Poly` : "Trader Poly";
   $("#titulo-agora").textContent = copiar ? `Sinais agora · ${copiar}` : "Sinais agora";
-  $("#quadro-vazio").hidden = quadro.pre.n + quadro.vivo.n + quadro.steam.n + quadro.contra.n > 0;
+  $("#quadro-vazio").hidden = quadro.pre.n + quadro.vivo.n + quadro.steam.n + quadro.contra.n + quadro.bkt.n > 0;
 }
 
 // ---------- render ----------
@@ -292,6 +293,10 @@ function avisar(lista) {
     iniciarContraFut({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg, esc, usd,
       aoRenderizar: (c) => { quadro.contra = c; atualizarQuadro(); } });
   } catch (e) { console.error("contra", e); }
+  try {
+    iniciarSeguirBkt({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg, esc, usd,
+      aoRenderizar: (c) => { quadro.bkt = c; atualizarQuadro(); } });
+  } catch (e) { console.error("bkt", e); }
   carregarPlacar().then(render);
   setInterval(() => carregarPlacar().then(render), 5 * 60_000);
 })();

@@ -252,3 +252,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .ent-st.perdeu { color: var(--bad); }
 .ent-st.aberta { color: var(--accent); }
 .ent-tab tr.aberta td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* basquete ao vivo, seguir quem disparou (observação) */
+.momento.bkt { background: var(--warn); margin-left: 4px; }
+.card.bkt { border-left-color: var(--warn); }
+.card.bkt .ordem { background: var(--warn-bg); }
