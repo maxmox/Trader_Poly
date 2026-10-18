@@ -458,6 +458,46 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0x58e40b59c4aa9843f7de8caa58c802ee0e3273f9",
+   "nome": "0x58e40b59",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Futebol",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Futebol · vencedor · ao vivo. Nicho Futebol · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 15,5% em 28 jogos (sem as 3 melhores 7,9%; metades 28,3% / 2,7%; chance de ser sorte 4%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 1804.009368,
+    "meses": 12,
+    "meses_positivos": 7,
+    "apostas": 28,
+    "n": 28,
+    "roi_copia_60s": 15.5,
+    "preenche_60s_pct": 90.3,
+    "aposta_tipica": 640.2123799999999,
+    "chance_sorte": 0.03525
+   },
+   "saida": {
+    "pct_sai": 54,
+    "n": 28,
+    "pct_lucro": 100,
+    "lucro_c": 16.7,
+    "pct_perda": 0,
+    "perda_c": null,
+    "min_med": 43,
+    "pct_tudo": 93,
+    "pct_antes_jogo": 0,
+    "roi_saida": 15.5,
+    "roi_segurando": 16.6
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
