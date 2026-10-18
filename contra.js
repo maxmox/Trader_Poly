@@ -55,12 +55,13 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
     const stake = (cfg.banca * cfg.pct) / 100;
     const agora = Date.now();
     const ativos = sinais.filter((s) => agora / 1000 - s.ini <= 15 * 60); // depois dos 15 min o efeito some
-    aoRenderizar?.({ n: ativos.length, copiar: ativos.filter((s) => s.forca === "forte" && s.ask != null && s.ask <= s.teto).length });
+    // em observação (pedido do usuário, 18/10/2026): não conta como entrada recomendada
+    aoRenderizar?.({ n: ativos.length, copiar: 0 });
     $("#contra-lista").innerHTML = ativos.map((s) => {
       const ok = s.ask != null && s.ask <= s.teto;
       const min = Math.round((agora / 1000 - s.ini) / 60);
       return `<article class="card contra ${s.forca}">
-        <div class="card-top"><span class="momento vivo">Ao vivo</span><span class="momento contra">Contra o movimento</span><span class="st ${ok ? "COPIAR" : "ESPERAR"}">${ok ? "Entrar" : "Esperar"}</span>
+        <div class="card-top"><span class="momento vivo">Ao vivo</span><span class="momento contra">Contra o movimento</span><span class="st ESPERAR">Observar</span>
           <span class="quem">${s.forca === "forte" ? "🟢 forte" : "🟡 moderado"} · Futebol · ${esc(s.ev.slug.split("-")[0].toUpperCase())}</span></div>
         <div><div class="evento">${esc(s.tituloEvento)} <span class="placar">0 a 0 · ${min}'</span></div><div class="lado">${esc(s.aposta)}</div>
           <div class="pergunta">Mercado: ${esc(s.pergunta)} · lado <b>No</b></div></div>
@@ -71,7 +72,7 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
           <div><small>Volume do mercado até agora</small><b>${usd(s.vol)}</b></div>
           <div><small>Livre até a mínima</small><b>${usd(s.liquidez)}</b></div>
         </div>
-        <div class="ordem">${ok ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(s.aposta)}</b> com odd mínima <b>${odd(s.teto)}</b>,
+        <div class="ordem">Em observação: se for testar, valor pequeno. ${ok ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(s.aposta)}</b> com odd mínima <b>${odd(s.teto)}</b>,
           aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). Segure até o fim.
           <span class="preco-ref">No Polymarket: lado "No" do mercado, ordem limitada a ${cents(s.teto)}</span>
           ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} à venda até a mínima: a ordem pode ser preenchida em parte.</span>` : ""}</div>

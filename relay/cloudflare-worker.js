@@ -979,7 +979,7 @@ async function verificarSteam(env, api, prefixos, resumo, maxMercados = 8) {
 const CONTRA_TRADER = { carteira: "contra-fut", nome: "Futebol ao vivo: contra o movimento", nivel: "contra" };
 function msgContra(x) {
   const ic = x.forca === "forte" ? "🟢" : "🟡";
-  return `${ic} <b>AO VIVO · CONTRA O MOVIMENTO ${x.forca === "forte" ? "(forte)" : "(moderado)"}</b> · ${h(x.liga)}
+  return `${ic} <b>AO VIVO · CONTRA O MOVIMENTO ${x.forca === "forte" ? "(forte)" : "(moderado)"}</b> · ${h(x.liga)} · em observação
 ${h(x.tituloEvento)} · 0 a 0 aos ~${x.minuto} min
 A odd de ${h(x.time)} caiu de ${odd(x.p0)} para ${odd(x.pN)} (−${Math.abs(100 * x.var).toFixed(0)}%) sem gol: no histórico, exagero
 Entrar: <b>${h(x.aposta)}</b>

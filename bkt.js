@@ -5,7 +5,7 @@
 import { avaliarSeguirBkt, SEGUIR_BKT, odd, cents, custoCopia, descreverAposta, linkMercado } from "./core.js";
 
 const $ = (s) => document.querySelector(s);
-const VALE_MIN = 8; // o card fica no quadro por até 8 min depois da checagem (o backtest entra até 5 min depois)
+const VALE_MIN = 10; // o card fica no quadro por até 10 min depois da checagem (o backtest entra até 5 min depois)
 
 export function iniciarSeguirBkt({ api, getCfg, esc, usd, aoRenderizar }) {
   let sinais = [];
@@ -25,11 +25,11 @@ export function iniciarSeguirBkt({ api, getCfg, esc, usd, aoRenderizar }) {
           const ini = Date.parse(m.gameStartTime || ev.startTime) / 1000;
           const chave = `${E}|${ev.slug}`;
           let c = cache.get(chave);
-          // avalia uma vez, na checagem (aos ~E min, como o backtest); depois só mantém o card no ar
-          if (!c && agora / 1000 - ini <= (E + SEGUIR_BKT.janelaMin) * 60) {
+          // avalia uma vez, com o preço do minuto E (como o backtest), mesmo que a página tenha sido aberta depois
+          if (!c && agora / 1000 - ini >= E * 60) {
             const tok = JSON.parse(m.clobTokenIds);
             const h = await api().get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 900)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
-            const sig = avaliarSeguirBkt((h?.history || []).sort((a, b) => a.t - b.t), ini, Math.floor(agora / 1000));
+            const sig = avaliarSeguirBkt((h?.history || []).sort((a, b) => a.t - b.t), ini, Math.floor(ini + E * 60));
             c = { em: agora, sinal: sig && { ...sig, ini, E, m, tok, outcomes: JSON.parse(m.outcomes) } };
             cache.set(chave, c);
           }
@@ -49,7 +49,7 @@ export function iniciarSeguirBkt({ api, getCfg, esc, usd, aoRenderizar }) {
       }
       sinais = novos;
       for (const [k, v] of cache) if (agora - v.em > 3 * 3600e3) cache.delete(k);
-    } catch { /* tenta de novo no próximo minuto */ }
+    } catch (e) { console.warn("bkt", e); /* tenta de novo no próximo minuto */ }
     render();
     setTimeout(tick, 60_000);
   }
