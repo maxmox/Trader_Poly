@@ -498,6 +498,86 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0xb589734f08a5b12a7b6f30b782a5deeace3f91e3",
+   "nome": "0xb589734f",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "LoL",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando entrada e saída dele 1 min depois 16,2% em 67 jogos (sem as 3 melhores 2,2%; metades 24,7% / 7,7%; chance de ser sorte 9%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 44128.937823,
+    "meses": 9,
+    "meses_positivos": 6,
+    "apostas": 102,
+    "n": 102,
+    "roi_copia_60s": 16.2,
+    "preenche_60s_pct": 61.8,
+    "aposta_tipica": 2686.117052,
+    "chance_sorte": 0.0865
+   },
+   "saida": {
+    "pct_sai": 27,
+    "n": 102,
+    "pct_lucro": 64,
+    "lucro_c": 36.2,
+    "pct_perda": 32,
+    "perda_c": -23.2,
+    "min_med": 12,
+    "pct_tudo": 79,
+    "pct_antes_jogo": 0,
+    "roi_saida": 16.2,
+    "roi_segurando": 22.3
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xd5e46e732603449341b037b7d059d385b7002c05",
+   "nome": "0xd5e46e73",
+   "nivel": "copiar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Dota 2",
+     "tipo": "child_moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Dota 2 · vencedor do mapa · ao vivo. Nicho Dota 2 · vencedor do mapa · ao vivo: copiando entrada e saída dele 1 min depois 9,7% em 72 jogos (sem as 3 melhores 9,0%; metades 9,3% / 10,2%; chance de ser sorte 0%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 7529.836528,
+    "meses": 8,
+    "meses_positivos": 6,
+    "apostas": 92,
+    "n": 92,
+    "roi_copia_60s": 9.7,
+    "preenche_60s_pct": 58.2,
+    "aposta_tipica": 703.583246,
+    "chance_sorte": 0.0
+   },
+   "saida": {
+    "pct_sai": 97,
+    "n": 92,
+    "pct_lucro": 97,
+    "lucro_c": 9.8,
+    "pct_perda": 3,
+    "perda_c": -54.9,
+    "min_med": 24,
+    "pct_tudo": 100,
+    "pct_antes_jogo": 0,
+    "roi_saida": 9.7,
+    "roi_segurando": 9.7
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }

@@ -481,6 +481,44 @@
     "aposta_tipica": 1964.08875,
     "chance_sorte": 0.0
    }
+  },
+  {
+   "carteira": "0x8c8b3c58b60f50f12021d16dd1910e2582877a07",
+   "nome": "0x8c8b3c58",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "CS2",
+     "tipo": "moneyline",
+     "momento": "pré-jogo"
+    }
+   ],
+   "nota": "Só o nicho CS2 · vencedor · pré-jogo. Nicho CS2 · vencedor · pré-jogo: copiando entrada e saída dele 1 min depois 56,4% em 27 jogos (sem as 3 melhores 46,9%; metades 70,3% / 43,6%; chance de ser sorte 0%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 22870.500063000003,
+    "meses": 7,
+    "meses_positivos": 6,
+    "apostas": 27,
+    "n": 27,
+    "roi_copia_60s": 56.4,
+    "preenche_60s_pct": 71.1,
+    "aposta_tipica": 221.056525,
+    "chance_sorte": 0.0
+   },
+   "saida": {
+    "pct_sai": 85,
+    "n": 27,
+    "pct_lucro": 96,
+    "lucro_c": 38.5,
+    "pct_perda": 4,
+    "perda_c": -1.0,
+    "min_med": 254,
+    "pct_tudo": 100,
+    "pct_antes_jogo": 4,
+    "roi_saida": 56.4,
+    "roi_segurando": 59.1
+   }
   }
  ]
 }
