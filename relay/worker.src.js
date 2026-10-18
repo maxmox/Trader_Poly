@@ -5,9 +5,10 @@
 // 1) RELAY: GET /data/..., /gamma/..., /clob/... repassam a API pública do Polymarket com CORS.
 // 2) ALERTAS (Cron Trigger "* * * * *"):
 //    - a cada minuto: entradas AO VIVO novas dos traders de data/traders_live.json
-//    - a cada minuto, um trader de data/traders.json em rodízio: posições PRÉ-JOGO copiáveis
-//    O plano grátis permite 50 consultas externas por execução; o contador ORCAMENTO
-//    corta o trabalho antes disso.
+//    - a cada minuto, TODOS os traders de data/traders.json: posições PRÉ-JOGO copiáveis
+//      (plano pago, Workers Paid, desde 18/10/2026; com a variável PLANO=gratis volta ao
+//      rodízio de um trader por minuto e ao limite de 50 consultas por execução)
+//    O contador de consultas corta o trabalho antes do limite do plano.
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
 // 3) GET /teste  -> manda uma mensagem de teste no Telegram
 //    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
@@ -234,7 +235,10 @@ async function registrar(env, item, persistir) {
   await env.ENVIADOS.put("status", JSON.stringify(todos));
 }
 
-const ORCAMENTO = 40; // consultas à API por execução (limite do plano grátis: 50, sobra para listas e Telegram)
+// consultas à API por execução: plano pago permite 1.000 (sobra para listas, KV e Telegram);
+// plano grátis permite 50
+const ORCAMENTO = { pago: 800, gratis: 40 };
+const gratis = (env) => env.PLANO === "gratis";
 
 // ---------- STEAM: odd caiu forte na última 1-2 h antes do jogo ----------
 // A cada minuto: jogos que começam em ~9-11 min; mercados de vencedor + handicap/total de maior volume com
@@ -425,7 +429,7 @@ async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
 async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
   let usadas = 0;
   const fetchContado = (url, opts) => {
-    if (++usadas > ORCAMENTO) return Promise.reject(new Error("orçamento de consultas desta execução esgotado"));
+    if (++usadas > ORCAMENTO[gratis(env) ? "gratis" : "pago"]) return Promise.reject(new Error("orçamento de consultas desta execução esgotado"));
     return fetch(url, opts);
   };
   const l = await carregarListas(env);
@@ -433,8 +437,8 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   const api = criarApi({ relay: env.RELAY_INTERNO || "", fetchFn: fetchContado });
   const resumo = { em: new Date().toISOString(), aoVivo: [], preJogo: [], preTrader: null, enviados: 0, consultas: 0, erros: [] };
 
-  // pouca atividade por trader: entradas novas cabem nas últimas 30 e o plano grátis tem pouco CPU
-  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: 30, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true, indices: l.indices });
+  // atividade por trader: no plano grátis só as últimas 30 (pouco CPU); no pago, 100
+  const rv = await carregarAoVivo(api, vivo, { prefixos, limiteAtividade: gratis(env) ? 30 : 100, historicoSeg: +(env.VIVO_HISTORICO_SEG || 300), soCopiaveis: true, indices: l.indices });
   for (const [k, d] of rv.traders.entries()) {
     const t = vivo[k];
     if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -453,28 +457,28 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
 
   // futebol ao vivo, contra o movimento (jogos que começaram há 10-12 min)
   if (env.CONTRA_FUT !== "0") {
-    try { await verificarContraFut(env, api, resumo); } catch (e) { resumo.erros.push(`contra-fut: ${e.message || e}`); }
+    try { await verificarContraFut(env, api, resumo, gratis(env) ? 4 : 12); } catch (e) { resumo.erros.push(`contra-fut: ${e.message || e}`); }
   }
 
   // basquete ao vivo, seguir quem disparou (fora da NBA/WNBA, aos 20 e 30 min)
   if (env.BKT !== "0") {
-    try { await verificarSeguirBkt(env, api, resumo); } catch (e) { resumo.erros.push(`bkt: ${e.message || e}`); }
+    try { await verificarSeguirBkt(env, api, resumo, gratis(env) ? 3 : 10); } catch (e) { resumo.erros.push(`bkt: ${e.message || e}`); }
   }
 
-  // steam antes do rodízio do pré-jogo (poucas consultas: jogos começando em ~10 min)
+  // steam antes do pré-jogo (poucas consultas: jogos começando em ~10 min)
   if (STEAM.ativo && env.STEAM !== "0") {
     try { await verificarSteam(env, api, prefixos, resumo); } catch (e) { resumo.erros.push(`steam: ${e.message || e}`); }
   }
 
-  // pré-jogo: um trader por execução, em rodízio (cada um é visto a cada ~10 min);
-  // trader de teste entra em toda execução, limitado a 8 posições
+  // pré-jogo: plano pago = todos os traders a cada minuto; grátis = um por execução, em rodízio
+  // (cada um visto a cada ~14 min). Trader de teste entra em toda execução.
   const normais = pre.filter((t) => t.nivel !== "teste");
   const lista = preTrader
     ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader)
-    : [...pre.filter((t) => t.nivel === "teste"), ...(normais.length ? [normais[minuto % normais.length]] : [])];
+    : [...pre.filter((t) => t.nivel === "teste"), ...(gratis(env) ? (normais.length ? [normais[minuto % normais.length]] : []) : normais)];
   resumo.preTrader = lista.map((t) => t.nome).join(", ");
   {
-    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: 20, soEspecialidade: true, maxPosicoes: 8, indices: l.indices });
+    const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: gratis(env) ? 20 : 50, soEspecialidade: true, maxPosicoes: gratis(env) ? 8 : 15, indices: l.indices });
     for (const [k, d] of rp.traders.entries()) {
       const t = lista[k];
       if (d.erro) resumo.erros.push(`${t.nome}: ${d.erro}`);
@@ -530,7 +534,7 @@ export default {
       return json({ agora: Date.now(), sinais: await listarRegistro(env) });
     }
     if (url.pathname === "/verificar") {
-      // ?pre=NOME verifica o pré-jogo desse trader; sem isso, segue o rodízio do minuto
+      // ?pre=NOME verifica o pré-jogo só desse trader; sem isso, todos (ou o rodízio no plano grátis)
       try { return json(await verificar(env, { preTrader: url.searchParams.get("pre") })); } catch (e) { return json({ erro: String(e.message || e) }, 500); }
     }
 
