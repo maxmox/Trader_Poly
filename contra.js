@@ -1,5 +1,5 @@
 // Cards de FUTEBOL AO VIVO, CONTRA O MOVIMENTO no quadro principal (mesma regra do Worker:
-// avaliarContraFut em core.js). A cada minuto, jogos de futebol com volume >= $200 mil que começaram
+// avaliarContraFut em core.js). A cada minuto, jogos de futebol (mercado do time >= $5 mil até agora) que começaram
 // há 10-15 min; se ainda 0 a 0 e a odd de um time caiu >= 5%, o card manda comprar "NÃO vence" nele.
 import { avaliarContraFut, CONTRA_FUT, odd, cents, custoCopia, descreverAposta, linkMercado } from "./core.js";
 
@@ -14,7 +14,7 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
     const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
     try {
       const evs = ((await api().get("gamma", `/events?tag_slug=soccer&closed=false&active=true&start_time_min=${iso(agora - 15 * 60e3)}&start_time_max=${iso(agora - CONTRA_FUT.entradaMin * 60e3)}&limit=50`)) || [])
-        .filter((e) => +(e.volume || 0) >= CONTRA_FUT.volMin);
+        .filter((e) => +(e.volume || 0) >= CONTRA_FUT.volMin).sort((a, b) => +b.volume - +a.volume).slice(0, 12);
       const novos = [];
       for (const ev of evs) {
         const ms = (ev.markets || []).filter((m) => m.sportsMarketType === "moneyline" && m.clobTokenIds);
@@ -32,7 +32,7 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
           c = { em: agora, sinal: sig && { ...sig, ini, m: series[sig.mercado].m, tok: series[sig.mercado].tok } };
           cache.set(ev.slug, c);
         }
-        if (!c.sinal) continue;
+        if (!c.sinal || +(c.sinal.m.volumeNum || 0) < CONTRA_FUT.volMin) continue;
         const s = c.sinal;
         const book = await api().get("clob", `/book?token_id=${s.tok[1]}`).catch(() => null);
         const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
@@ -40,7 +40,7 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
         novos.push({
           ...s, ev, slug: s.m.slug, eventSlug: ev.slug, tituloEvento: ev.title, pergunta: s.m.question,
           aposta: descreverAposta(s.m.question, "No"), time: (s.m.question || "").replace(/^Will\s+/i, "").replace(/\s+win.*$/i, ""),
-          vol: +ev.volume, teto, ask: asks[0]?.p ?? null, liquidez: asks.filter((a) => a.p <= teto).reduce((t, a) => t + a.p * a.q, 0),
+          vol: +s.m.volumeNum, teto, ask: asks[0]?.p ?? null, liquidez: asks.filter((a) => a.p <= teto).reduce((t, a) => t + a.p * a.q, 0),
         });
       }
       sinais = novos;

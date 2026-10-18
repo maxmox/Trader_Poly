@@ -301,7 +301,7 @@ async function verificarSteam(env, api, prefixos, resumo, maxMercados = 8) {
 }
 
 // ---------- FUTEBOL AO VIVO, CONTRA O MOVIMENTO ----------
-// A cada minuto: jogos de futebol que começaram há 10-12 min, volume >= $200 mil; histórico dos 3
+// A cada minuto: jogos de futebol que começaram há 10-12 min (mercado do time >= $5 mil até agora); histórico dos 3
 // mercados de vencedor (3 consultas). Se ainda 0 a 0 e a odd de um time caiu >= 5%, manda "comprar NÃO
 // vence" nesse time. Cada jogo é avaliado uma vez (KV "lv:"). No máximo 4 jogos por execução.
 const CONTRA_TRADER = { carteira: "contra-fut", nome: "Futebol ao vivo: contra o movimento", nivel: "contra" };
@@ -313,8 +313,8 @@ A odd de ${h(x.time)} caiu de ${odd(x.p0)} para ${odd(x.pN)} (−${Math.abs(100 
 Entrar: <b>${h(x.aposta)}</b>
 Mercado: ${h(x.pergunta)} · lado <b>No</b>
 Odd agora ${x.ask != null ? odd(x.ask) : odd(x.precoDele)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}${x.ask != null && x.ask > x.teto ? "\n⚠️ A melhor oferta já está abaixo da odd mínima: deixe ordem limitada na mínima e não persiga." : ""}
-Volume do jogo ${usd(x.vol)} · segure até o fim
-${x.forca === "forte" ? "Histórico (90 dias, preço real): +11% nesta regra." : "Regra moderada: histórico ~+5%, ainda em teste."}
+Volume do mercado até agora ${usd(x.vol)} · segure até o fim
+${x.forca === "forte" ? "Histórico (90 dias, todos os jogos, preço real): +10% nesta regra." : "Regra moderada: histórico ~+3%, ainda em teste."}
 ${linkMercado(x)}`;
 }
 
@@ -343,6 +343,7 @@ async function verificarContraFut(env, api, resumo, maxJogos = 4) {
     const sig = avaliarContraFut(series, ini, Math.floor(agora / 1000));
     if (!sig) continue;
     const { m, tok } = series[sig.mercado];
+    if (+(m.volumeNum || 0) < CONTRA_FUT.volMin) continue; // mercado do time raso até agora
     const book = await api.get("clob", `/book?token_id=${tok[1]}`).catch(() => null);
     const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
     const teto = Math.min(sig.precoNao + 0.015, 0.97);
@@ -351,13 +352,73 @@ async function verificarContraFut(env, api, resumo, maxJogos = 4) {
       ...sig, asset: tok[1], cond: m.conditionId, oi: 1, slug: m.slug, eventSlug: ev.slug, tituloEvento: ev.title, pergunta: m.question,
       lado: "No", time, aposta: descreverAposta(m.question, "No"), esporte: "Futebol", liga: ev.slug.split("-")[0].toUpperCase(),
       minuto: Math.round((agora / 1000 - ini) / 60), inicio: ini * 1000, entrouEm: agora, precoDele: sig.precoNao, teto,
-      ask: asks[0]?.p ?? null, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), vol: +ev.volume, tipo: "moneyline",
+      ask: asks[0]?.p ?? null, liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), vol: +m.volumeNum, tipo: "moneyline",
     };
     const r = await telegram(env, msgContra(x));
     if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
     resumo.enviados++; resumo.contraFut.sinais++;
     x.nota = { nota: null, rotulo: x.forca };
     await registrarSinal(env, CONTRA_TRADER, x, "c");
+  }
+}
+
+// ---------- BASQUETE AO VIVO, SEGUIR QUEM DISPAROU (observação) ----------
+// A cada minuto: jogos de basquete fora da NBA/WNBA que começaram há 20-22 ou 30-32 min; histórico do mercado
+// de vencedor (1 consulta) e, se bater a regra, o livro (1 consulta). Cada jogo é avaliado uma vez por
+// checagem (KV "bk20:"/"bk30:") e manda no máximo um alerta (KV "bks:"). No máximo 3 jogos por execução.
+const BKT_TRADER = { carteira: "seguir-bkt", nome: "Basquete ao vivo: seguir", nivel: "observar" };
+function msgBkt(x) {
+  const ic = x.forca === "forte" ? "🟢" : "🟡";
+  return `${ic} 🏀 <b>AO VIVO · BASQUETE, SEGUIR ${x.forca === "forte" ? "(forte)" : "(moderado)"}</b> · ${h(x.liga)} · em observação
+${h(x.tituloEvento)} · ~${x.minuto} min de jogo
+${h(x.time)} disparou: odd de ${odd(x.p0)} no início para ${odd(x.precoDele)} agora (−${Math.abs(100 * x.var).toFixed(0)}%)
+Entrar: <b>${h(x.aposta)}</b>
+Odd agora ${x.ask != null ? odd(x.ask) : odd(x.precoDele)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}${x.ask != null && x.ask > x.teto ? "\n⚠️ A melhor oferta já está abaixo da odd mínima: deixe ordem limitada na mínima e não persiga." : ""}
+⚠️ Mercado raso: ordem limitada e valor pequeno · segure até o fim
+${x.forca === "forte" ? "Histórico (90 dias, fora da NBA/WNBA, preço real): +16% a +46%." : "Regra moderada: histórico +13% a +19%."}
+${linkMercado(x)}`;
+}
+
+async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
+  const agora = Date.now();
+  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+  resumo.bkt = { jogos: 0, sinais: 0 };
+  let n = 0;
+  for (const E of SEGUIR_BKT.checagens) {
+    const evs = ((await api.get("gamma", `/events?tag_slug=basketball&closed=false&active=true&start_time_min=${iso(agora - (E + SEGUIR_BKT.janelaMin) * 60e3)}&start_time_max=${iso(agora - E * 60e3)}&limit=50`).catch(() => null)) || [])
+      .filter((e) => !SEGUIR_BKT.fora.includes((e.slug || "").split("-")[0])).sort((a, b) => +(b.volume || 0) - +(a.volume || 0));
+    resumo.bkt.jogos += evs.length;
+    for (const ev of evs) {
+      if (n >= maxJogos) return;
+      const m = (ev.markets || []).find((x) => x.sportsMarketType === "moneyline" && x.clobTokenIds && JSON.parse(x.outcomes || "[]").length === 2);
+      if (!m) continue;
+      const chave = `bk${E}:${ev.slug}`;
+      if (await jaEnviado(env, chave) || await jaEnviado(env, `bks:${ev.slug}`)) continue;
+      n++;
+      await marcar(env, chave, 3 * 3600);
+      const ini = Date.parse(m.gameStartTime || ev.startTime) / 1000;
+      const tok = JSON.parse(m.clobTokenIds);
+      const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 900)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
+      const sig = avaliarSeguirBkt((hp?.history || []).sort((a, b) => a.t - b.t), ini, Math.floor(agora / 1000));
+      if (!sig) continue;
+      const outcomes = JSON.parse(m.outcomes);
+      const book = await api.get("clob", `/book?token_id=${tok[sig.lado]}`).catch(() => null);
+      const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
+      const teto = Math.min(sig.preco + 0.015, 0.97);
+      const x = {
+        ...sig, asset: tok[sig.lado], cond: m.conditionId, oi: sig.lado, slug: m.slug, eventSlug: ev.slug, tituloEvento: ev.title,
+        pergunta: m.question, lado: outcomes[sig.lado], time: outcomes[sig.lado], aposta: descreverAposta(m.question, outcomes[sig.lado]),
+        esporte: "Basquete", liga: ev.slug.split("-")[0].replace(/^bk/, "").toUpperCase(), minuto: Math.round((agora / 1000 - ini) / 60),
+        inicio: ini * 1000, entrouEm: agora, precoDele: sig.preco, teto, ask: asks[0]?.p ?? null,
+        liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), tipo: "moneyline",
+      };
+      const r = await telegram(env, msgBkt(x));
+      if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
+      await marcar(env, `bks:${ev.slug}`, 6 * 3600);
+      resumo.enviados++; resumo.bkt.sinais++;
+      x.nota = { nota: null, rotulo: x.forca };
+      await registrarSinal(env, BKT_TRADER, x, "b");
+    }
   }
 }
 
@@ -393,6 +454,11 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   // futebol ao vivo, contra o movimento (jogos que começaram há 10-12 min)
   if (env.CONTRA_FUT !== "0") {
     try { await verificarContraFut(env, api, resumo); } catch (e) { resumo.erros.push(`contra-fut: ${e.message || e}`); }
+  }
+
+  // basquete ao vivo, seguir quem disparou (fora da NBA/WNBA, aos 20 e 30 min)
+  if (env.BKT !== "0") {
+    try { await verificarSeguirBkt(env, api, resumo); } catch (e) { resumo.erros.push(`bkt: ${e.message || e}`); }
   }
 
   // steam antes do rodízio do pré-jogo (poucas consultas: jogos começando em ~10 min)
