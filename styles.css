@@ -221,3 +221,20 @@ table.estreita { min-width: 0; max-width: 560px; }
 .momento.contra { background: var(--good); margin-left: 4px; }
 .card.contra { border-left-color: var(--good); }
 .card.contra .ordem { background: var(--good-bg); }
+
+/* página de CS2 (cs2.html) */
+.cs2 .filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; }
+.cs2 .filtros label { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.cs2 select, .cs2 .filtros input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; min-width: 0; }
+.cs2 .rolagem { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cs2 table { min-width: 0; }
+.cs2-tab { min-width: 620px !important; }
+.cs2-tab td.n small { display: block; color: var(--ink-3); font-size: 11px; }
+.cs2-tab td.pouco { opacity: .45; }
+.cs2-times tr.geral td { font-weight: 600; border-bottom-width: 2px; }
+.cs2 .valor { font-size: 15px; padding: 10px 12px; border-radius: 6px; background: var(--accent-soft); }
+.cs2 .valor.bom { background: var(--good-bg); color: var(--good); }
+.cs2 .valor.neutro { background: var(--warn-bg); color: var(--warn); }
+.cs2 .valor.ruim { background: var(--bad-bg); color: var(--bad); }
+.cs2 .times-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.cs2 .times-duo .panel { padding: 12px; background: var(--bg); }

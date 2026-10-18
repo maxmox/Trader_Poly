@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CS2 ao vivo</title>
+<meta name="description" content="Odd justa do vencedor do mapa e do handicap de rounds para quem vai para o intervalo perdendo, por mapa, lado e força.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231d5fa8'/><path d='M8 21l6-6 4 4 7-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand"><b>Trader Poly</b><span>CS2 ao vivo</span></div>
+    <div class="bar-right"><a class="pill" href="./">← Sinais</a></div>
+  </div>
+</header>
+
+<main class="wrap cs2">
+  <section>
+    <h1>Time atrás no intervalo: odd justa</h1>
+    <p class="muted lede">Quem vai para o intervalo perdendo vira o mapa (ou cobre o handicap de rounds) com que frequência?
+      Base: <span id="base">…</span> da Liquipedia. Compare a <b>odd da casa</b> com a <b>odd justa</b>: só há valor se a da casa for maior.</p>
+  </section>
+
+  <section class="panel">
+    <div class="filtros">
+      <label>Mapa<select id="f-mapa"><option value="">Todos</option></select></label>
+      <label>Time atrás joga o 2º tempo de<select id="f-lado"><option value="">CT ou T</option><option value="0">CT</option><option value="1">T</option></select></label>
+      <label>Ele era, antes do jogo<select id="f-forca"><option value="">qualquer</option><option value="0">azarão (&lt; 40%)</option><option value="1">parelho (40–60%)</option><option value="2">favorito (&gt; 60%)</option></select></label>
+    </div>
+    <div class="rolagem"><table class="cs2-tab" id="tab"></table></div>
+    <p class="hint">Cada célula: chance real e, embaixo, a odd justa (1 ÷ chance). Em cinza, menos de 60 mapas: pouco confiável.
+      “+4,5” = o time atrás perde por no máximo 4 rounds (ou vence). A força pré-jogo só existe para os jogos que também estavam no Polymarket (últimos 90 dias).</p>
+  </section>
+
+  <section class="panel">
+    <h2>Tem valor?</h2>
+    <div class="filtros">
+      <label>Placar no intervalo<select id="v-placar"></select></label>
+      <label>Aposta<select id="v-linha"></select></label>
+      <label>Odd da casa<input id="v-odd" type="number" min="1.01" step="0.01" inputmode="decimal" placeholder="1,50"></label>
+    </div>
+    <p id="v-res" class="valor">Escolha o placar, a aposta e a odd.</p>
+    <p class="hint">Usa os filtros de cima (mapa, lado, força). É uma média histórica: se o time atrás for bem mais fraco que o adversário, a chance real é menor.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Times por mapa (últimos 12 meses)</h2>
+    <div class="filtros">
+      <label>Time A<input id="t-a" list="lista-times" placeholder="ex.: navi"></label>
+      <label>Time B<input id="t-b" list="lista-times" placeholder="ex.: furia"></label>
+    </div>
+    <datalist id="lista-times"></datalist>
+    <div class="times-duo" id="times"></div>
+    <p class="hint">Rounds cedidos nas vitórias: quanto o time deixa o adversário marcar quando vence (baixo = vence com folga).
+      Rounds ganhos nas derrotas: quanto ele marca quando perde (alto = perde apertado, bom para o handicap positivo dele).
+      Nomes como na Liquipedia (abreviados).</p>
+  </section>
+
+  <section>
+    <p class="hint">Como foi medido: placar por metade de <span id="base2">…</span> (torneios S/A/B, MR12). Em média, quem vai 4–8 para o intervalo
+      vira 19% das vezes — bem mais do que se continuasse no ritmo do 1º tempo (menos de 1%), e até mais do que dois times iguais (14%):
+      reset da economia e troca de lado. Mas quando não reage, costuma perder feio, então handicap alto cobre menos do que parece.
+      Sem placar round a round: um “0–5 no começo” não está medido, só o intervalo.</p>
+  </section>
+</main>
+<script type="module" src="cs2.js"></script>
+</body>
+</html>
