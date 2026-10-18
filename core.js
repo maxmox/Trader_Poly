@@ -441,6 +441,23 @@ export function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entra
 }
 
 // ---------------------------------------------------------------------------
+// INÍCIO CONFIRMADO (auditoria de 18/10/2026): em ~5% dos jogos o horário oficial está adiantado (início
+// atrasado) e o "minuto 10" ainda é pré-jogo. Ao vivo o preço mexe muito mais que antes: só vale o sinal se
+// a soma das variações minuto a minuto nos 10 min depois do início for >= 3x a dos 10 min antes.
+// Na auditoria: futebol (contra) com início confirmado +8,7% (355 jogos, P 0,00); basquete (seguir) +20% a +27%.
+const variacao = (hist, a, b) => {
+  let s = 0, ant = null;
+  for (let t = a; t <= b; t += 60) { const p = precoEm(hist, t, 300); if (p != null && ant != null) s += Math.abs(p - ant); if (p != null) ant = p; }
+  return s;
+};
+export function inicioConfirmado(hists, inicioSeg, agoraSeg) {
+  const fim = Math.min(agoraSeg, inicioSeg + 600);
+  const antes = hists.reduce((s, h) => s + variacao(h, inicioSeg - 600, inicioSeg), 0);
+  const depois = hists.reduce((s, h) => s + variacao(h, inicioSeg, fim), 0);
+  return depois >= 3 * antes + 0.01;
+}
+
+// ---------------------------------------------------------------------------
 // BASQUETE AO VIVO, SEGUIR QUEM DISPAROU (polymarket_traders/basquete_vivo_real.py, 18/10/2026)
 // Aos 20 ou 30 min de jogo, o preço de um time subiu >= 5% (odd caiu) desde o início -> comprar esse time.
 // Base completa (918 jogos, 90 dias, sem filtro de volume), 1º negócio real + taxa: só FORA da NBA/WNBA:
@@ -449,6 +466,7 @@ export function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entra
 export const SEGUIR_BKT = { checagens: [20, 30], janelaMin: 2, forte: 0.10, moderado: 0.05, fora: ["nba", "wnba"], nivel: "observar" };
 // hist = [{t, p}] do lado 0 (ordenado); devolve o lado que disparou ou null
 export function avaliarSeguirBkt(hist, inicioSeg, agoraSeg) {
+  if (!inicioConfirmado([hist], inicioSeg, agoraSeg)) return null;
   const p0 = precoEm(hist, inicioSeg, 900), pN = precoEm(hist, agoraSeg, 900);
   if (p0 == null || pN == null || !(p0 > 0.05 && p0 < 0.95 && pN > 0.05 && pN < 0.95) || pN === p0) return null;
   const lado = pN > p0 ? 0 : 1;
@@ -476,6 +494,7 @@ export function avaliarContraFut(mercados, inicioSeg, agoraSeg) {
       if (h[i].t >= inicioSeg - 120 && h[i].t <= agoraSeg && h[i].t - h[i - 1].t <= 180 && Math.abs(h[i].p - h[i - 1].p) >= CONTRA_FUT.salto) return null;
     }
   }
+  if (!inicioConfirmado(mercados.map((m) => m.hist), inicioSeg, agoraSeg)) return null;
   const emp = mercados.find((m) => m.empate);
   const e0 = precoEm(emp.hist, inicioSeg, 300), eN = precoEm(emp.hist, agoraSeg, 300);
   if (e0 == null || eN == null || eN < e0 - 0.02) return null;

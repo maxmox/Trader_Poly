@@ -337,7 +337,7 @@ async function verificarContraFut(env, api, resumo, maxJogos = 4) {
     const series = [];
     for (const m of ms) {
       const tok = JSON.parse(m.clobTokenIds);
-      const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 600)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
+      const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 900)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
       series.push({ hist: (hp?.history || []).sort((a, b) => a.t - b.t), empate: /draw/i.test(m.question || ""), m, tok });
     }
     const sig = avaliarContraFut(series, ini, Math.floor(agora / 1000));
