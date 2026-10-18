@@ -458,6 +458,86 @@
    },
    "janelaSeg": 60,
    "minUsd": 0
+  },
+  {
+   "carteira": "0x61a8d4b326218a2fd2abd32b0670b16ba2f41ad4",
+   "nome": "0x61a8d4b3",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 17,5% em 48 jogos (sem as 3 melhores 2,0%; metades 21,1% / 13,8%; chance de ser sorte 8%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 9465.110422999995,
+    "meses": 3,
+    "meses_positivos": 3,
+    "apostas": 48,
+    "n": 48,
+    "roi_copia_60s": 17.5,
+    "preenche_60s_pct": 59.3,
+    "aposta_tipica": 226.893494,
+    "chance_sorte": 0.08425
+   },
+   "saida": {
+    "pct_sai": 58,
+    "n": 48,
+    "pct_lucro": 86,
+    "lucro_c": 15.0,
+    "pct_perda": 11,
+    "perda_c": -21.5,
+    "min_med": 41,
+    "pct_tudo": 100,
+    "pct_antes_jogo": 0,
+    "roi_saida": 17.5,
+    "roi_segurando": 29.3
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
+  },
+  {
+   "carteira": "0xaaa82fa3d56076ffe81e05cfe37c9eb243147ea2",
+   "nome": "0xaaa82fa3",
+   "nivel": "observar",
+   "esportes": [],
+   "nichos": [
+    {
+     "area": "Tenis",
+     "tipo": "moneyline",
+     "momento": "ao vivo"
+    }
+   ],
+   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 7,6% em 32 jogos (sem as 3 melhores 0,9%; metades 2,6% / 12,6%; chance de ser sorte 8%). Achado no garimpo de saidas.",
+   "stats": {
+    "lucro": 18152.846009,
+    "meses": 12,
+    "meses_positivos": 8,
+    "apostas": 32,
+    "n": 32,
+    "roi_copia_60s": 7.6,
+    "preenche_60s_pct": 80.0,
+    "aposta_tipica": 503.474981,
+    "chance_sorte": 0.08075
+   },
+   "saida": {
+    "pct_sai": 62,
+    "n": 32,
+    "pct_lucro": 50,
+    "lucro_c": 6.0,
+    "pct_perda": 50,
+    "perda_c": -11.5,
+    "min_med": 17,
+    "pct_tudo": 100,
+    "pct_antes_jogo": 0,
+    "roi_saida": 7.6,
+    "roi_segurando": 12.1
+   },
+   "janelaSeg": 60,
+   "minUsd": 0
   }
  ]
 }
