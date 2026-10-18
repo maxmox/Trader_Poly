@@ -4,6 +4,7 @@ import { iniciarSteam } from "./steam.js";
 import { iniciarContraFut } from "./contra.js";
 import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seloMercado } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
+import { iniciarEntradas } from "./entradas.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
 const INTERVALO_RETRATO = 120_000; // sem acesso direto, relê o retrato do servidor a cada 2 min
@@ -56,9 +57,11 @@ async function carregarPlacar() {
   }
   renderPlacar();
 }
+const quadroEntradas = iniciarEntradas({ el: () => $("#entradas"), esc, usd, prefixos: () => prefixos });
 function renderPlacar() {
-  $("#placar").innerHTML = secaoPlacar({ desempenho, registro, esc,
-    traders: [...tradersVivo.map((t) => ({ t, momento: "ao vivo" })), ...traders.map((t) => ({ t, momento: "pré-jogo" }))] });
+  const lista = [...tradersVivo.map((t) => ({ t, momento: "ao vivo" })), ...traders.map((t) => ({ t, momento: "pré-jogo" }))];
+  $("#placar").innerHTML = secaoPlacar({ desempenho, registro, esc, traders: lista });
+  quadroEntradas.atualizar({ desempenho, traders: lista });
 } // data/config.json: relay do repositório, usado quando Ajustes está vazio
 const relay = () => cfg.relay || relayPadrao;
 const regras = () => ({ ...PADRAO, tetoCentavos: cfg.teto });

@@ -66,11 +66,13 @@ async function trader({ t, momento }) {
     if (mom !== momento || !liberado(t, sp, tipo, mom).ok) continue;
     const res = resultadoMercado(ev, x.slug, x.outcomeIndex);
     const l = { t0: e.t0 * 1000, evento: ev?.title || x.title, lado: descreverAposta(x.title, x.outcome), slug: x.slug, eventSlug: x.eventSlug, esporte: sp, tipo,
-      precoDele: e.preco, usd: e.usd, res, roiDele: res == null ? null : res / e.precoPago - 1, roiCopia: null, pCopia: null, nota: null };
-    if (res != null) {
+      precoDele: e.preco, usd: e.usd, res, roiDele: res == null ? null : res / e.precoPago - 1, roiCopia: null, pCopia: null, nota: null, inicio };
+    // nota e preço de cópia também nas abertas (quadro "Entradas recentes"); ROI da cópia só com resultado
+    if (linhas.length < 40 || res != null) {
       const { p60, antes } = await precosEntrada(api, x.conditionId, x.asset, t.carteira, e.t0);
       // quem copia paga o preço negociado 1 min depois + a taxa de taker
-      if (p60 != null && p60 <= tetoDe(e.preco) && p60 >= pisoDe(e.preco) && custoCopia(p60) < 0.99) { l.pCopia = p60; l.roiCopia = res / custoCopia(p60) - 1; }
+      if (p60 != null && p60 <= tetoDe(e.preco) && p60 >= pisoDe(e.preco) && custoCopia(p60) < 0.99) { l.pCopia = p60; if (res != null) l.roiCopia = res / custoCopia(p60) - 1; }
+      l.p60 = p60 ?? null;
       const n = notaEntrada({ precoDele: e.preco, usdEntrada: e.usd, valorDele: e.usdTotal, tamanho, antes, momento: mom, volMercado: volumeDoMercado(ev, x.slug),
         ask: p60 ?? e.preco, inicio, entrouEm: e.t0 * 1000 }, t, indices);
       if (n) l.nota = { nota: n.nota, rotulo: n.rotulo };
@@ -82,7 +84,7 @@ async function trader({ t, momento }) {
   const forma = s30.copiaveis < 8 ? "pouca amostra" : s30.roi_copia > 0.03 ? "entregando" : s30.roi_copia < -0.10 ? "abaixo" : "na média";
   const porNota = {};
   for (const r of ["forte", "boa", "neutra", "fraca"]) porNota[r] = resumo(linhas.filter((l) => l.nota?.rotulo === r));
-  return [t.carteira, { nome: t.nome, momento, forma, d7: resumo(d7), d30: s30, porNota, ultimas: linhas.slice(0, 15) }];
+  return [t.carteira, { nome: t.nome, momento, forma, d7: resumo(d7), d30: s30, porNota, ultimas: linhas.slice(0, 40) }];
 }
 
 const out = {};
