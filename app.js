@@ -1,4 +1,4 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO, historicoNoMercado, momentoDaEntrada, liberado } from "./core.js";
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO, historicoNoMercado, momentoDaEntrada, liberado, STEAM } from "./core.js";
 import { iniciarAoVivo } from "./aovivo.js";
 import { iniciarSteam } from "./steam.js";
 import { iniciarContraFut } from "./contra.js";
@@ -281,7 +281,7 @@ function avisar(lista) {
     $("#vivo-traders").innerHTML = `<p class="erro">Lista de traders ao vivo indisponível: ${esc(e.message)}</p>`;
   }
   // steam: movimento forte de odd antes do jogo (mesma regra do Worker)
-  try {
+  if (STEAM.ativo) try {
     iniciarSteam({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg, esc, usd, prefixos,
       aoRenderizar: (c) => { quadro.steam = c; atualizarQuadro(); } });
   } catch (e) { console.error("steam", e); }

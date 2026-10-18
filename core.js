@@ -414,7 +414,10 @@ export async function carregarAoVivo(api, traders, opts = {}) {
 //   queda >= 7% de 1 h: +5,4% (208 sinais, P 0,18); de 2 h: +2,1% (291, P 0,34) -> só "observar"
 //   (o +30-40% de antes vinha da listagem incompleta)
 //   queda 5-7%: 0% -> desligado (moderado: null); queda 3-5%: -7,6%
-export const STEAM = { volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: null, entradaMin: 10, nivel: "observar" };
+// Por esporte, com preço real e volume só até a entrada (18/10/2026): no CS2 seguir o movimento perde
+// (-7% a -17%); nos outros esportes não há regra que se sustente -> steam DESLIGADO (ativo: false),
+// no Worker e no site. O código fica para religar se uma regra por esporte se confirmar.
+export const STEAM = { ativo: false, volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: null, entradaMin: 10, nivel: "observar" };
 const precoEm = (hist, t, velhoSeg = 900) => {
   let p = null, tt = null;
   for (const x of hist) { if (x.t <= t) { p = x.p; tt = x.t; } else break; }

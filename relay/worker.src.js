@@ -396,7 +396,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   }
 
   // steam antes do rodízio do pré-jogo (poucas consultas: jogos começando em ~10 min)
-  if (env.STEAM !== "0") {
+  if (STEAM.ativo && env.STEAM !== "0") {
     try { await verificarSteam(env, api, prefixos, resumo); } catch (e) { resumo.erros.push(`steam: ${e.message || e}`); }
   }
 
