@@ -526,7 +526,7 @@ const faixaDe = (v, faixas) => (faixas.find(([a, b]) => v >= a && v < b) || faix
 
 const ROTULO_FATOR = {
   conviccao: "Tamanho da aposta dele", entrada: "Como ele entrou", momento: "Momento", liquidez: "Liquidez do mercado",
-  faixa_odd: "Faixa de odd", deriva: "Odd desde a entrada dele", antecedencia: "Antecedência", mercado_dele: "Mercado da aposta",
+  faixa_odd: "Faixa de odd", deriva: "Odd desde a entrada dele", antecedencia: "Antecedência", mercado_dele: "Mercado da aposta", perfil_dele: "Perfil dele",
 };
 
 function notaEntrada(x, trader, ind, mt = null) {
@@ -568,6 +568,20 @@ function notaEntrada(x, trader, ind, mt = null) {
     }
     soma.trader += efeito;
     fatores.push({ nome: "mercado_dele", rotulo: ROTULO_FATOR.mercado_dele, grupo: "trader", faixa, efeito });
+  }
+  // PERFIL DELE (polymarket_traders/nota_trader.py, 18/10/2026): nível geral do trader + quanto ELE rende
+  // nesta faixa de odd, encolhidos pela amostra (n/(n+K)). Na validação (60/40 no tempo, por trader) foi a
+  // única peculiaridade pessoal que melhorou a nota; tamanho e antecedência por trader não se repetiram.
+  const pf = ind.perfil?.[trader.carteira];
+  if (pf && x.precoDele != null) {
+    const fo = faixaDe(x.precoDele, ind.faixas_odd);
+    const o = pf.odd?.[fo];
+    // no máximo ±3 pts (18 pontos de nota): a validação deu 86% de chance de melhora, não o bastante para dominar
+    const efeito = Math.max(-0.03, Math.min(0.03, (pf.base || 0) + (o?.efeito || 0)));
+    const p1 = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(100 * v).toFixed(1).replace(".", ",")}`;
+    const faixa = `nível dele ${p1(pf.base || 0)} pts (${pf.n} apostas)` + (o ? ` · ${fo}: ${p1(o.efeito)} pts (${o.n} apostas dele)` : ` · ${fo}: sem histórico dele`);
+    soma.trader += efeito;
+    fatores.push({ nome: "perfil_dele", rotulo: ROTULO_FATOR.perfil_dele, grupo: "trader", faixa, efeito });
   }
   const pts = (v) => Math.max(0, Math.min(100, Math.round(50 + ind.escala * 100 * v)));
   const esperado = ind.media + soma.trader + soma.mercado + soma.odd;
