@@ -12,6 +12,7 @@ export function iniciarContraFut({ api, getCfg, esc, usd, aoRenderizar }) {
   async function tick() {
     const agora = Date.now();
     const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+    if (document.hidden) { setTimeout(tick, 60_000); return; } // aba em segundo plano: sem consultas
     try {
       const evs = ((await api().get("gamma", `/events?tag_slug=soccer&closed=false&active=true&start_time_min=${iso(agora - 15 * 60e3)}&start_time_max=${iso(agora - CONTRA_FUT.entradaMin * 60e3)}&limit=50`)) || [])
         .filter((e) => +(e.volume || 0) >= CONTRA_FUT.volMin).sort((a, b) => +b.volume - +a.volume).slice(0, 12);

@@ -83,8 +83,10 @@ async function buscarVivo() {
 let timer = null, rodando = false;
 async function atualizar() {
   if (rodando) return;
-  rodando = true;
   clearTimeout(timer);
+  // aba em segundo plano: não gasta requisições do relay (limite diário da Cloudflare); retoma ao voltar
+  if (document.hidden) { timer = setTimeout(atualizar, INTERVALO_VIVO); return; }
+  rodando = true;
   $("#btn-atualizar").textContent = "Atualizando…";
   try {
     dados = await buscarVivo();
@@ -298,5 +300,6 @@ function avisar(lista) {
       aoRenderizar: (c) => { quadro.bkt = c; atualizarQuadro(); } });
   } catch (e) { console.error("bkt", e); }
   carregarPlacar().then(render);
-  setInterval(() => carregarPlacar().then(render), 5 * 60_000);
+  setInterval(() => { if (!document.hidden) carregarPlacar().then(render); }, 5 * 60_000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) atualizar(); });
 })();

@@ -14,6 +14,7 @@ export function iniciarSeguirBkt({ api, getCfg, esc, usd, aoRenderizar }) {
   async function tick() {
     const agora = Date.now();
     const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+    if (document.hidden) { setTimeout(tick, 60_000); return; } // aba em segundo plano: sem consultas
     try {
       const novos = [];
       for (const E of SEGUIR_BKT.checagens) {

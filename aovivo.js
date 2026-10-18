@@ -27,6 +27,8 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
   async function tick() {
     clearTimeout(timer);
     if (rodando) return;
+    // aba em segundo plano: não consulta (economiza o limite diário do relay); retoma ao voltar
+    if (document.hidden) { timer = setTimeout(tick, INTERVALO); return; }
     rodando = true;
     const cfg = getCfg();
     try {
@@ -185,6 +187,7 @@ export function iniciarAoVivo({ getCfg, esc, usd, prefixos, traders, indices, me
     document.querySelectorAll(".countdown").forEach((el) => { el.textContent = relogio((+el.dataset.fim - Date.now()) / 1000); });
   }, 1000);
 
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(); });
   tick();
   return { agora: () => { tick(); } };
 }
