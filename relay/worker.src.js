@@ -243,15 +243,14 @@ const ORCAMENTO = 40; // consultas à API por execução (limite do plano gráti
 const STEAM_TRADER = { carteira: "steam", nome: "Steam (movimento de odd)", nivel: "steam" };
 function msgSteam(x) {
   const pct = (v) => (v == null ? "–" : `${v <= 0 ? "−" : "+"}${Math.abs(100 * v).toFixed(0)}%`);
-  const ic = x.forca === "forte" ? "🟢" : "🟡";
-  return `${ic} <b>STEAM ${x.forca === "forte" ? "FORTE" : "moderado"}</b> · ${h(x.esporte)} · começa ${horaBR(x.inicio)}
+  return `👀 <b>STEAM (observar)</b> · ${h(x.esporte)} · começa ${horaBR(x.inicio)}
 ${h(x.tituloEvento)}
 Entrar: <b>${h(x.aposta)}</b>
 Mercado: ${h(x.pergunta)} · lado ${h(x.lado)}
 A odd caiu ${pct(x.var120)} desde 2 h antes e ${pct(x.var60)} desde 1 h antes · agora ${odd(x.precoDele)}
 <b>Odd mínima ${odd(x.teto)}</b>${x.ask != null ? ` · melhor oferta ${odd(x.ask)}` : ""} · livre até a mínima ~${usd(x.liquidez || 0)}
 Volume do mercado ${usd(x.vol)} · segure até o fim
-${x.forca === "forte" ? "Histórico (90 dias): +30% a +40% nesta regra." : "Regra moderada: histórico +13%, ainda em teste."}
+Em observação: revalidado com todos os jogos de 90 dias, +2% a +5% (não descarta sorte). Se entrar, valor pequeno.
 ${linkMercado(x)}`;
 }
 

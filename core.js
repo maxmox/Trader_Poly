@@ -409,12 +409,12 @@ export async function carregarAoVivo(api, traders, opts = {}) {
 
 // ---------------------------------------------------------------------------
 // STEAM: movimento de odd na última hora antes do jogo (polymarket_traders/steam_*.py)
-// Backtest de 90 dias (out/2026), mercados com volume >= $100 mil, lado do movimento com odd 1,50-2,00,
-// entrada 10 min antes do início no 1º negócio real + taxa:
-//   queda >= 7% (de 2 h ou de 1 h até a entrada): +30% a +40% (44 e 28 sinais, as 2 metades positivas)
-//   queda 5-7% de 2 h até a entrada: +13%, inconsistente -> "moderado", só para confirmar ao vivo
-//   queda 2-5%: prejuízo (ruído que volta) -> sem sinal
-export const STEAM = { volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: 0.05, entradaMin: 10 };
+// Revalidado em 17/10/2026 com a listagem completa (36.918 mercados, 90 dias), mercados com volume >= $100 mil,
+// lado do movimento com odd 1,50-2,00, entrada 10 min antes do início no 1º negócio real + taxa:
+//   queda >= 7% de 1 h: +5,4% (208 sinais, P 0,18); de 2 h: +2,1% (291, P 0,34) -> só "observar"
+//   (o +30-40% de antes vinha da listagem incompleta)
+//   queda 5-7%: 0% -> desligado (moderado: null); queda 3-5%: -7,6%
+export const STEAM = { volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: null, entradaMin: 10, nivel: "observar" };
 const precoEm = (hist, t, velhoSeg = 900) => {
   let p = null, tt = null;
   for (const x of hist) { if (x.t <= t) { p = x.p; tt = x.t; } else break; }
@@ -432,7 +432,7 @@ export function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entra
     const q120 = v120?.[j], q60 = v60?.[j];
     const pior = Math.min(q120 ?? 0, q60 ?? 0);
     if (pior <= -STEAM.forte) return { lado: j, preco: p, var120: q120, var60: q60, forca: "forte" };
-    if ((q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
+    if (STEAM.moderado != null && (q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
   }
   return null;
 }

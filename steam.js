@@ -60,15 +60,15 @@ export function iniciarSteam({ api, getCfg, esc, usd, prefixos, aoRenderizar }) 
     const stake = (cfg.banca * cfg.pct) / 100;
     const agora = Date.now();
     const ativos = sinais.filter((s) => s.inicio > agora);
-    aoRenderizar?.({ n: ativos.length, copiar: ativos.filter((s) => s.forca === "forte" && s.ask != null && s.ask <= s.teto).length });
+    aoRenderizar?.({ n: ativos.length, copiar: 0 }); // em observação: não conta como entrada recomendada
     const pct = (v) => (v == null ? "–" : `${v <= 0 ? "−" : "+"}${Math.abs(100 * v).toFixed(0)}%`);
     const antes = (s, v) => (v == null ? "–" : odd(s.preco * (1 + v))); // odd antes = odd agora / (1 + variação)
     const min = (ms) => Math.max(0, Math.round((ms - agora) / 60e3));
     $("#steam-lista").innerHTML = ativos.map((s) => {
       const ok = s.ask != null && s.ask <= s.teto;
       return `<article class="card steam ${s.forca}">
-        <div class="card-top"><span class="momento steam">Steam</span><span class="st ${ok ? "COPIAR" : "ESPERAR"}">${ok ? "Entrar" : "Esperar"}</span>
-          <span class="quem">${s.forca === "forte" ? "🟢 forte" : "🟡 moderado"} · ${esc(rotuloEsporte(s.esporte))}${s.tipo ? " · " + esc(rotuloTipo(s.tipo)) : ""}</span></div>
+        <div class="card-top"><span class="momento steam">Steam</span><span class="st ESPERAR">Observar</span>
+          <span class="quem">👀 em observação · ${esc(rotuloEsporte(s.esporte))}${s.tipo ? " · " + esc(rotuloTipo(s.tipo)) : ""}</span></div>
         <div><div class="evento">${esc(s.tituloEvento)}</div><div class="lado">${esc(s.aposta)}</div>
           <div class="pergunta">Mercado: ${esc(s.pergunta)} · lado <b>${esc(s.lado)}</b></div></div>
         <div class="kv">
@@ -79,13 +79,11 @@ export function iniciarSteam({ api, getCfg, esc, usd, prefixos, aoRenderizar }) 
           <div><small>Volume do mercado</small><b>${usd(s.vol)}</b></div>
           <div><small>Livre até a mínima</small><b>${usd(s.liquidez)}</b></div>
         </div>
-        <div class="ordem">${ok ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(s.aposta)}</b> com odd mínima <b>${odd(s.teto)}</b>,
+        <div class="ordem">Se for testar, valor pequeno. ${ok ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(s.aposta)}</b> com odd mínima <b>${odd(s.teto)}</b>,
           aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). Segure até o fim.
           <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)}</span>
           ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} à venda até a mínima: a ordem pode ser preenchida em parte.</span>` : ""}</div>
-        <div class="card-foot"><span>${s.forca === "forte"
-          ? "Regra forte: odd caiu ≥ 7% na última 1–2 h, mercado ≥ $100 mil, odd 1,50–2,00. Backtest 90 dias: +30% a +40%."
-          : "Regra moderada: odd caiu 5–7% em 2 h. Backtest +13%, ainda em teste: valor menor."}</span>
+        <div class="card-foot"><span>Odd caiu ≥ 7% na última 1–2 h, mercado ≥ $100 mil, odd 1,50–2,00. Revalidado com todos os jogos de 90 dias: +2% a +5%, sem prova de vantagem. Em observação.</span>
           <a href="${linkMercado(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
       </article>`;
     }).join("");

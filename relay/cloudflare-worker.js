@@ -414,12 +414,12 @@ async function carregarAoVivo(api, traders, opts = {}) {
 
 // ---------------------------------------------------------------------------
 // STEAM: movimento de odd na última hora antes do jogo (polymarket_traders/steam_*.py)
-// Backtest de 90 dias (out/2026), mercados com volume >= $100 mil, lado do movimento com odd 1,50-2,00,
-// entrada 10 min antes do início no 1º negócio real + taxa:
-//   queda >= 7% (de 2 h ou de 1 h até a entrada): +30% a +40% (44 e 28 sinais, as 2 metades positivas)
-//   queda 5-7% de 2 h até a entrada: +13%, inconsistente -> "moderado", só para confirmar ao vivo
-//   queda 2-5%: prejuízo (ruído que volta) -> sem sinal
-const STEAM = { volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: 0.05, entradaMin: 10 };
+// Revalidado em 17/10/2026 com a listagem completa (36.918 mercados, 90 dias), mercados com volume >= $100 mil,
+// lado do movimento com odd 1,50-2,00, entrada 10 min antes do início no 1º negócio real + taxa:
+//   queda >= 7% de 1 h: +5,4% (208 sinais, P 0,18); de 2 h: +2,1% (291, P 0,34) -> só "observar"
+//   (o +30-40% de antes vinha da listagem incompleta)
+//   queda 5-7%: 0% -> desligado (moderado: null); queda 3-5%: -7,6%
+const STEAM = { volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: null, entradaMin: 10, nivel: "observar" };
 const precoEm = (hist, t, velhoSeg = 900) => {
   let p = null, tt = null;
   for (const x of hist) { if (x.t <= t) { p = x.p; tt = x.t; } else break; }
@@ -437,7 +437,7 @@ function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entradaMin *
     const q120 = v120?.[j], q60 = v60?.[j];
     const pior = Math.min(q120 ?? 0, q60 ?? 0);
     if (pior <= -STEAM.forte) return { lado: j, preco: p, var120: q120, var60: q60, forca: "forte" };
-    if ((q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
+    if (STEAM.moderado != null && (q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
   }
   return null;
 }
@@ -873,15 +873,14 @@ const ORCAMENTO = 40; // consultas à API por execução (limite do plano gráti
 const STEAM_TRADER = { carteira: "steam", nome: "Steam (movimento de odd)", nivel: "steam" };
 function msgSteam(x) {
   const pct = (v) => (v == null ? "–" : `${v <= 0 ? "−" : "+"}${Math.abs(100 * v).toFixed(0)}%`);
-  const ic = x.forca === "forte" ? "🟢" : "🟡";
-  return `${ic} <b>STEAM ${x.forca === "forte" ? "FORTE" : "moderado"}</b> · ${h(x.esporte)} · começa ${horaBR(x.inicio)}
+  return `👀 <b>STEAM (observar)</b> · ${h(x.esporte)} · começa ${horaBR(x.inicio)}
 ${h(x.tituloEvento)}
 Entrar: <b>${h(x.aposta)}</b>
 Mercado: ${h(x.pergunta)} · lado ${h(x.lado)}
 A odd caiu ${pct(x.var120)} desde 2 h antes e ${pct(x.var60)} desde 1 h antes · agora ${odd(x.precoDele)}
 <b>Odd mínima ${odd(x.teto)}</b>${x.ask != null ? ` · melhor oferta ${odd(x.ask)}` : ""} · livre até a mínima ~${usd(x.liquidez || 0)}
 Volume do mercado ${usd(x.vol)} · segure até o fim
-${x.forca === "forte" ? "Histórico (90 dias): +30% a +40% nesta regra." : "Regra moderada: histórico +13%, ainda em teste."}
+Em observação: revalidado com todos os jogos de 90 dias, +2% a +5% (não descarta sorte). Se entrar, valor pequeno.
 ${linkMercado(x)}`;
 }
 
