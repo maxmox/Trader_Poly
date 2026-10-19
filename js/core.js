@@ -19,6 +19,10 @@ export const PADRAO = { tetoCentavos: 2, tetoRelativo: 0.10, toleranciaCentavos:
 // (ex.: gol contra) e copiar é outra aposta. Na auditoria, essas cópias ao vivo deram -22% de ROI.
 export const pisoDe = (preco, r = PADRAO) => preco - (r.pisoCentavos ?? 10) / 100;
 
+// TRADER QUE VENDE ANTES DO FIM (trader.saida, de polymarket_traders/saidas_analise.py): segurar até o fim
+// rendeu pelo menos 2 pontos a mais que sair junto com ele -> o alerta SAIR é só informativo.
+export const seguraMelhor = (sd) => sd?.roi_segurando != null && sd?.roi_saida != null && sd.roi_segurando >= sd.roi_saida + 2;
+
 // TAMANHO DA APOSTA DELE: quanto ele pôs neste mercado (total, não só o 1º minuto) contra a
 // aposta típica dele (mediana, data/indices.json). Profissional que marca entrada com $1 para
 // conferir depois não está apostando: isso não é sinal.
@@ -410,43 +414,16 @@ export async function carregarAoVivo(api, traders, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// STEAM: movimento de odd na última hora antes do jogo (polymarket_traders/steam_*.py)
-// Revalidado em 17/10/2026 com a listagem completa (36.918 mercados, 90 dias), mercados com volume >= $100 mil,
-// lado do movimento com odd 1,50-2,00, entrada 10 min antes do início no 1º negócio real + taxa:
-//   queda >= 7% de 1 h: +5,4% (208 sinais, P 0,18); de 2 h: +2,1% (291, P 0,34) -> só "observar"
-//   (o +30-40% de antes vinha da listagem incompleta)
-//   queda 5-7%: 0% -> desligado (moderado: null); queda 3-5%: -7,6%
-// Por esporte, com preço real e volume só até a entrada (18/10/2026): no CS2 seguir o movimento perde
-// (-7% a -17%); nos outros esportes não há regra que se sustente -> steam DESLIGADO (ativo: false),
-// no Worker e no site. O código fica para religar se uma regra por esporte se confirmar.
-export const STEAM = { ativo: false, volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: null, entradaMin: 10, nivel: "observar" };
+// INÍCIO CONFIRMADO (auditoria de 18/10/2026): em ~5% dos jogos o horário oficial está adiantado (início
+// atrasado) e o "minuto 10" ainda é pré-jogo. Ao vivo o preço mexe muito mais que antes: só vale o sinal se
+// a soma das variações minuto a minuto nos 10 min depois do início for >= 3x a dos 10 min antes.
+// Na auditoria: futebol (contra) com início confirmado +8,7% (355 jogos, P 0,00); basquete (seguir) +20% a +27%.
+// preço do lado 0 no instante t (último ponto até t, se não for mais velho que velhoSeg)
 const precoEm = (hist, t, velhoSeg = 900) => {
   let p = null, tt = null;
   for (const x of hist) { if (x.t <= t) { p = x.p; tt = x.t; } else break; }
   return p != null && t - tt <= velhoSeg ? p : null;
 };
-// hist = [{t, p}] do 1º lado (ordenado); devolve o sinal ou null
-export function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entradaMin * 60) {
-  const agora = precoEm(hist, agoraSeg);
-  if (agora == null) return null;
-  const var_ = (pa) => (pa == null ? null : [pa / agora - 1, (1 - pa) / (1 - agora) - 1]); // variação da odd de cada lado
-  const v120 = var_(precoEm(hist, inicioSeg - 120 * 60)), v60 = var_(precoEm(hist, inicioSeg - 60 * 60));
-  for (const j of [0, 1]) {
-    const p = j === 0 ? agora : 1 - agora;
-    if (!(1 / p >= STEAM.oddMin && 1 / p < STEAM.oddMax)) continue;
-    const q120 = v120?.[j], q60 = v60?.[j];
-    const pior = Math.min(q120 ?? 0, q60 ?? 0);
-    if (pior <= -STEAM.forte) return { lado: j, preco: p, var120: q120, var60: q60, forca: "forte" };
-    if (STEAM.moderado != null && (q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// INÍCIO CONFIRMADO (auditoria de 18/10/2026): em ~5% dos jogos o horário oficial está adiantado (início
-// atrasado) e o "minuto 10" ainda é pré-jogo. Ao vivo o preço mexe muito mais que antes: só vale o sinal se
-// a soma das variações minuto a minuto nos 10 min depois do início for >= 3x a dos 10 min antes.
-// Na auditoria: futebol (contra) com início confirmado +8,7% (355 jogos, P 0,00); basquete (seguir) +20% a +27%.
 const variacao = (hist, a, b) => {
   let s = 0, ant = null;
   for (let t = a; t <= b; t += 60) { const p = precoEm(hist, t, 300); if (p != null && ant != null) s += Math.abs(p - ant); if (p != null) ant = p; }

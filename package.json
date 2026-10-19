@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "snapshot": "node scripts/snapshot.mjs"
+    "snapshot": "node scripts/snapshot.mjs",
+    "desempenho": "node scripts/desempenho.mjs",
+    "worker": "node scripts/build-worker.mjs"
   }
 }

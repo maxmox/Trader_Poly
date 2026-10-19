@@ -1,6 +1,8 @@
-import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO, historicoNoMercado, momentoDaEntrada, liberado, STEAM } from "./core.js";
+// Página principal: quadro "Sinais agora" (pré-jogo + ao vivo + regras em observação), fichas dos
+// traders, entradas recentes e placar. A regra de cada veredito fica em core.js.
+import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO, historicoNoMercado, momentoDaEntrada, liberado } from "./core.js";
+import { $, esc, usd, ha, dataHora, stakeDe } from "./formato.js";
 import { iniciarAoVivo } from "./aovivo.js";
-import { iniciarSteam } from "./steam.js";
 import { iniciarUnderFut } from "./under.js";
 import { iniciarSeguirBkt } from "./bkt.js";
 import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seloMercado } from "./nota.js";
@@ -9,10 +11,6 @@ import { iniciarEntradas } from "./entradas.js";
 
 const INTERVALO_VIVO = 60_000;     // busca direta a cada 1 min
 const INTERVALO_RETRATO = 120_000; // sem acesso direto, relê o retrato do servidor a cada 2 min
-
-const $ = (s) => document.querySelector(s);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const usd = (v) => (v == null ? "–" : "$" + Math.round(v).toLocaleString("pt-BR"));
 
 // ---------- ajustes (só neste navegador) ----------
 const CFG_PADRAO = { banca: 1000, pct: 1.5, teto: PADRAO.tetoCentavos, relay: "", fora: false, aviso: false };
@@ -58,12 +56,13 @@ async function carregarPlacar() {
   }
   renderPlacar();
 }
-const quadroEntradas = iniciarEntradas({ el: () => $("#entradas"), esc, usd, prefixos: () => prefixos });
+const quadroEntradas = iniciarEntradas({ el: () => $("#entradas") });
 function renderPlacar() {
   const lista = [...tradersVivo.map((t) => ({ t, momento: "ao vivo" })), ...traders.map((t) => ({ t, momento: "pré-jogo" }))];
-  $("#placar").innerHTML = secaoPlacar({ desempenho, registro, esc, traders: lista });
+  $("#placar").innerHTML = secaoPlacar({ desempenho, registro, traders: lista });
   quadroEntradas.atualizar({ desempenho, traders: lista });
-} // data/config.json: relay do repositório, usado quando Ajustes está vazio
+}
+// data/config.json: relay do repositório, usado quando Ajustes está vazio
 const relay = () => cfg.relay || relayPadrao;
 const regras = () => ({ ...PADRAO, tetoCentavos: cfg.teto });
 
@@ -132,21 +131,15 @@ function quando(h) {
   if (h < 48) return `em ${h.toFixed(h < 10 ? 1 : 0).replace(".", ",")} h`;
   return `em ${Math.round(h / 24)} dias`;
 }
-const dataHora = (t) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–");
-const ha = (t) => {
-  if (!t) return "–";
-  const m = (Date.now() - t) / 60000;
-  return m < 60 ? `há ${Math.max(1, Math.round(m))} min` : m < 2880 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dias`;
-};
-const link = linkMercado; // vai direto ao mercado (não só ao evento)
-
 // ---------- quadro único (pré-jogo + ao vivo) ----------
-const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 }, steam: { n: 0, copiar: 0 }, under: { n: 0, copiar: 0 }, bkt: { n: 0, copiar: 0 } };
+// cada bloco informa quantos cards tem (n) e quantos são recomendação de entrada (copiar)
+const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 }, under: { n: 0, copiar: 0 }, bkt: { n: 0, copiar: 0 } };
 function atualizarQuadro() {
-  const copiar = quadro.pre.copiar + quadro.vivo.copiar + quadro.steam.copiar + quadro.under.copiar + quadro.bkt.copiar;
+  const blocos = Object.values(quadro);
+  const copiar = blocos.reduce((s, b) => s + b.copiar, 0);
   document.title = copiar ? `(${copiar}) Trader Poly` : "Trader Poly";
   $("#titulo-agora").textContent = copiar ? `Sinais agora · ${copiar}` : "Sinais agora";
-  $("#quadro-vazio").hidden = quadro.pre.n + quadro.vivo.n + quadro.steam.n + quadro.under.n + quadro.bkt.n > 0;
+  $("#quadro-vazio").hidden = blocos.some((b) => b.n > 0);
 }
 
 // ---------- render ----------
@@ -159,7 +152,7 @@ function render() {
 
   const agora = Date.now();
   const porCarteira = Object.fromEntries((dados.traders || []).map((t) => [t.carteira, t]));
-  const stake = (cfg.banca * cfg.pct) / 100;
+  const stake = stakeDe(cfg);
 
   // copiáveis agora (todas as carteiras)
   const agoraLista = [];
@@ -199,14 +192,14 @@ function render() {
             <div><small>Ele entrou</small><b>${ha(p.entrouEm)}</b></div>
           </div>
           ${conflito(t, p).map((o) => `<div class="conflito">Conflito: <b>${esc(o.t.nome)}</b> está do lado oposto neste mercado (${esc(o.q.aposta || o.q.lado)}). Copiar os dois anula a aposta.</div>`).join("")}
-          ${blocoNota(n, esc)}
+          ${blocoNota(n)}
           ${blocoSaida(t.saida, p.precoDele)}
           <div class="ordem">${p.status === "COPIAR" ? "Entrar" : "Deixe ordem limitada"}: <b>${esc(p.aposta || p.lado)}</b> com odd mínima <b>${odd(p.teto)}</b>,
             aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(p.teto))}</b> se ganhar (já descontada a taxa)
             <span class="preco-ref">No Polymarket: ordem limitada a ${cents(p.teto)} (~${Math.floor(cotas).toLocaleString("pt-BR")} cotas)</span>
             ${p.status === "COPIAR" && p.liquidez < stake ? `<span class="alerta">Só ${usd(p.liquidez)} à venda até o teto: a ordem pode ser preenchida em parte.</span>` : ""}
             ${t.props ? `<span class="alerta">Prop de jogador: mercado raso (na temporada passada, só em 1 de cada 4 apostas dele dava para comprar $100 até o teto). Use <b>ordem limitada</b> (quem deixa ordem no livro não paga taxa) e no máximo <b>${usd(t.props.max_usd)}</b>.</span>` : ""}</div>
-          <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = no máximo ${cfg.teto}¢ (ou 10%) de preço pior que a dele`}</span><a href="${link(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
+          <div class="card-foot"><span>${p.status === "ESPERAR" ? esc(p.motivos.join(" · ")) : `Odd mínima = no máximo ${cfg.teto}¢ (ou 10%) de preço pior que a dele`}</span><a href="${linkMercado(p)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
         </article>`;
       }).join("");
 
@@ -218,9 +211,9 @@ function render() {
     const ocultas = (d.posicoes || []).length - pos.length;
     const linhas = pos.map((p) => `<tr>
         <td><span class="st ${p.status}">${p.status === "NAO" ? "Não" : p.status === "COPIAR" ? "Copiar" : "Esperar"}</span></td>
-        <td><a href="${link(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
+        <td><a href="${linkMercado(p)}" target="_blank" rel="noopener">${esc(p.tituloEvento)}</a><div class="motivo">${esc(p.motivos.join(" · "))}</div></td>
         <td>${esc(p.aposta || p.lado)}</td><td>${esc(rotuloEsporte(p.esporte))}${p.tipo ? `<div class="motivo">${esc(rotuloTipo(p.tipo))}</div>` : ""}
-          ${p.esporte !== FORA ? seloMercado(historicoNoMercado(mercados, t.carteira, p.esporte, p.tipo, momentoDaEntrada(p)), liberado(t, p.esporte, p.tipo, momentoDaEntrada(p)).ok, esc) : ""}</td>
+          ${p.esporte !== FORA ? seloMercado(historicoNoMercado(mercados, t.carteira, p.esporte, p.tipo, momentoDaEntrada(p)), liberado(t, p.esporte, p.tipo, momentoDaEntrada(p)).ok) : ""}</td>
         <td class="n">${odd(p.precoDele)}</td><td class="n">${odd(p.ask)}</td><td class="n">${usd(p.valorDele)}</td>
         <td class="n">${quando(p.horasParaInicio)}</td><td class="n">${p.esporte === FORA ? "–" : pilulaNota(notaEntrada({ ...p, momento: momentoDaEntrada(p) }, t, indices, mercados))}</td></tr>`).join("");
     return `<article class="trader">
@@ -234,7 +227,7 @@ function render() {
           : s.roi_copia_60s != null ? `<span>Copiando 1 min <b>${s.roi_copia_60s.toFixed(1).replace(".", ",")}%</b></span>` : ""}
         <span>Última atividade <b>${ha(d.ultimaAtividade)}</b></span>
       </div>
-      ${linhaPlacar(desempenho?.traders?.[t.carteira], sinaisDe(t.carteira), esc)}
+      ${linhaPlacar(desempenho?.traders?.[t.carteira], sinaisDe(t.carteira))}
       <p class="nota">${esc(t.nota)}</p>
       ${d.erro ? `<p class="erro">Não foi possível ler este trader: ${esc(d.erro)}</p>` : ""}
       ${pos.length
@@ -280,23 +273,19 @@ function avisar(lista) {
   try {
     const tv = vigentes((await json("data/traders_live.json")).traders);
     tradersVivo = tv;
-    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), esc, usd, prefixos, traders: tv, indices, mercados,
-      placar: (w) => linhaPlacar(desempenho?.traders?.[w], sinaisDe(w), esc),
+    iniciarAoVivo({ getCfg: () => ({ ...cfg, relay: relay() }), prefixos, traders: tv, indices, mercados,
+      placar: (w) => linhaPlacar(desempenho?.traders?.[w], sinaisDe(w)),
       aoRenderizar: (c) => { quadro.vivo = c; atualizarQuadro(); } });
   } catch (e) {
     $("#vivo-traders").innerHTML = `<p class="erro">Lista de traders ao vivo indisponível: ${esc(e.message)}</p>`;
   }
-  // steam: movimento forte de odd antes do jogo (mesma regra do Worker)
-  if (STEAM.ativo) try {
-    iniciarSteam({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg, esc, usd, prefixos,
-      aoRenderizar: (c) => { quadro.steam = c; atualizarQuadro(); } });
-  } catch (e) { console.error("steam", e); }
+  // regras em observação: futebol Under e basquete seguir (mesmas regras do Worker)
   try {
-    iniciarUnderFut({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg, esc, usd,
+    iniciarUnderFut({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg,
       aoRenderizar: (c) => { quadro.under = c; atualizarQuadro(); } });
   } catch (e) { console.error("under", e); }
   try {
-    iniciarSeguirBkt({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg, esc, usd,
+    iniciarSeguirBkt({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg,
       aoRenderizar: (c) => { quadro.bkt = c; atualizarQuadro(); } });
   } catch (e) { console.error("bkt", e); }
   carregarPlacar().then(render);

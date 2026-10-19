@@ -1,25 +1,18 @@
 // Quadro "Entradas recentes": todas as entradas dos traders do site no nicho deles, em ordem
 // cronológica, boas ou ruins (data/desempenho.json, "ultimas" de cada trader, gerado pela Action).
-import { rotuloTipo, linkMercado } from "./core.js";
+import { rotuloTipo, linkMercado, odd } from "./core.js";
+import { esc, usd, ha, dataHora, hora, pct as pctCasas } from "./formato.js";
 
 const CHAVE = "entradas-filtros";
 const PASSO = 100;
-const pct = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(100 * v).toFixed(0)}%`);
-const odd = (p) => (p > 0 ? (1 / p).toFixed(2).replace(".", ",") : "–");
-
-function ha(ms) {
-  const m = Math.round((Date.now() - ms) / 60e3);
-  if (m < 60) return `há ${Math.max(m, 0)} min`;
-  const h = Math.round(m / 60);
-  return h < 48 ? `há ${h} h` : `há ${Math.round(h / 24)} d`;
-}
+const pct = (v) => pctCasas(v, 0);
 
 function lerFiltros() {
   try { return { momento: "", nivel: "", situacao: "", trader: "", ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; }
   catch { return { momento: "", nivel: "", situacao: "", trader: "" }; }
 }
 
-export function iniciarEntradas({ el, esc, usd }) {
+export function iniciarEntradas({ el }) {
   let f = lerFiltros(), limite = PASSO, todas = [], geradoEm = null;
 
   function salvar() { try { localStorage.setItem(CHAVE, JSON.stringify(f)); } catch { /* sem armazenamento: só nesta visita */ } }
@@ -45,7 +38,7 @@ export function iniciarEntradas({ el, esc, usd }) {
     const copia = l.pCopia != null ? `${odd(l.pCopia)}<small>dava para copiar</small>`
       : l.p60 != null ? `${odd(l.p60)}<small class="neg">fora da faixa</small>` : `–<small>sem negócio</small>`;
     return `<tr class="${st}">
-      <td class="n"><b>${new Date(l.t0).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</b><small>${ha(l.t0)}</small></td>
+      <td class="n"><b>${dataHora(l.t0)}</b><small>${ha(l.t0)}</small></td>
       <td>${esc(l.nome)}<small><span class="nv ${l.nivel}">${l.nivel}</span> · ${l.momento}</small></td>
       <td><a href="${linkMercado(l)}" target="_blank" rel="noopener">${esc(l.lado)}</a><small>${esc(l.evento)} · ${esc(l.esporte || "")}${l.tipo ? " · " + esc(rotuloTipo(l.tipo)) : ""}</small></td>
       <td class="n">${odd(l.precoDele)}<small>${usd(l.usd)}</small></td>
@@ -63,7 +56,7 @@ export function iniciarEntradas({ el, esc, usd }) {
     const res = L.filter((l) => l.res != null), cop = res.filter((l) => l.roiCopia != null);
     const roi = cop.length ? cop.reduce((s, l) => s + l.roiCopia, 0) / cop.length : null;
     const sel = (id, atual, ops) => `<select data-f="${id}">${ops.map(([v, t]) => `<option value="${esc(v)}"${v === atual ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-    const quando = geradoEm ? new Date(geradoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "–";
+    const quando = geradoEm ? hora(geradoEm) : "–";
     raiz.innerHTML = `<div class="sec-head"><h2>Entradas recentes</h2><span class="muted">todas as entradas dos traders do site no nicho deles, da mais nova para a mais antiga · atualizado às ${quando}</span></div>
       <div class="ent-filtros">
         ${sel("momento", f.momento, [["", "pré-jogo e ao vivo"], ["pré-jogo", "pré-jogo"], ["ao vivo", "ao vivo"]])}

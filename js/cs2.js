@@ -1,10 +1,9 @@
 // Página de CS2: odd justa do time que vai para o intervalo perdendo (dados: polymarket_traders/gerar_cs2_site.py)
-const $ = (s) => document.querySelector(s);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+import { $, esc, odd } from "./formato.js";
+
 const LINHAS = [2.5, 3.5, 4.5, 5.5, 6.5, 7.5];
 const N_MIN = 60;
-const pct = (p) => `${(100 * p).toFixed(1).replace(".", ",")}%`;
-const odd = (p) => (p > 0 ? (1 / p).toFixed(2).replace(".", ",") : "–");
+const pct = (p) => `${(100 * p).toFixed(1).replace(".", ",")}%`; // probabilidade, sem sinal
 const num = (v) => v.toFixed(1).replace(".", ",");
 const linhaTxt = (l) => `+${String(l).replace(".", ",")}`;
 

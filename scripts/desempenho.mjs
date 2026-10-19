@@ -7,7 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
   criarApi, vigentes, esporte, liberado, tipoDoMercado, inicioDoMercado, volumeDoMercado,
   resultadoMercado, entradasDe, precosEntrada, tetoDe, pisoDe, notaEntrada, descreverAposta, custoCopia, tamanhoAposta,
-} from "../core.js";
+} from "../js/core.js";
 
 const raiz = new URL("../", import.meta.url);
 const ler = async (p) => JSON.parse(await readFile(new URL(p, raiz), "utf8"));

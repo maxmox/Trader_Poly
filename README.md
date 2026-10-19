@@ -1,102 +1,102 @@
 # Trader Poly
 
-Painel que acompanha os traders de esporte do Polymarket que vale copiar e diz, posição por posição, se dá para copiar **agora**.
+Painel e alertas no Telegram para apostas esportivas no Polymarket. Ele acompanha traders de esporte que vale copiar e algumas regras de mercado em teste, e diz, entrada por entrada, se ainda dá para entrar **agora**.
+
+Site: https://maxmox.github.io/Trader_Poly · Página de CS2: [`cs2.html`](https://maxmox.github.io/Trader_Poly/cs2.html)
+
+Tudo está em **odd decimal** (odd = 1 ÷ preço no Polymarket): odd 2,00 paga $20 numa aposta de $10. O card também mostra o preço em centavos, para montar a ordem limitada.
 
 ## O que a página mostra
 
-Tudo em **odd decimal**: odd 2,00 paga $20 para uma aposta de $10 (odd = 1 ÷ preço no Polymarket). O card também mostra o preço em centavos para montar a ordem limitada no Polymarket.
-
-### Aba Pré-jogo
-
-- **Copiáveis agora:** posições abertas que passam nas regras, com a odd mínima, a aposta e o retorno para a sua banca e o link do mercado.
-- **Traders:** as 8 carteiras escolhidas na análise (4 para copiar, 4 em observação), com todas as posições abertas e o motivo de cada veredito.
+1. **Sinais agora:** um quadro único com:
+   - **Ao vivo:** o trader acabou de entrar com o jogo rolando. O card tem uma contagem regressiva: a janela dele (1–2 min) é o tempo em que, no histórico, copiar ainda dava lucro.
+   - **Pré-jogo:** posição aberta de um trader, com o jogo ainda por começar e a odd perto da dele.
+   - **Futebol: Under** (em observação): Under 0,5 do 1º tempo ou Under 1,5 a 0,25–0,40, comprado 10–30 min antes do jogo. Também Under 0,5 do 1º tempo quando está 0x0 aos 30 min (placar da ESPN).
+   - **Basquete: seguir** (em observação): fora da NBA/WNBA, o time que disparou até os 20–30 min de jogo.
+2. **Traders:** a ficha de cada um, com:
+   - especialidade, estatísticas e placar dos últimos 30 dias;
+   - as posições abertas, com o veredito, a nota da entrada e o selo do mercado (no nicho dele / fora do nicho, lucra / perde).
+3. **Entradas recentes:** todas as entradas dos traders no nicho deles, boas ou ruins, com filtros.
+4. **Placar:** o resultado dos últimos 30 dias, como se cada entrada tivesse virado sinal, e o dos sinais reais enviados ao Telegram. Inclui a tabela "A nota está acertando?".
 
 | Veredito | Quando |
 |---|---|
-| Copiar | O jogo não começou, é um esporte em que o trader é bom e a odd ainda está perto da dele (no máximo 2¢ de preço pior; odd 2,00 → mínima 1,92) |
-| Esperar | A odd caiu um pouco além disso (até 5¢ de preço): deixe uma ordem limitada na odd mínima |
-| Não copiar | O jogo começou, a odd caiu demais, o mercado está fechado ou não é a especialidade dele |
+| Copiar | Esporte/nicho em que o trader é bom e a odd ainda está perto da dele: no máximo 2¢ de preço pior (odd 2,00 → mínima 1,92), ou 10% do preço em azarões. Ao vivo: só dentro da janela. Pré-jogo: só antes do início. |
+| Esperar | Pré-jogo com a odd um pouco abaixo da mínima: deixe uma ordem limitada na odd mínima. |
+| Não copiar | A odd andou demais (para pior, ou mais de 10¢ para melhor, sinal de que o cenário mudou); a janela passou; o jogo começou; não é a especialidade dele; ou é uma aposta simbólica (< $20 ou < 10% da aposta típica dele). |
 
-### Aba Ao vivo
-
-Sinais de traders que entram **durante o jogo** e seguram até o fim. O site consulta a cada 15 s e mostra cada entrada nova com uma contagem regressiva: a janela do trader (1–2 min) é o tempo em que, no histórico, ainda dava lucro copiar.
-
-Os traders ao vivo (`data/traders_live.json`) passaram por:
-
-- **Segura até o fim:** vende menos de 15% do que compra e quase não opera os dois lados.
-- **Absorve volume:** mercado mediano acima de $100 mil e compra no nível do mercado (não "pesca" preço errado em livro vazio).
-- **Replicável:** nas últimas até 100 entradas ao vivo, comprar 1 min depois, pagando o preço negociado + 0,5¢, deu ≥ 5% de ROI, com ≥ 60% das entradas ainda dentro da odd mínima.
-
-A aba ao vivo **precisa de acesso em tempo real** (DNS seguro ou relay). O retrato de 10 min não serve para ela.
+Todos os custos incluem a taxa de taker do Polymarket: 5% × p × (1 − p) por cota.
 
 ## Como os dados chegam
 
-1. **Direto do navegador:** a página consulta a API pública do Polymarket a cada 1 minuto.
-2. **Retrato do servidor:** uma GitHub Action roda `scripts/snapshot.mjs` a cada ~10 minutos e publica `data/snapshot.json`. A página usa esse retrato quando não consegue acessar o Polymarket direto.
-3. **Relay (opcional):** vários provedores no Brasil bloqueiam o DNS do Polymarket. Para ter tempo real mesmo assim, publique `relay/cloudflare-worker.js` como Cloudflare Worker (grátis) e cole a URL em **Ajustes**. Outra saída é ativar o DNS seguro do navegador (Chrome/Edge: Configurações → Privacidade e segurança → Usar DNS seguro → Cloudflare).
+- **Relay (padrão):** muitos provedores no Brasil bloqueiam o DNS do Polymarket. O site busca os dados pelo Cloudflare Worker (`data/config.json`), que repassa a API pública.
+- **Direto:** se o navegador alcança o Polymarket (por exemplo, com o DNS seguro ligado), o relay não é necessário.
+- **Retrato do servidor:** uma GitHub Action roda a cada ~10 min, gera `data/snapshot.json` (posições abertas) e `data/desempenho.json` (placar) e publica o site. Sem acesso em tempo real, a página mostra esse retrato. O ao vivo não funciona com o retrato.
 
-## Alertas no Telegram (e tempo real no site)
+Com a aba em segundo plano, a página para de consultar e retoma ao voltar.
 
-Um Cloudflare Worker (grátis) faz duas coisas:
-- **Relay:** o site passa a buscar os dados por ele, contornando o bloqueio de DNS. Com isso, o site fica em tempo real e a aba Ao vivo funciona.
-- **Alertas:** a cada minuto ele procura entradas ao vivo novas e verifica o pré-jogo de um trader, em rodízio (cada um a cada ~8 min). Cada sinal vai **uma vez** para o seu Telegram, com a odd mínima, o prazo da janela e o link. O plano grátis permite 50 consultas por execução; o Worker usa no máximo ~20.
+## Alertas no Telegram
 
-### 1. Criar o bot no Telegram
+O Worker (`relay/`) roda a cada minuto. Ele manda, uma vez cada:
+- entradas ao vivo e de pré-jogo dos traders;
+- alerta **SAIR** quando um trader que vende antes do fim vende;
+- sinais de Under e de basquete.
 
-1. No Telegram, fale com **@BotFather** → `/newbot` → escolha um nome. Ele devolve o **token** (`123456:ABC...`).
-2. Abra o seu bot novo e mande qualquer mensagem (ex.: `oi`).
-3. No navegador, abra `https://api.telegram.org/bot<SEU_TOKEN>/getUpdates` e copie o número em `"chat":{"id": ...}`. Esse é o **chat id**.
+Cada sinal fica registrado por 90 dias para o placar.
 
-### 2. Publicar o Worker
+### Montar o bot e o Worker
 
-1. https://dash.cloudflare.com → **Workers & Pages → Create → Create Worker** → Deploy.
-2. **Edit code** → apague tudo → cole o conteúdo de `relay/cloudflare-worker.js` → **Deploy**.
-3. **Settings → Variables and Secrets**, adicione:
-   - `TELEGRAM_TOKEN` (Secret): o token do bot
-   - `TELEGRAM_CHAT_ID` (Secret): o chat id
-   - `BANCA` e `PCT` (Text, opcional): ex. `1000` e `1.5`, para a mensagem sugerir o valor da aposta
-4. **Storage & Databases → KV → Create** um namespace (ex.: `trader-poly`). No Worker: **Settings → Bindings → Add → KV namespace**, nome da variável **`ENVIADOS`**. É isso que impede mensagens repetidas.
-5. **Settings → Triggers → Cron Triggers → Add**: `* * * * *` (a cada minuto).
-6. Teste: abra `https://SEU-WORKER.workers.dev/teste`. Deve chegar "Trader Poly conectado" no Telegram. Em `/verificar`, você vê o que ele encontrou agora; `/verificar?pre=mde4life1986` verifica o pré-jogo de um trader específico.
+1. **Bot:** no Telegram, fale com **@BotFather** → `/newbot`.
+   - Ele devolve o **token**.
+   - Mande qualquer mensagem ao bot novo e abra `https://api.telegram.org/bot<TOKEN>/getUpdates`. O número em `"chat":{"id": ...}` é o **chat id**.
+2. **Worker:** em https://dash.cloudflare.com → **Workers & Pages → Create Worker**. Em **Edit code**, cole o conteúdo de `relay/cloudflare-worker.js` → **Deploy**.
+3. **Settings → Variables and Secrets:**
+   - `TELEGRAM_TOKEN` e `TELEGRAM_CHAT_ID` (Secret);
+   - opcionais: `BANCA` e `PCT` (valor sugerido da aposta), `PLANO=gratis` (plano grátis: 50 consultas por execução), `UNDER=0` / `BKT=0` (desligar uma regra).
+4. **KV:** **Storage & Databases → KV → Create**. No Worker, em **Bindings**, ligue o KV com o nome **`ENVIADOS`**.
+5. **Settings → Triggers → Cron Triggers:** `* * * * *`.
+6. **Testes:**
+   - `/teste`: mensagem de teste no Telegram;
+   - `/verificar`: roda agora e devolve o resumo (`?pre=NOME` só para um trader);
+   - `/status`: últimas execuções;
+   - `/registro`: sinais enviados;
+   - `/teste-saida`: mostra o alerta SAIR, sem enviar.
 
-### 3. Ligar o site ao Worker
+O token fica **só** nos Secrets da Cloudflare, nunca no repositório.
 
-Coloque a URL do Worker em `data/config.json` (`{"relay": "https://SEU-WORKER.workers.dev"}`) e faça commit. Todos os aparelhos passam a usar o relay. Para um aparelho só, cole a URL em **Ajustes → Relay**.
-
-Depois de mudar `core.js` ou `relay/worker.src.js`, rode `node scripts/build-worker.mjs` e cole de novo o `relay/cloudflare-worker.js` no painel.
-
-## Publicar no GitHub Pages (uma vez)
-
-1. No repositório, abra **Settings → Pages**.
-2. Em **Build and deployment → Source**, escolha **GitHub Actions**.
-3. Abra **Actions → Atualizar e publicar → Run workflow**.
-4. O site fica em `https://maxmox.github.io/Trader_Poly/`.
-
-Se o Source ficar em "Deploy from a branch", o site mostra sempre o `data/snapshot.json` do repositório, um retrato parado. A Action até gera o retrato novo, mas ele não vai ao ar.
-
-Se o repositório ficar 60 dias sem commits, o GitHub desliga a atualização agendada. Para religar, use **Run workflow** ou faça qualquer commit.
+**Depois de mudar `js/core.js` ou `relay/worker.src.js`:** rode `node scripts/build-worker.mjs` e cole de novo o `relay/cloudflare-worker.js` no painel.
 
 ## Arquivos
 
-| Arquivo | Para que serve |
+| Caminho | Para que serve |
 |---|---|
-| `core.js` | Busca as posições e os sinais ao vivo e decide o veredito; usado pela página e pela Action |
-| `aovivo.js` | A aba Ao vivo |
-| `data/traders_live.json` | Os traders ao vivo, a janela e os esportes de cada um |
-| `app.js`, `index.html`, `styles.css` | A página |
-| `data/traders.json` | Os traders escolhidos, os esportes de cada um e as estatísticas |
-| `data/prefixos.json` | Prefixo do mercado → esporte (`nfl` → Futebol Americano, `cs2` → CS2…) |
-| `data/snapshot.json` | Retrato gerado pela Action |
-| `scripts/snapshot.mjs` | Gera o retrato |
-| `relay/cloudflare-worker.js` | Worker da Cloudflare: relay + alertas no Telegram (gerado, não edite) |
-| `relay/worker.src.js` | Código do Worker (sem o core) |
-| `scripts/build-worker.mjs` | Gera `relay/cloudflare-worker.js` |
+| `index.html`, `cs2.html`, `styles.css` | As páginas |
+| `js/core.js` | Núcleo comum ao site, à Action e ao Worker: regras de cópia, veredito, nota da entrada, tamanho da aposta, regras Under e basquete, descrição da aposta. Não toca no DOM. |
+| `js/formato.js` | Formatação comum das páginas (`esc`, `usd`, `pct`, `ha`…) |
+| `js/app.js` | Página principal: quadro, fichas de pré-jogo, ajustes |
+| `js/aovivo.js` | Cards e fichas dos traders ao vivo |
+| `js/under.js`, `js/bkt.js` | Cards do futebol Under e do basquete seguir |
+| `js/nota.js` | Blocos da nota, do tamanho da aposta, de "como ele sai" e do selo do mercado |
+| `js/placar.js`, `js/entradas.js` | Placar e entradas recentes |
+| `js/cs2.js` | Página de CS2: odd justa de quem vai para o intervalo perdendo |
+| `data/traders.json`, `data/traders_live.json` | Traders de pré-jogo e ao vivo (especialidade, nível, janela, estatísticas) |
+| `data/indices.json` | Modelo da nota da entrada e aposta típica de cada trader |
+| `data/mercados_trader.json` | Resultado de cada trader por esporte × tipo de mercado × momento (selo e nota fora do nicho) |
+| `data/prefixos.json` | Prefixo do mercado → esporte (`nfl` → Futebol Americano…) |
+| `data/cs2_intervalo.json`, `data/cs2_times.json` | Dados da página de CS2 |
+| `data/snapshot.json`, `data/desempenho.json` | Gerados pela Action (o válido é o do site publicado) |
 | `data/config.json` | Relay padrão do site |
+| `scripts/snapshot.mjs`, `scripts/desempenho.mjs` | Rodam na Action (`.github/workflows/pages.yml`) |
+| `scripts/build-worker.mjs` | Gera `relay/cloudflare-worker.js` |
+| `relay/worker.src.js` | Código do Worker (sem o core) |
+| `relay/cloudflare-worker.js` | Worker pronto para colar (gerado; não edite) |
 
-## Trocar os traders
+As listas de traders e os dados das regras vêm das análises em Python (pasta `polymarket_traders`, fora deste repositório).
 
-A lista pré-jogo vem de `polymarket_traders/` (`analisar_traders.py`, `backtest_copia.py` → `gerar_traders_site.py`, que grava `data/traders.json`). A lista ao vivo vem de `live_analise.py` / `live_ampliar.py` → `gerar_traders_live.py`, que grava `data/traders_live.json`. Depois faça commit e push.
+Para rodar os scripts localmente com o DNS bloqueado: `RELAY=https://SEU-WORKER.workers.dev node scripts/desempenho.mjs`. Exige Node 18 ou mais novo; o placar leva mais de 10 min.
 
-Rodar o retrato localmente: `node scripts/snapshot.mjs` (Node 18 ou mais novo). Com o DNS bloqueado, use `RELAY=https://seu-relay.workers.dev node scripts/snapshot.mjs`.
+## Publicar
+
+O GitHub Pages é publicado pela Action (**Settings → Pages → Source: GitHub Actions**). Ela roda a cada push e a cada ~10 min. Se o repositório ficar 60 dias sem commits, o GitHub desliga o agendamento: use **Actions → Run workflow** ou faça um commit.
 
 Isto não é recomendação financeira. Confira as regras de acesso ao Polymarket no seu país.

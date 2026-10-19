@@ -3,11 +3,10 @@
 // 30-32 min; com início confirmado e o preço de um time >= 5% acima do início, o card manda comprar esse time.
 // Em observação: mercados rasos, valor pequeno.
 import { avaliarSeguirBkt, SEGUIR_BKT, odd, cents, custoCopia, descreverAposta, linkMercado } from "./core.js";
-
-const $ = (s) => document.querySelector(s);
+import { $, esc, usd, stakeDe } from "./formato.js";
 const VALE_MIN = 10; // o card fica no quadro por até 10 min depois da checagem (o backtest entra até 5 min depois)
 
-export function iniciarSeguirBkt({ api, getCfg, esc, usd, aoRenderizar }) {
+export function iniciarSeguirBkt({ api, getCfg, aoRenderizar }) {
   let sinais = [];
   const cache = new Map(); // "E|evento" -> {sinal|null, em}
 
@@ -57,7 +56,7 @@ export function iniciarSeguirBkt({ api, getCfg, esc, usd, aoRenderizar }) {
 
   function render() {
     const cfg = getCfg();
-    const stake = (cfg.banca * cfg.pct) / 100;
+    const stake = stakeDe(cfg);
     const agora = Date.now();
     const ativos = sinais.filter((s) => agora / 1000 - s.ini <= (s.E + VALE_MIN) * 60);
     // em observação: não conta como entrada recomendada no resumo do quadro

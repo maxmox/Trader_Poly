@@ -3,7 +3,7 @@
 // provedor), assim o site sempre tem dados recentes mesmo sem acesso direto.
 // Local: RELAY=http://localhost:8787 node scripts/snapshot.mjs
 import { readFile, writeFile } from "node:fs/promises";
-import { criarApi, carregarTodos, vigentes } from "../core.js";
+import { criarApi, carregarTodos, vigentes } from "../js/core.js";
 
 const raiz = new URL("../", import.meta.url);
 const ler = async (p) => JSON.parse(await readFile(new URL(p, raiz), "utf8"));

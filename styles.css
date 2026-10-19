@@ -211,11 +211,6 @@ table.estreita { min-width: 0; max-width: 560px; }
 
 .trader h4.sub { margin: 12px 0 4px; font-size: 13px; color: var(--ink-2); }
 
-/* steam: odd caiu forte antes do jogo */
-.momento.steam { background: var(--warn); }
-.card.steam { border-left-color: var(--warn); }
-.card.steam .ordem { background: var(--warn-bg); }
-.card.steam.moderado { opacity: .92; }
 
 /* futebol: Under (pré-jogo e ao vivo) */
 .momento.under { background: var(--good); margin-left: 4px; }

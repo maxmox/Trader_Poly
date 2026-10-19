@@ -1,8 +1,8 @@
 // relay/cloudflare-worker.js — GERADO por scripts/build-worker.mjs. Não edite à mão:
-// edite core.js ou relay/worker.src.js e rode o build de novo.
+// edite js/core.js ou relay/worker.src.js e rode o build de novo.
 // Como publicar: veja "Alertas no Telegram" no README.
 
-// ===== core.js =====
+// ===== js/core.js =====
 // core.js — busca posições abertas dos traders e decide se dá para copiar AGORA.
 // Usado pelo site (navegador) e pela GitHub Action (scripts/snapshot.mjs), então
 // não pode tocar no DOM.
@@ -23,6 +23,10 @@ const PADRAO = { tetoCentavos: 2, tetoRelativo: 0.10, toleranciaCentavos: 5, tol
 // Piso: se o preço caiu mais de 10¢ desde a entrada dele (a odd subiu muito), o cenário mudou
 // (ex.: gol contra) e copiar é outra aposta. Na auditoria, essas cópias ao vivo deram -22% de ROI.
 const pisoDe = (preco, r = PADRAO) => preco - (r.pisoCentavos ?? 10) / 100;
+
+// TRADER QUE VENDE ANTES DO FIM (trader.saida, de polymarket_traders/saidas_analise.py): segurar até o fim
+// rendeu pelo menos 2 pontos a mais que sair junto com ele -> o alerta SAIR é só informativo.
+const seguraMelhor = (sd) => sd?.roi_segurando != null && sd?.roi_saida != null && sd.roi_segurando >= sd.roi_saida + 2;
 
 // TAMANHO DA APOSTA DELE: quanto ele pôs neste mercado (total, não só o 1º minuto) contra a
 // aposta típica dele (mediana, data/indices.json). Profissional que marca entrada com $1 para
@@ -415,43 +419,16 @@ async function carregarAoVivo(api, traders, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// STEAM: movimento de odd na última hora antes do jogo (polymarket_traders/steam_*.py)
-// Revalidado em 17/10/2026 com a listagem completa (36.918 mercados, 90 dias), mercados com volume >= $100 mil,
-// lado do movimento com odd 1,50-2,00, entrada 10 min antes do início no 1º negócio real + taxa:
-//   queda >= 7% de 1 h: +5,4% (208 sinais, P 0,18); de 2 h: +2,1% (291, P 0,34) -> só "observar"
-//   (o +30-40% de antes vinha da listagem incompleta)
-//   queda 5-7%: 0% -> desligado (moderado: null); queda 3-5%: -7,6%
-// Por esporte, com preço real e volume só até a entrada (18/10/2026): no CS2 seguir o movimento perde
-// (-7% a -17%); nos outros esportes não há regra que se sustente -> steam DESLIGADO (ativo: false),
-// no Worker e no site. O código fica para religar se uma regra por esporte se confirmar.
-const STEAM = { ativo: false, volMin: 100_000, oddMin: 1.5, oddMax: 2.0, forte: 0.07, moderado: null, entradaMin: 10, nivel: "observar" };
+// INÍCIO CONFIRMADO (auditoria de 18/10/2026): em ~5% dos jogos o horário oficial está adiantado (início
+// atrasado) e o "minuto 10" ainda é pré-jogo. Ao vivo o preço mexe muito mais que antes: só vale o sinal se
+// a soma das variações minuto a minuto nos 10 min depois do início for >= 3x a dos 10 min antes.
+// Na auditoria: futebol (contra) com início confirmado +8,7% (355 jogos, P 0,00); basquete (seguir) +20% a +27%.
+// preço do lado 0 no instante t (último ponto até t, se não for mais velho que velhoSeg)
 const precoEm = (hist, t, velhoSeg = 900) => {
   let p = null, tt = null;
   for (const x of hist) { if (x.t <= t) { p = x.p; tt = x.t; } else break; }
   return p != null && t - tt <= velhoSeg ? p : null;
 };
-// hist = [{t, p}] do 1º lado (ordenado); devolve o sinal ou null
-function avaliarSteam(hist, inicioSeg, agoraSeg = inicioSeg - STEAM.entradaMin * 60) {
-  const agora = precoEm(hist, agoraSeg);
-  if (agora == null) return null;
-  const var_ = (pa) => (pa == null ? null : [pa / agora - 1, (1 - pa) / (1 - agora) - 1]); // variação da odd de cada lado
-  const v120 = var_(precoEm(hist, inicioSeg - 120 * 60)), v60 = var_(precoEm(hist, inicioSeg - 60 * 60));
-  for (const j of [0, 1]) {
-    const p = j === 0 ? agora : 1 - agora;
-    if (!(1 / p >= STEAM.oddMin && 1 / p < STEAM.oddMax)) continue;
-    const q120 = v120?.[j], q60 = v60?.[j];
-    const pior = Math.min(q120 ?? 0, q60 ?? 0);
-    if (pior <= -STEAM.forte) return { lado: j, preco: p, var120: q120, var60: q60, forca: "forte" };
-    if (STEAM.moderado != null && (q120 ?? 0) <= -STEAM.moderado) return { lado: j, preco: p, var120: q120, var60: q60, forca: "moderado" };
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// INÍCIO CONFIRMADO (auditoria de 18/10/2026): em ~5% dos jogos o horário oficial está adiantado (início
-// atrasado) e o "minuto 10" ainda é pré-jogo. Ao vivo o preço mexe muito mais que antes: só vale o sinal se
-// a soma das variações minuto a minuto nos 10 min depois do início for >= 3x a dos 10 min antes.
-// Na auditoria: futebol (contra) com início confirmado +8,7% (355 jogos, P 0,00); basquete (seguir) +20% a +27%.
 const variacao = (hist, a, b) => {
   let s = 0, ant = null;
   for (let t = a; t <= b; t += 60) { const p = precoEm(hist, t, 300); if (p != null && ant != null) s += Math.abs(p - ant); if (p != null) ant = p; }
@@ -762,30 +739,37 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 
 // ===== Worker: relay do site + alertas no Telegram =====
 // (o arquivo publicado, relay/cloudflare-worker.js, é gerado por scripts/build-worker.mjs:
-//  core.js + este arquivo num arquivo só, para colar no painel da Cloudflare)
+//  js/core.js + este arquivo num arquivo só, para colar no painel da Cloudflare)
 //
 // 1) RELAY: GET /data/..., /gamma/..., /clob/... repassam a API pública do Polymarket com CORS.
-// 2) ALERTAS (Cron Trigger "* * * * *"):
-//    - a cada minuto: entradas AO VIVO novas dos traders de data/traders_live.json
-//    - a cada minuto, TODOS os traders de data/traders.json: posições PRÉ-JOGO copiáveis
-//      (plano pago, Workers Paid, desde 18/10/2026; com a variável PLANO=gratis volta ao
-//      rodízio de um trader por minuto e ao limite de 50 consultas por execução)
-//    O contador de consultas corta o trabalho antes do limite do plano.
+// 2) ALERTAS (Cron Trigger "* * * * *"), a cada minuto, nesta ordem:
+//    - entradas AO VIVO novas dos traders de data/traders_live.json (+ alerta SAIR de quem vende)
+//    - FUTEBOL UNDER (observação): pré-jogo 10-30 min antes e 0x0 aos 28-33'
+//    - BASQUETE AO VIVO, SEGUIR (observação): fora da NBA/WNBA, aos 20 e 30 min
+//    - PRÉ-JOGO: todos os traders de data/traders.json (+ alerta SAIR)
+//    Plano pago (Workers Paid, desde 18/10/2026). Com PLANO=gratis volta ao rodízio de um trader de
+//    pré-jogo por minuto e ao limite de 50 consultas. O contador corta o trabalho antes do limite.
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
-// 3) GET /teste  -> manda uma mensagem de teste no Telegram
-//    GET /verificar -> roda a verificação agora e devolve o resumo em JSON
-//    GET /status -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
-//    GET /registro -> todos os sinais enviados (últimos 90 dias) com o resultado, para o placar
+// 3) GET /teste       -> manda uma mensagem de teste no Telegram
+//    GET /verificar   -> roda a verificação agora e devolve o resumo em JSON (?pre=NOME: só esse trader)
+//    GET /status      -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
+//    GET /registro    -> todos os sinais enviados (últimos 90 dias) com o resultado, para o placar
+//    GET /teste-saida -> mostra (sem enviar) como fica o alerta SAIR
 //
-// REGISTRO: cada sinal enviado vira uma chave "r:..." no KV, com os dados nos metadados
-// (assim uma única listagem traz tudo). A cada 10 min o Worker confere o resultado dos
-// sinais cujo jogo já acabou (até 8 por vez).
+// KV "ENVIADOS":
+//   r:          registro dos sinais (90 dias; dados nos metadados, uma listagem traz tudo). A cada
+//               10 min o Worker confere o resultado de até 8 sinais cujo jogo já acabou.
+//   v: / p:     sinal ao vivo / pré-jogo já enviado
+//   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
+//   us:         Under enviado · bk20: / bk30: / bks: basquete avaliado / enviado
+//   status:     log das execuções
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
 //   TELEGRAM_CHAT_ID (secret)  seu chat id
 //   BANCA, PCT       (opcional) para sugerir o valor da aposta (ex.: 1000 e 1.5)
 //   SITE_URL         (opcional) padrão https://maxmox.github.io/Trader_Poly
+//   PLANO=gratis, UNDER=0, BKT=0 (opcional) plano grátis / desligar uma regra
 // KV: crie um namespace e ligue com o nome ENVIADOS (Settings → Bindings → KV).
 
 const CORS = {
@@ -854,8 +838,7 @@ function linhaTamanho(x) {
   return `\n${ic} Ele apostou <b>${h(tm.texto)}</b> · ${h(tm.rotulo)}`;
 }
 
-// trader que vende antes do fim: avisa no sinal de entrada como ele costuma sair
-const seguraMelhor = (sd) => sd?.roi_segurando != null && sd?.roi_saida != null && sd.roi_segurando >= sd.roi_saida + 2;
+// trader que vende antes do fim: avisa no sinal de entrada como ele costuma sair (seguraMelhor: core.js)
 function linhaSaida(t, x) {
   const sd = t.saida;
   if (!sd) return "";
@@ -1002,70 +985,6 @@ async function registrar(env, item, persistir) {
 const ORCAMENTO = { pago: 800, gratis: 40 };
 const gratis = (env) => env.PLANO === "gratis";
 
-// ---------- STEAM: odd caiu forte na última 1-2 h antes do jogo ----------
-// A cada minuto: jogos que começam em ~9-11 min; mercados de vencedor + handicap/total de maior volume com
-// volume >= $100 mil; histórico de preço (1 consulta por mercado) e, se bater a regra, o livro (1 consulta).
-// Cada mercado é avaliado uma vez (KV "sv:"). Sinais vão para o registro como trader "steam".
-const STEAM_TRADER = { carteira: "steam", nome: "Steam (movimento de odd)", nivel: "steam" };
-function msgSteam(x) {
-  const pct = (v) => (v == null ? "–" : `${v <= 0 ? "−" : "+"}${Math.abs(100 * v).toFixed(0)}%`);
-  return `👀 <b>STEAM (observar)</b> · ${h(x.esporte)} · começa ${horaBR(x.inicio)}
-${h(x.tituloEvento)}
-Entrar: <b>${h(x.aposta)}</b>
-Mercado: ${h(x.pergunta)} · lado ${h(x.lado)}
-A odd caiu ${pct(x.var120)} desde 2 h antes e ${pct(x.var60)} desde 1 h antes · agora ${odd(x.precoDele)}
-<b>Odd mínima ${odd(x.teto)}</b>${x.ask != null ? ` · melhor oferta ${odd(x.ask)}` : ""} · livre até a mínima ~${usd(x.liquidez || 0)}
-Volume do mercado ${usd(x.vol)} · segure até o fim
-Em observação: revalidado com todos os jogos de 90 dias, +2% a +5% (não descarta sorte). Se entrar, valor pequeno.
-${linkMercado(x)}`;
-}
-
-async function verificarSteam(env, api, prefixos, resumo, maxMercados = 8) {
-  const agora = Date.now();
-  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
-  const evs = await api.get("gamma", `/events?closed=false&active=true&start_time_min=${iso(agora + 9 * 60e3)}&start_time_max=${iso(agora + 11 * 60e3)}&limit=50`).catch(() => null) || [];
-  const mercados = [];
-  for (const ev of evs) {
-    const ms = (ev.markets || []).filter((m) => m.active && !m.closed && m.clobTokenIds && +(m.volumeNum || 0) >= STEAM.volMin);
-    const sel = ms.filter((m) => m.sportsMarketType === "moneyline");
-    for (const tp of ["spreads", "totals"]) {
-      const c = ms.filter((m) => m.sportsMarketType === tp).sort((a, b) => +b.volumeNum - +a.volumeNum)[0];
-      if (c) sel.push(c);
-    }
-    for (const m of sel) mercados.push({ ev, m });
-  }
-  resumo.steam = { jogos: evs.length, mercados: mercados.length, sinais: 0 };
-  let n = 0;
-  for (const { ev, m } of mercados) {
-    if (n >= maxMercados) break;
-    const chave = `sv:${m.conditionId}`;
-    if (await jaEnviado(env, chave)) continue;
-    n++;
-    await marcar(env, chave, 3 * 3600);
-    const ini = Date.parse(m.gameStartTime || ev.startTime) / 1000;
-    const tok = JSON.parse(m.clobTokenIds);
-    const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 130 * 60)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
-    const hist = (hp?.history || []).sort((a, b) => a.t - b.t);
-    const sig = avaliarSteam(hist, ini, Math.floor(agora / 1000));
-    if (!sig) continue;
-    const outcomes = JSON.parse(m.outcomes || '["Yes","No"]');
-    const book = await api.get("clob", `/book?token_id=${tok[sig.lado]}`).catch(() => null);
-    const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
-    const teto = Math.min(sig.preco + 0.015, 0.97);
-    const x = {
-      ...sig, asset: tok[sig.lado], cond: m.conditionId, oi: sig.lado, slug: m.slug, eventSlug: ev.slug, tituloEvento: ev.title,
-      pergunta: m.question, lado: outcomes[sig.lado], aposta: descreverAposta(m.question, outcomes[sig.lado]), esporte: rotuloEsporte(esporte(ev.slug, ev, prefixos)),
-      inicio: ini * 1000, entrouEm: agora, precoDele: sig.preco, ask: asks[0]?.p ?? null, teto, vol: +m.volumeNum,
-      liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), tipo: m.sportsMarketType,
-    };
-    const r = await telegram(env, msgSteam(x));
-    if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
-    resumo.enviados++; resumo.steam.sinais++;
-    x.nota = { nota: null, rotulo: x.forca };
-    await registrarSinal(env, STEAM_TRADER, x, "s");
-  }
-}
-
 // ---------- FUTEBOL UNDER (observação; regra em core.js: UNDER_FUT / buscarUnderFut) ----------
 // A cada minuto: (1) pré-jogo, jogos que começam em 10-30 min com Under 0,5 do 1º tempo ou Under 1,5 a 0,25-0,40;
 // (2) ao vivo, 0x0 entre 28' e 33' (placar da ESPN, 1 consulta) -> Under 0,5 do 1º tempo. Cada mercado tem o livro
@@ -1205,11 +1124,6 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   // basquete ao vivo, seguir quem disparou (fora da NBA/WNBA, aos 20 e 30 min)
   if (env.BKT !== "0") {
     try { await verificarSeguirBkt(env, api, resumo, gratis(env) ? 3 : 10); } catch (e) { resumo.erros.push(`bkt: ${e.message || e}`); }
-  }
-
-  // steam antes do pré-jogo (poucas consultas: jogos começando em ~10 min)
-  if (STEAM.ativo && env.STEAM !== "0") {
-    try { await verificarSteam(env, api, prefixos, resumo); } catch (e) { resumo.erros.push(`steam: ${e.message || e}`); }
   }
 
   // pré-jogo: plano pago = todos os traders a cada minuto; grátis = um por execução, em rodízio

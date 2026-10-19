@@ -1,16 +1,17 @@
 // Placar: desempenho recente de cada trader (data/desempenho.json, gerado pela Action) e os
 // sinais reais enviados ao Telegram (GET /registro no Worker), com o resultado conferido.
-const pct = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(100 * v).toFixed(1).replace(".", ",")}%`);
+import { odd, taxa } from "./core.js";
+import { esc, pct, dataHora } from "./formato.js";
+
 const FORMA = { entregando: "Entregando", "na média": "Na média", abaixo: "Abaixo", "pouca amostra": "Pouca amostra" };
 const classe = (f) => ({ entregando: "good", "na média": "mid", abaixo: "bad" }[f] || "none");
 
 // resumo dos sinais reais de um trader (ROI comprando na odd que estava disponível no envio)
-const fee = (p) => 0.05 * p * (1 - p);
 // valor por cota de quem seguiu o sinal: vendeu nas saídas dele (sx = [[preço, fração], ...], com a taxa)
 // e segurou o resto até o resultado; null se ainda não dá para fechar a conta
 function valorFinal(s) {
   let resto = 1, v = 0;
-  for (const [p, f] of s.sx || []) { const q = resto * f; v += q * (p - fee(p)); resto -= q; }
+  for (const [p, f] of s.sx || []) { const q = resto * f; v += q * (p - taxa(p)); resto -= q; }
   if (resto <= 0.02) return v;
   return s.r === 0 || s.r === 1 ? v + resto * s.r : null;
 }
@@ -18,19 +19,19 @@ function valorFinal(s) {
 export function resumoRegistro(sinais) {
   const res = sinais.filter((s) => valorFinal(s) != null);
   // ROI comprando na odd disponível no envio, pagando a taxa de taker (5% x p x (1-p)), com as saídas
-  const roi = res.filter((s) => s.a).map((s) => valorFinal(s) / (s.a + fee(s.a)) - 1);
+  const roi = res.filter((s) => s.a).map((s) => valorFinal(s) / (s.a + taxa(s.a)) - 1);
   return {
     enviados: sinais.length, abertos: sinais.length - res.length, acertos: res.filter((s) => valorFinal(s) / (s.a || 1) > 1).length, resolvidos: res.length,
     roi: roi.length ? roi.reduce((a, b) => a + b, 0) / roi.length : null,
   };
 }
 
-export function linhaPlacar(d, sinais, esc) {
+export function linhaPlacar(d, sinais) {
   if (!d && !sinais.length) return "";
   const s = d?.d30, s7 = d?.d7;
   const bolinhas = (d?.ultimas || []).map((l) => {
     const st = l.res === 1 ? "win" : l.res === 0 ? "loss" : "open";
-    const tit = `${new Date(l.t0).toLocaleDateString("pt-BR")} · ${l.evento} · ${l.lado} · odd ${(1 / l.precoDele).toFixed(2).replace(".", ",")}${l.nota ? ` · nota ${l.nota.nota}` : ""}${l.roiCopia != null ? ` · cópia ${pct(l.roiCopia)}` : ""}`;
+    const tit = `${new Date(l.t0).toLocaleDateString("pt-BR")} · ${l.evento} · ${l.lado} · odd ${odd(l.precoDele)}${l.nota ? ` · nota ${l.nota.nota}` : ""}${l.roiCopia != null ? ` · cópia ${pct(l.roiCopia)}` : ""}`;
     return `<i class="bol ${st}" title="${esc(tit)}"></i>`;
   }).join("");
   const r = resumoRegistro(sinais);
@@ -43,7 +44,7 @@ export function linhaPlacar(d, sinais, esc) {
   </div>`;
 }
 
-export function secaoPlacar({ desempenho, registro, traders, esc }) {
+export function secaoPlacar({ desempenho, registro, traders }) {
   const D = desempenho?.traders || {};
   const porW = {};
   for (const s of registro || []) (porW[s.w] ||= []).push(s);
@@ -88,7 +89,7 @@ export function secaoPlacar({ desempenho, registro, traders, esc }) {
       <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
   }).join("");
 
-  const quando = desempenho?.geradoEm ? new Date(desempenho.geradoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–";
+  const quando = dataHora(desempenho?.geradoEm);
   return `<div class="sec-head"><h2>Placar</h2><span class="muted">últimos 30 dias atualizados em ${quando} · sinais reais desde o início do registro</span></div>
     <p class="muted lede"><b>30 dias</b>: entradas do trader na especialidade/nicho dele, como se tivessem virado sinal; "cópia" = comprar 1 min depois, na odd negociada, só se ainda estava acima da odd mínima. <b>Sinais reais</b>: o que o Telegram mandou, com o resultado conferido depois do jogo (ROI na odd disponível no envio).</p>
     <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}${under}${bkt}</tbody></table></div>

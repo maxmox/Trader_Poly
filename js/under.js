@@ -2,11 +2,10 @@
 // Pré-jogo: 10-30 min antes do início, Under 0,5 do 1º tempo ou Under 1,5 a 0,25-0,40.
 // Ao vivo: 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo. Em observação: mercados rasos.
 import { buscarUnderFut, odd, cents, custoCopia, linkMercado } from "./core.js";
-
-const $ = (s) => document.querySelector(s);
+import { $, esc, usd, hora, stakeDe } from "./formato.js";
 const VIVO_MIN = 5; // o card do ao vivo fica por até 5 min depois de achado (o backtest entra em até 2 min)
 
-export function iniciarUnderFut({ api, getCfg, esc, usd, aoRenderizar }) {
+export function iniciarUnderFut({ api, getCfg, aoRenderizar }) {
   const vistos = new Map(); // conditionId -> sinal
 
   async function tick() {
@@ -27,12 +26,12 @@ export function iniciarUnderFut({ api, getCfg, esc, usd, aoRenderizar }) {
 
   function render() {
     const cfg = getCfg();
-    const stake = (cfg.banca * cfg.pct) / 100;
+    const stake = stakeDe(cfg);
     const ativos = [...vistos.values()].sort((a, b) => (a.regra === b.regra ? a.inicio - b.inicio : a.regra === "vivo" ? -1 : 1));
     aoRenderizar?.({ n: ativos.length, copiar: 0 }); // em observação: não conta como entrada recomendada
     $("#under-lista").innerHTML = ativos.map((s) => {
       const vivo = s.regra === "vivo";
-      const quando = vivo ? `0x0 aos ~${s.minuto} min` : `começa ${new Date(s.inicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+      const quando = vivo ? `0x0 aos ~${s.minuto} min` : `começa ${hora(s.inicio)}`;
       return `<article class="card under">
         <div class="card-top"><span class="momento ${vivo ? "vivo" : "pre"}">${vivo ? "Ao vivo" : "Pré-jogo"}</span><span class="momento under">Futebol: Under</span><span class="st ESPERAR">Observar</span>
           <span class="quem">Futebol · ${esc(s.liga)}</span></div>
