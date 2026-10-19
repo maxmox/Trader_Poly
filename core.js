@@ -6,7 +6,9 @@ export const HOSTS = {
   data: "https://data-api.polymarket.com",
   gamma: "https://gamma-api.polymarket.com",
   clob: "https://clob.polymarket.com",
+  espn: "https://site.api.espn.com", // placar ao vivo do futebol (Under); aceita chamada direta do navegador
 };
+const DIRETO = new Set(["espn"]); // não passa pelo relay (não é bloqueado no Brasil e tem CORS aberto)
 
 // Regras de cópia (mesmas do backtest): teto de 2 centavos acima do preço dele,
 // nada depois do início do jogo, nada acima de 97 centavos (sem margem).
@@ -44,7 +46,7 @@ export const tetoDe = (preco, r = PADRAO) => Math.min(preco + Math.min(r.tetoCen
 const toleranciaDe = (preco, r = PADRAO) => preco + Math.min(r.toleranciaCentavos / 100, preco * (r.toleranciaRelativa ?? 1));
 
 export function criarApi({ relay = "", fetchFn = globalThis.fetch, timeoutMs = 15000 } = {}) {
-  const base = (host) => (relay ? `${relay.replace(/\/$/, "")}/${host}` : HOSTS[host]);
+  const base = (host) => (relay && !DIRETO.has(host) ? `${relay.replace(/\/$/, "")}/${host}` : HOSTS[host]);
   async function get(host, path) {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -476,38 +478,112 @@ export function avaliarSeguirBkt(hist, inicioSeg, agoraSeg) {
 }
 
 // ---------------------------------------------------------------------------
-// FUTEBOL AO VIVO, CONTRA O MOVIMENTO (polymarket_traders/live_fut_*.py)
-// Em 0 a 0, a odd de vitória sobe sozinha com o tempo. Se nos primeiros 10 min a odd de um time CAIU, no
-// Polymarket isso foi exagero: comprar "NÃO vence" nesse time rendeu, com o 1º negócio real + taxa
-// (90 dias, entrada aos 10 min). Revalidado em 18/10/2026 com TODOS os 9.636 jogos (sem filtro de volume
-// final, que olha o futuro): queda >= 7%: +9,6% (381 sinais, P 0,00, metades +8%/+12%); 5-7%: ~+3%.
-// Positivo em todas as faixas de volume do mercado até a entrada. SEGUIR o movimento perdeu -20% a -35%.
-// Filtro: volume do mercado do time negociado ATÉ AGORA >= $5 mil (o volume do jogo, sempre maior, é o
-// pré-filtro barato). Antes era jogo >= $200 mil, bem mais restrito que o backtest.
-export const CONTRA_FUT = { volMin: 5_000, forte: 0.07, moderado: 0.05, entradaMin: 10, janelaMin: 12, salto: 0.07 };
-// mercados = [{hist:[{t,p}], empate:bool}] (3 mercados de vencedor do jogo, preço do "Sim")
-export function avaliarContraFut(mercados, inicioSeg, agoraSeg) {
-  if (mercados.length !== 3 || mercados.filter((m) => m.empate).length !== 1) return null;
-  for (const m of mercados) { // gol ou expulsão = salto de preço desde o início -> não é mais 0 a 0
-    const h = m.hist;
-    for (let i = 1; i < h.length; i++) {
-      if (h[i].t >= inicioSeg - 120 && h[i].t <= agoraSeg && h[i].t - h[i - 1].t <= 180 && Math.abs(h[i].p - h[i - 1].p) >= CONTRA_FUT.salto) return null;
+// FUTEBOL UNDER (polymarket_traders/ideias_usuario.py, robustez_under.py, fut_under_placar.py; 19/10/2026)
+// Negócio real (1º negócio de compra + taxa), 60 dias, positivo nos dois períodos de 30 dias:
+//   PRÉ-JOGO: 10-30 min antes do início, Under 0,5 do 1º tempo ou Under 1,5 do jogo a 0,25-0,40:
+//     +11% (669) e +13% (692). Sensível ao preço (+2¢ -> ~+5%); 2 h antes perde; Under 2,5 na mesma faixa perde.
+//   AO VIVO: 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo: +16% (385 jogos, P 0,00);
+//     odd 1,60-2,10: +12%. Mecanismo: o 0x0 sai mais do que o modelo de Poisson simples prevê.
+// (O "contra o movimento" do futebol foi retirado em 19/10/2026 a pedido do usuário.)
+// Os mercados do 1º tempo e as linhas extras ficam no evento "<jogo>-more-markets" (tag soccer, mesmo horário).
+export const UNDER_FUT = {
+  pre: { antesMin: 10, antesMax: 30, precoMin: 0.25, precoMax: 0.40, mercados: [["first_half_totals", 0.5], ["totals", 1.5]] },
+  vivo: { minDe: 28, minAte: 33, precoMin: 0.30, precoMax: 0.77, mercado: ["first_half_totals", 0.5] },
+  nivel: "observar",
+};
+const ESPN_PLACAR = "/apis/site/v2/sports/soccer/all/scoreboard";
+const PALAVRAS_FORA = new Set(["fc", "cf", "sc", "afc", "ac", "club", "cd", "sk", "fk", "the", "de", "ca", "sv", "as", "us", "if", "bk", "ssc", "rc", "cp", "ud", "sd", "rcd", "vfb", "vfl", "tsg", "fsv", "1", "04", "05", "1899", "1909"]);
+const palavras = (s) => new Set(String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().match(/[a-z0-9]+/g)?.filter((w) => !PALAVRAS_FORA.has(w)) || []);
+// semelhança entre um nome do Polymarket e os nomes de um time da ESPN (0-1; mesma regra do fut_under_placar.py)
+export function semelhanca(nome, nomes) {
+  const A = palavras(nome);
+  let melhor = 0;
+  for (const n of nomes) {
+    const B = palavras(n);
+    if (!A.size || !B.size) continue;
+    let comum = 0;
+    for (const w of A) if (B.has(w)) comum++;
+    melhor = Math.max(melhor, comum / Math.min(A.size, B.size));
+  }
+  return melhor;
+}
+const tituloJogo = (t) => String(t || "").replace(/\s*-\s*More Markets$/i, "");
+export const timesDe = (txt) => { const a = String(txt || "").split(":")[0].split(/\s+vs\.?\s+/i); return a.length === 2 ? a.map((s) => s.trim()) : null; };
+
+function underDe(ev, tipo, linha) {
+  for (const m of ev.markets || []) {
+    if (m.sportsMarketType !== tipo || !m.clobTokenIds || m.closed || /corner/i.test(m.question || "")) continue;
+    if (!(Math.abs(+m.line - linha) < 1e-6)) continue;
+    const ku = JSON.parse(m.outcomes || "[]").findIndex((o) => /^under/i.test(o));
+    if (ku >= 0) return { m, ku, tok: JSON.parse(m.clobTokenIds) };
+  }
+  return null;
+}
+
+async function eventosFutebol(api, deMs, ateMs) {
+  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+  const out = [];
+  for (let off = 0; off < 400; off += 100) {
+    const p = (await api.get("gamma", `/events?tag_slug=soccer&closed=false&active=true&start_time_min=${iso(deMs)}&start_time_max=${iso(ateMs)}&limit=100&offset=${off}`).catch(() => null)) || [];
+    out.push(...p);
+    if (p.length < 100) break;
+  }
+  return out;
+}
+
+// Sinais de Under agora. checar(m) (opcional, assíncrono) decide se vale consultar o livro desse mercado
+// (o Worker usa para não repetir o mesmo mercado a cada minuto). Cada livro consultado = 1 consulta.
+export async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40, checar = null } = {}) {
+  const out = [];
+  let livros = 0;
+  const avaliar = async (ev, u, regra, extra = {}) => {
+    if (livros >= maxLivros || (checar && !(await checar(u.m)))) return;
+    livros++;
+    const R = UNDER_FUT[regra];
+    const book = await api.get("clob", `/book?token_id=${u.tok[u.ku]}`).catch(() => null);
+    const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
+    const ask = asks[0]?.p;
+    if (ask == null || ask < R.precoMin || ask > R.precoMax) return;
+    const teto = Math.min(ask + 0.01, R.precoMax);
+    const ht = u.m.sportsMarketType.startsWith("first_half");
+    out.push({
+      regra, asset: u.tok[u.ku], cond: u.m.conditionId, oi: u.ku, slug: u.m.slug, eventSlug: ev.slug, tituloEvento: tituloJogo(ev.title),
+      pergunta: u.m.question, lado: "Under", aposta: `${ht ? "1º tempo" : "Jogo"}: menos de ${num(+u.m.line)} gol${+u.m.line > 1 ? "s" : ""} (Under ${num(+u.m.line)})`,
+      esporte: "Futebol", tipo: u.m.sportsMarketType, liga: ev.slug.split("-")[0].toUpperCase(),
+      inicio: Date.parse(u.m.gameStartTime || ev.startTime), entrouEm: agoraMs, precoDele: ask, ask, teto,
+      liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), vol: +(u.m.volumeNum || 0), ...extra,
+    });
+  };
+  // PRÉ-JOGO: jogos que começam em 10-30 min, do mais próximo para o mais distante
+  const pre = (await eventosFutebol(api, agoraMs + UNDER_FUT.pre.antesMin * 60e3, agoraMs + UNDER_FUT.pre.antesMax * 60e3))
+    .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime));
+  for (const ev of pre) for (const [tipo, linha] of UNDER_FUT.pre.mercados) {
+    const u = underDe(ev, tipo, linha);
+    if (u) await avaliar(ev, u, "pre");
+  }
+  // AO VIVO: jogos que começaram há 20-60 min com Under 0,5 do 1º tempo; placar e minuto pela ESPN
+  const vivo = (await eventosFutebol(api, agoraMs - 60 * 60e3, agoraMs - 20 * 60e3)).map((ev) => ({ ev, u: underDe(ev, ...UNDER_FUT.vivo.mercado) })).filter((x) => x.u);
+  if (vivo.length) {
+    const esp = await api.get("espn", ESPN_PLACAR).catch(() => null);
+    const nomes = (t) => [t?.displayName, t?.shortDisplayName, t?.name, t?.abbreviation].filter(Boolean);
+    const jogos = (esp?.events || []).filter((e) => e.status?.type?.state === "in" && e.status?.period === 1).map((e) => {
+      const cs = Object.fromEntries((e.competitions?.[0]?.competitors || []).map((c) => [c.homeAway, c]));
+      return { ini: Date.parse(e.date), min: (+e.status.clock || 0) / 60, gc: +(cs.home?.score ?? -1), gf: +(cs.away?.score ?? -1), casa: nomes(cs.home?.team), fora: nomes(cs.away?.team) };
+    }).filter((j) => j.min >= UNDER_FUT.vivo.minDe && j.min <= UNDER_FUT.vivo.minAte && j.gc === 0 && j.gf === 0);
+    for (const { ev, u } of vivo) {
+      const times = timesDe(u.m.question) || timesDe(tituloJogo(ev.title));
+      if (!times || !jogos.length) continue;
+      const ini = Date.parse(u.m.gameStartTime || ev.startTime);
+      let melhor = null;
+      for (const j of jogos) {
+        if (Math.abs(j.ini - ini) > 2 * 3600e3) continue;
+        const s = semelhanca(times[0], j.casa) + semelhanca(times[1], j.fora);
+        if (s >= 1.3 && (!melhor || s > melhor.s)) melhor = { s, j };
+      }
+      if (melhor) await avaliar(ev, u, "vivo", { minuto: Math.round(melhor.j.min), placar: "0x0" });
     }
   }
-  if (!inicioConfirmado(mercados.map((m) => m.hist), inicioSeg, agoraSeg)) return null;
-  const emp = mercados.find((m) => m.empate);
-  const e0 = precoEm(emp.hist, inicioSeg, 300), eN = precoEm(emp.hist, agoraSeg, 300);
-  if (e0 == null || eN == null || eN < e0 - 0.02) return null;
-  let melhor = null;
-  mercados.forEach((m, i) => {
-    if (m.empate) return;
-    const p0 = precoEm(m.hist, inicioSeg, 300), pN = precoEm(m.hist, agoraSeg, 300);
-    if (p0 == null || pN == null || !(pN > 0.04 && pN < 0.96)) return;
-    const v = p0 / pN - 1; // variação da odd do time (negativa = odd caiu)
-    if (v <= -CONTRA_FUT.moderado && (!melhor || v < melhor.var)) melhor = { mercado: i, p0, pN, var: v };
-  });
-  if (!melhor) return null;
-  return { ...melhor, precoNao: 1 - melhor.pN, forca: melhor.var <= -CONTRA_FUT.forte ? "forte" : "moderado" };
+  return out;
 }
 
 // ---------------------------------------------------------------------------

@@ -56,11 +56,11 @@ export function secaoPlacar({ desempenho, registro, traders, esc }) {
       <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
   }).join("");
 
-  // futebol ao vivo, contra o movimento: sinais reais por força
-  const contra = ["forte", "moderado"].map((f) => {
-    const r = resumoRegistro((porW["contra-fut"] || []).filter((x) => x.rt === f));
-    return `<tr><td>Contra o movimento ${f === "forte" ? "🟢 forte (≥ 7%)" : "🟡 moderado (5–7%)"}</td><td>ao vivo · futebol</td><td>–</td><td class="n">–</td><td class="n">–</td><td class="n">–</td>
-      <td class="n">${f === "forte" ? "+10%*" : "~+3%*"}</td><td class="n">–</td>
+  // futebol Under (observação): sinais reais por regra
+  const under = ["pre", "vivo"].map((f) => {
+    const r = resumoRegistro((porW["under-fut"] || []).filter((x) => x.rt === f));
+    return `<tr><td>Futebol: Under ${f === "pre" ? "(pré-jogo, 0,25–0,40)" : "(0x0 aos 30')"}</td><td>${f === "pre" ? "pré-jogo" : "ao vivo"} · futebol</td><td>observar</td><td class="n">–</td><td class="n">–</td><td class="n">–</td>
+      <td class="n">${f === "pre" ? "+11% a +13%*" : "+16%*"}</td><td class="n">–</td>
       <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
   }).join("");
 
@@ -91,8 +91,8 @@ export function secaoPlacar({ desempenho, registro, traders, esc }) {
   const quando = desempenho?.geradoEm ? new Date(desempenho.geradoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–";
   return `<div class="sec-head"><h2>Placar</h2><span class="muted">últimos 30 dias atualizados em ${quando} · sinais reais desde o início do registro</span></div>
     <p class="muted lede"><b>30 dias</b>: entradas do trader na especialidade/nicho dele, como se tivessem virado sinal; "cópia" = comprar 1 min depois, na odd negociada, só se ainda estava acima da odd mínima. <b>Sinais reais</b>: o que o Telegram mandou, com o resultado conferido depois do jogo (ROI na odd disponível no envio).</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}${contra}${bkt}</tbody></table></div>
-    <p class="muted">* Contra o movimento: comprar "NÃO vence" no time cuja odd caiu nos primeiros 10 min de um 0 a 0 (mercado do time com pelo menos $5 mil negociados até ali); ROI do backtest com todos os jogos de 90 dias e preço real. Basquete, seguir: comprar o time cuja odd caiu ≥ 5% até os 20–30 min, só fora da NBA/WNBA; backtest de 90 dias com preço real, mercados rasos. Os sinais reais mostram se isso se mantém.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}${under}${bkt}</tbody></table></div>
+    <p class="muted">* Futebol, Under: Under 0,5 do 1º tempo ou Under 1,5 a 0,25–0,40 comprado 10–30 min antes do jogo, e Under 0,5 do 1º tempo com 0x0 aos 30 min (placar da ESPN); backtest de 60 dias com preço real, positivo nos dois períodos de 30 dias. Basquete, seguir: comprar o time cuja odd caiu ≥ 5% até os 20–30 min, só fora da NBA/WNBA; backtest de 90 dias com preço real, mercados rasos. Os sinais reais mostram se isso se mantém.</p>
     <h3>A nota está acertando?</h3>
     <div class="tbl-wrap"><table class="estreita"><thead><tr><th>Nota</th><th class="n">Acertos 30d</th><th class="n">ROI cópia 30d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${notas}</tbody></table></div>`;
 }
