@@ -62,7 +62,10 @@ async function trader({ t, momento }) {
     if (tamanho?.classe === "simbolica") continue;
     const x = e.ex, ev = await evento(x.eventSlug);
     const sp = esporte(x.eventSlug || x.slug, ev, prefixos), tipo = tipoDoMercado(ev, x.slug), inicio = inicioDoMercado(ev, x.slug);
-    const mom = inicio == null ? "–" : e.t0 * 1000 >= inicio ? "ao vivo" : "pré-jogo";
+    let mom = inicio == null ? "–" : e.t0 * 1000 >= inicio ? "ao vivo" : "pré-jogo";
+    // tênis: o horário oficial é estimativa ("não antes de"); o jogo pode começar antes e o Worker (que vê a
+    // flag "ao vivo" do evento) manda o sinal ao vivo. Até 30 min antes do horário conta como ao vivo na lista ao vivo.
+    if (momento === "ao vivo" && mom === "pré-jogo" && sp === "Tenis" && e.t0 * 1000 >= inicio - 30 * 60e3) mom = "ao vivo";
     if (mom !== momento || !liberado(t, sp, tipo, mom).ok) continue;
     const res = resultadoMercado(ev, x.slug, x.outcomeIndex);
     const l = { t0: e.t0 * 1000, evento: ev?.title || x.title, lado: descreverAposta(x.title, x.outcome), slug: x.slug, eventSlug: x.eventSlug, esporte: sp, tipo,

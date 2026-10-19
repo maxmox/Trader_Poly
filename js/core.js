@@ -457,14 +457,16 @@ export function avaliarSeguirBkt(hist, inicioSeg, agoraSeg) {
 // ---------------------------------------------------------------------------
 // FUTEBOL UNDER (polymarket_traders/ideias_usuario.py, robustez_under.py, fut_under_placar.py; 19/10/2026)
 // Negócio real (1º negócio de compra + taxa), 60 dias, positivo nos dois períodos de 30 dias:
-//   PRÉ-JOGO: 10-30 min antes do início, Under 0,5 do 1º tempo ou Under 1,5 do jogo a 0,25-0,40:
-//     +11% (669) e +13% (692). Sensível ao preço (+2¢ -> ~+5%); 2 h antes perde; Under 2,5 na mesma faixa perde.
+//   PRÉ-JOGO: 10-30 min antes do início, Under 1,5 do jogo a 0,25-0,40: +11% a +13% no backtest.
+//     Sensível ao preço (+2¢ -> ~+5%); 2 h antes perde; Under 2,5 na mesma faixa perde.
+//     O Under 0,5 do 1º tempo pré-jogo foi RETIRADO em 19/10/2026 (pedido do usuário; sinais reais: 34, -26%).
+//     Under 1,5 pré-jogo nos sinais reais até 19/10: 22, -19,5% (amostra pequena, em observação).
 //   AO VIVO: 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo: +16% (385 jogos, P 0,00);
 //     odd 1,60-2,10: +12%. Mecanismo: o 0x0 sai mais do que o modelo de Poisson simples prevê.
 // (O "contra o movimento" do futebol foi retirado em 19/10/2026 a pedido do usuário.)
 // Os mercados do 1º tempo e as linhas extras ficam no evento "<jogo>-more-markets" (tag soccer, mesmo horário).
 export const UNDER_FUT = {
-  pre: { antesMin: 10, antesMax: 30, precoMin: 0.25, precoMax: 0.40, mercados: [["first_half_totals", 0.5], ["totals", 1.5]] },
+  pre: { antesMin: 10, antesMax: 30, precoMin: 0.25, precoMax: 0.40, mercados: [["totals", 1.5]] },
   vivo: { minDe: 28, minAte: 33, precoMin: 0.30, precoMax: 0.77, mercado: ["first_half_totals", 0.5] },
   nivel: "observar",
 };
@@ -508,13 +510,13 @@ async function eventosFutebol(api, deMs, ateMs) {
   return out;
 }
 
-// Sinais de Under agora. checar(m) (opcional, assíncrono) decide se vale consultar o livro desse mercado
+// Sinais de Under agora. checar(m, regra) (opcional, assíncrono) decide se vale consultar o livro desse mercado
 // (o Worker usa para não repetir o mesmo mercado a cada minuto). Cada livro consultado = 1 consulta.
 export async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40, checar = null } = {}) {
   const out = [];
   let livros = 0;
   const avaliar = async (ev, u, regra, extra = {}) => {
-    if (livros >= maxLivros || (checar && !(await checar(u.m)))) return;
+    if (livros >= maxLivros || (checar && !(await checar(u.m, regra)))) return;
     livros++;
     const R = UNDER_FUT[regra];
     const book = await api.get("clob", `/book?token_id=${u.tok[u.ku]}`).catch(() => null);
@@ -701,14 +703,20 @@ export function entradasDe(atividade) {
   const lista = [...por.values()].filter((e) => e.t0 > maisAntigo && e.cotas > 0)
     // preco = preço de mercado (sem taxa); precoPago = custo dele (com a taxa, se foi taker)
     .map((e) => ({ ...e, preco: e.valor / e.cotas, precoPago: e.usd / e.cotas }));
-  // dois lados do mesmo mercado: só o lado dominante conta, e só se o outro for < 50% dele
+  // dois lados do mesmo mercado: vale a PRIMEIRA entrada (a que viraria sinal), salvo proteção, ou seja,
+  // o outro lado comprado até 15 min depois dela somando >= 50% do que ele pôs no primeiro nesse período.
+  // Virar de lado mais tarde (vendeu e comprou o outro) não apaga a entrada original; a virada não conta.
+  const PROTECAO_SEG = 900;
+  const comprasAte = (asset, ate) => atividade.filter((t) => t.side === "BUY" && t.asset === asset && t.timestamp <= ate).reduce((s, t) => s + t.usdcSize, 0);
   const porCond = new Map();
   for (const e of lista) (porCond.get(e.ex.conditionId) || porCond.set(e.ex.conditionId, []).get(e.ex.conditionId)).push(e);
   const limpo = [];
   for (const L of porCond.values()) {
     if (L.length === 1) { limpo.push(L[0]); continue; }
-    L.sort((a, b) => b.usdTotal - a.usdTotal);
-    if (L.slice(1).reduce((s, e) => s + e.usdTotal, 0) < 0.5 * L[0].usdTotal) limpo.push(L[0]);
+    L.sort((a, b) => a.t0 - b.t0);
+    const ate = L[0].t0 + PROTECAO_SEG;
+    const outro = L.slice(1).reduce((s, e) => s + comprasAte(e.ex.asset, ate), 0);
+    if (outro < 0.5 * comprasAte(L[0].ex.asset, ate)) limpo.push(L[0]);
   }
   return limpo.sort((a, b) => b.t0 - a.t0);
 }

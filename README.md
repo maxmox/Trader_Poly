@@ -11,7 +11,7 @@ Tudo está em **odd decimal** (odd = 1 ÷ preço no Polymarket): odd 2,00 paga $
 1. **Sinais agora:** um quadro único com:
    - **Ao vivo:** o trader acabou de entrar com o jogo rolando. O card tem uma contagem regressiva: a janela dele (1–2 min) é o tempo em que, no histórico, copiar ainda dava lucro.
    - **Pré-jogo:** posição aberta de um trader, com o jogo ainda por começar e a odd perto da dele.
-   - **Futebol: Under** (em observação): Under 0,5 do 1º tempo ou Under 1,5 a 0,25–0,40, comprado 10–30 min antes do jogo. Também Under 0,5 do 1º tempo quando está 0x0 aos 30 min (placar da ESPN).
+   - **Futebol: Under** (em observação): Under 0,5 do 1º tempo quando está 0x0 aos 30 min (placar da ESPN), e Under 1,5 do jogo a 0,25–0,40, comprado 10–30 min antes do jogo.
    - **Basquete: seguir** (em observação): fora da NBA/WNBA, o time que disparou até os 20–30 min de jogo.
 2. **Traders:** a ficha de cada um, com:
    - especialidade, estatísticas e placar dos últimos 30 dias;
@@ -52,7 +52,8 @@ Cada sinal fica registrado por 90 dias para o placar.
 2. **Worker:** em https://dash.cloudflare.com → **Workers & Pages → Create Worker**. Em **Edit code**, cole o conteúdo de `relay/cloudflare-worker.js` → **Deploy**.
 3. **Settings → Variables and Secrets:**
    - `TELEGRAM_TOKEN` e `TELEGRAM_CHAT_ID` (Secret);
-   - opcionais: `BANCA` e `PCT` (valor sugerido da aposta), `PLANO=gratis` (plano grátis: 50 consultas por execução), `UNDER=0` / `BKT=0` (desligar uma regra).
+   - opcionais: `BANCA` e `PCT` (valor sugerido da aposta), `PLANO=gratis` (plano grátis: 50 consultas por execução), `UNDER=0` / `BKT=0` (desligar uma regra);
+   - `GH_TOKEN` (Secret, recomendado): faz o Worker disparar a publicação do site a cada 10 min, porque o agendamento do GitHub atrasa horas. Crie em GitHub → Settings → Developer settings → **Fine-grained tokens**, só para o repositório `Trader_Poly`, com a permissão **Actions: Read and write**.
 4. **KV:** **Storage & Databases → KV → Create**. No Worker, em **Bindings**, ligue o KV com o nome **`ENVIADOS`**.
 5. **Settings → Triggers → Cron Triggers:** `* * * * *`.
 6. **Testes:**
@@ -97,6 +98,6 @@ Para rodar os scripts localmente com o DNS bloqueado: `RELAY=https://SEU-WORKER.
 
 ## Publicar
 
-O GitHub Pages é publicado pela Action (**Settings → Pages → Source: GitHub Actions**). Ela roda a cada push e a cada ~10 min. Se o repositório ficar 60 dias sem commits, o GitHub desliga o agendamento: use **Actions → Run workflow** ou faça um commit.
+O GitHub Pages é publicado pela Action (**Settings → Pages → Source: GitHub Actions**). Ela roda a cada push e quando o Worker a dispara (a cada 10 min, com `GH_TOKEN`); o agendamento do próprio GitHub fica de reserva, porque na prática atrasa horas. Se o repositório ficar 60 dias sem commits, o GitHub desliga o agendamento: use **Actions → Run workflow** ou faça um commit.
 
 Isto não é recomendação financeira. Confira as regras de acesso ao Polymarket no seu país.

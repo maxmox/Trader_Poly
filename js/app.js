@@ -60,7 +60,7 @@ const quadroEntradas = iniciarEntradas({ el: () => $("#entradas") });
 function renderPlacar() {
   const lista = [...tradersVivo.map((t) => ({ t, momento: "ao vivo" })), ...traders.map((t) => ({ t, momento: "pré-jogo" }))];
   $("#placar").innerHTML = secaoPlacar({ desempenho, registro, traders: lista });
-  quadroEntradas.atualizar({ desempenho, traders: lista });
+  quadroEntradas.atualizar({ desempenho, traders: lista, registro });
 }
 // data/config.json: relay do repositório, usado quando Ajustes está vazio
 const relay = () => cfg.relay || relayPadrao;

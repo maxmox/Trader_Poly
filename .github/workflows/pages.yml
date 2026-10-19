@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "*/10 * * * *"   # o GitHub pode atrasar (ou pular) em horário de pico
+    - cron: "*/10 * * * *"   # reserva: na prática o GitHub atrasa horas; o Worker dispara a cada 10 min (GH_TOKEN)
   workflow_dispatch:
 
 permissions:
@@ -12,9 +12,11 @@ permissions:
   pages: write
   id-token: write
 
+# não cancela a execução em andamento (com disparo a cada 10 min, uma execução lenta nunca terminaria);
+# o GitHub guarda só a mais nova na fila
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publicar:

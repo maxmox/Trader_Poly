@@ -1,5 +1,5 @@
 // Cards de FUTEBOL UNDER no quadro principal (mesma regra do Worker: buscarUnderFut em core.js).
-// Pré-jogo: 10-30 min antes do início, Under 0,5 do 1º tempo ou Under 1,5 a 0,25-0,40.
+// Pré-jogo: 10-30 min antes do início, Under 1,5 do jogo a 0,25-0,40 (o do 1º tempo foi retirado em 19/10/2026).
 // Ao vivo: 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo. Em observação: mercados rasos.
 import { buscarUnderFut, odd, cents, custoCopia, linkMercado } from "./core.js";
 import { $, esc, usd, hora, stakeDe } from "./formato.js";
@@ -49,7 +49,7 @@ export function iniciarUnderFut({ api, getCfg, aoRenderizar }) {
           ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} à venda até a mínima: a ordem pode ser preenchida em parte.</span>` : ""}</div>
         <div class="card-foot"><span>${vivo
           ? "0x0 aos 30': o 0x0 no intervalo sai mais do que o mercado precifica. Backtest 60 dias (placar real, preço real): +16% (385 jogos)."
-          : "Under baixo 10–30 min antes do jogo, a 0,25–0,40: backtest 60 dias (preço real) +11% a +13%; com 2¢ a mais ~+5%."}</span>
+          : "Under 1,5 a 0,25–0,40, 10–30 min antes do jogo: backtest 60 dias (preço real) +11% a +13%, mas os sinais reais até agora estão negativos. Valor pequeno."}</span>
           <a href="${linkMercado(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
       </article>`;
     }).join("");

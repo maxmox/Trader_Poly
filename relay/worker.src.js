@@ -22,7 +22,7 @@
 //               10 min o Worker confere o resultado de até 8 sinais cujo jogo já acabou.
 //   v: / p:     sinal ao vivo / pré-jogo já enviado
 //   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
-//   us:         Under enviado · bk20: / bk30: / bks: basquete avaliado / enviado
+//   us:         Under enviado (us:<regra>:<mercado>) · bk20: / bk30: / bks: basquete avaliado / enviado
 //   status:     log das execuções
 //
 // Configuração no painel (Settings → Variables and Secrets):
@@ -30,6 +30,7 @@
 //   TELEGRAM_CHAT_ID (secret)  seu chat id
 //   BANCA, PCT       (opcional) para sugerir o valor da aposta (ex.: 1000 e 1.5)
 //   SITE_URL         (opcional) padrão https://maxmox.github.io/Trader_Poly
+//   GH_TOKEN         (secret, opcional) dispara a publicação do site a cada 10 min (ver dispararPublicacao)
 //   PLANO=gratis, UNDER=0, BKT=0 (opcional) plano grátis / desligar uma regra
 // KV: crie um namespace e ligue com o nome ENVIADOS (Settings → Bindings → KV).
 
@@ -247,12 +248,13 @@ const ORCAMENTO = { pago: 800, gratis: 40 };
 const gratis = (env) => env.PLANO === "gratis";
 
 // ---------- FUTEBOL UNDER (observação; regra em core.js: UNDER_FUT / buscarUnderFut) ----------
-// A cada minuto: (1) pré-jogo, jogos que começam em 10-30 min com Under 0,5 do 1º tempo ou Under 1,5 a 0,25-0,40;
+// A cada minuto: (1) pré-jogo, jogos que começam em 10-30 min com Under 1,5 do jogo a 0,25-0,40;
 // (2) ao vivo, 0x0 entre 28' e 33' (placar da ESPN, 1 consulta) -> Under 0,5 do 1º tempo. Cada mercado tem o livro
-// consultado no máximo a cada 4 min (memória da instância, para não gastar gravações do KV) e manda um alerta só
-// (KV "us:"). Sinais vão para o registro como "Futebol: Under", com a regra ("pre"/"vivo") no lugar da nota.
+// consultado no máximo a cada 4 min por regra (memória da instância, para não gastar gravações do KV) e manda um
+// alerta só por regra (KV "us:<regra>:<mercado>"; antes a chave era só o mercado e um alerta pré-jogo bloqueava o
+// ao vivo do mesmo mercado). Sinais vão para o registro como "Futebol: Under", com a regra ("pre"/"vivo") no lugar da nota.
 const UNDER_TRADER = { carteira: "under-fut", nome: "Futebol: Under", nivel: "observar" };
-const checadoUnder = new Map(); // conditionId -> último livro consultado (ms)
+const checadoUnder = new Map(); // "regra:conditionId" -> último livro consultado (ms)
 function msgUnder(env, x) {
   const vivo = x.regra === "vivo";
   return `⚽ <b>${vivo ? "AO VIVO" : "PRÉ-JOGO"} · FUTEBOL UNDER</b> · ${h(x.liga)} · em observação
@@ -261,23 +263,24 @@ Entrar: <b>${h(x.aposta)}</b>
 Mercado: ${h(x.pergunta)} · lado <b>Under</b>
 Odd agora ${odd(x.ask)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}
 ⚠️ Mercado raso: ordem limitada no preço da tela (cada 1¢ pesa) · segure até o fim${aposta(env, x.teto)}
-${vivo ? "Histórico (60 dias, placar real, preço real): 0x0 aos 30' → Under 0,5 do 1º tempo +16% (385 jogos)." : "Histórico (60 dias, preço real): Under 0,5 do 1º tempo / Under 1,5 a 0,25–0,40, 10–30 min antes: +11% a +13%."}
+${vivo ? "Histórico (60 dias, placar real, preço real): 0x0 aos 30' → Under 0,5 do 1º tempo +16% (385 jogos)." : "Histórico (60 dias, preço real): Under 1,5 a 0,25–0,40, 10–30 min antes: +11% a +13%. Sinais reais até agora negativos: valor pequeno."}
 ${linkMercado(x)}`;
 }
 
 async function verificarUnderFut(env, api, resumo, maxLivros = 40) {
   const agora = Date.now();
   for (const [k, t] of checadoUnder) if (agora - t > 3 * 3600e3) checadoUnder.delete(k);
-  const checar = async (m) => {
-    if (agora - (checadoUnder.get(m.conditionId) || 0) < 4 * 60e3) return false;
-    if (await jaEnviado(env, `us:${m.conditionId}`)) return false;
-    checadoUnder.set(m.conditionId, agora);
+  const checar = async (m, regra) => {
+    const k = `${regra}:${m.conditionId}`;
+    if (agora - (checadoUnder.get(k) || 0) < 4 * 60e3) return false;
+    if (await jaEnviado(env, `us:${k}`)) return false;
+    checadoUnder.set(k, agora);
     return true;
   };
   const sinais = await buscarUnderFut(api, agora, { maxLivros, checar });
   resumo.under = { sinais: 0, achados: sinais.length };
   for (const x of sinais) {
-    const chave = `us:${x.cond}`;
+    const chave = `us:${x.regra}:${x.cond}`;
     if (await jaEnviado(env, chave)) continue;
     const r = await telegram(env, msgUnder(env, x));
     if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
@@ -348,6 +351,21 @@ async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
   }
 }
 
+// ---------- PUBLICAÇÃO DO SITE ----------
+// O agendamento do GitHub Actions ("a cada 10 min") atrasa horas na prática. Com o secret GH_TOKEN (token
+// fine-grained só do repositório, permissão Actions: read and write), o Worker dispara a Action a cada 10 min:
+// placar, entradas recentes e retrato do pré-jogo ficam com no máximo ~20 min de atraso.
+const REPO = "maxmox/Trader_Poly", WORKFLOW = "pages.yml";
+async function dispararPublicacao(env) {
+  if (!env.GH_TOKEN) return null;
+  const r = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "trader-poly-worker", "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: "main" }),
+  });
+  return r.status === 204 ? "ok" : `HTTP ${r.status}`;
+}
+
 async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
   let usadas = 0;
   const fetchContado = (url, opts) => {
@@ -415,6 +433,9 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   }
   if (minuto % 10 === 0) {
     try { resumo.resolvidos = await resolverRegistro(env, api); } catch (e) { resumo.erros.push(`registro: ${e.message || e}`); }
+  }
+  if (minuto % 10 === 5 && !preTrader) {
+    try { resumo.publicacao = await dispararPublicacao(env); } catch (e) { resumo.erros.push(`publicação: ${e.message || e}`); }
   }
   resumo.consultas = usadas;
   return resumo;
