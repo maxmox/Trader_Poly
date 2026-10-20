@@ -598,13 +598,65 @@ export function lerPropsDk(itens) {
   }
   return out;
 }
-// todas as páginas do propBets de um jogo
-export async function buscarPropsDk(getJson, idEspn) {
-  const base = `${ESPN_CORE}/events/${idEspn}/competitions/${idEspn}/odds/100/propBets?lang=en&region=us&limit=1000`;
-  const p1 = await getJson(`${base}&page=1`);
+// MERCADOS DO JOGO na DraftKings: vencedor, handicap e total vêm de .../odds (abertura e agora); total do
+// 1º tempo e de cada quarto vêm do propBets (itens sem atleta; 1º item = Over, como nos props: conferido
+// contra o Polymarket no 1º tempo de 3 jogos). porLinha = quanto 1 ponto de linha muda a chance perto do
+// meio (normal com o desvio típico: jogo ~18 pts, 1º tempo ~12,5, quarto ~8,5, margem do jogo ~13).
+export const MERCADOS_JOGO = {
+  ml: { nome: "Vencedor", ordem: 1 },
+  spread: { nome: "Handicap", ordem: 2, porLinha: 0.031 },
+  total: { nome: "Total do jogo", ordem: 3, porLinha: 0.022 },
+  h1: { nome: "Total do 1º tempo", ordem: 4, porLinha: 0.032, prop: "1st Half Total" },
+  q1: { nome: "Total do 1º quarto", ordem: 5, porLinha: 0.047, prop: "1st Quarter Total" },
+  q2: { nome: "Total do 2º quarto", ordem: 6, porLinha: 0.047, prop: "2nd Quarter Total" },
+  q3: { nome: "Total do 3º quarto", ordem: 7, porLinha: 0.047, prop: "3rd Quarter Total" },
+  q4: { nome: "Total do 4º quarto", ordem: 8, porLinha: 0.047, prop: "4th Quarter Total" },
+};
+const decimalDe = (x) => {
+  if (x == null) return null;
+  const d = parseFloat(x.decimal ?? x.value);
+  if (Number.isFinite(d) && d > 1) return d;
+  const a = parseFloat(x.american ?? x);
+  return Number.isFinite(a) && a !== 0 ? (a > 0 ? 1 + a / 100 : 1 + 100 / -a) : null;
+};
+const numDe = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+// item de .../odds + itens do propBets -> { "jogo|<k>": { k, linha, linhaAb, a, b, aAb, bAb, p, pAb } }
+// a/b = odds decimais: Over/Under nos totais; visitante/mandante no vencedor e no handicap (linha = do visitante)
+export function lerJogoDk(odd, itens) {
+  const out = {};
+  const por = (k, r) => {
+    if (r.a == null || r.b == null) return;
+    r.p = semMargem(r.a, r.b); r.pAb = semMargem(r.aAb, r.bAb);
+    out[`jogo|${k}`] = { k, ...r };
+  };
+  if (odd) {
+    const fo = odd.awayTeamOdds || {}, ca = odd.homeTeamOdds || {};
+    por("ml", { linha: null, linhaAb: null, a: decimalDe(fo.current?.moneyLine), b: decimalDe(ca.current?.moneyLine), aAb: decimalDe(fo.open?.moneyLine), bAb: decimalDe(ca.open?.moneyLine) });
+    por("spread", { linha: numDe(fo.current?.pointSpread?.american), linhaAb: numDe(fo.open?.pointSpread?.american),
+      a: decimalDe(fo.current?.spread), b: decimalDe(ca.current?.spread), aAb: decimalDe(fo.open?.spread), bAb: decimalDe(ca.open?.spread) });
+    por("total", { linha: numDe(odd.current?.total?.american ?? odd.overUnder), linhaAb: numDe(odd.open?.total?.american),
+      a: decimalDe(odd.current?.over), b: decimalDe(odd.current?.under), aAb: decimalDe(odd.open?.over), bAb: decimalDe(odd.open?.under) });
+  }
+  for (const [k, m] of Object.entries(MERCADOS_JOGO)) {
+    if (!m.prop) continue;
+    const L = (itens || []).filter((x) => !x.athlete && x.type?.name === m.prop);
+    if (L.length !== 2) continue;
+    const [o, u] = L;
+    por(k, { linha: numDe(o.current?.target?.value), linhaAb: numDe(o.open?.target?.value),
+      a: numDe(o.odds?.decimal?.value), b: numDe(u.odds?.decimal?.value), aAb: numDe(o.odds?.decimal?.open), bAb: numDe(u.odds?.decimal?.open) });
+  }
+  return out;
+}
+
+// tudo da DraftKings de um jogo: props dos jogadores + mercados do jogo (1 consulta a .../odds + páginas do propBets)
+export async function buscarDk(getJson, idEspn) {
+  const comp = `${ESPN_CORE}/events/${idEspn}/competitions/${idEspn}`;
+  const base = `${comp}/odds/100/propBets?lang=en&region=us&limit=1000`;
+  const [p1, odds] = await Promise.all([getJson(`${base}&page=1`), getJson(`${comp}/odds`).catch(() => null)]);
   const itens = [...(p1?.items || [])];
   for (let pg = 2; pg <= Math.min(p1?.pageCount || 1, 4); pg++) itens.push(...((await getJson(`${base}&page=${pg}`))?.items || []));
-  return lerPropsDk(itens);
+  const odd = (odds?.items || []).find((o) => String(o.provider?.id) === "100") || null;
+  return { props: lerPropsDk(itens), jogo: lerJogoDk(odd, itens) };
 }
 
 // ---------------------------------------------------------------------------

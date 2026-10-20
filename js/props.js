@@ -1,8 +1,9 @@
-// Página "Props NBA": movimento de pontos, rebotes e assistências, por jogo.
-// Fonte principal: DraftKings pela API pública da ESPN (linha e odd de abertura e atuais; lerPropsDk em core.js),
+// Página "Props NBA": movimento dos mercados do jogo (vencedor, handicap, totais do jogo, 1º tempo e quartos) e
+// das props de pontos, rebotes e assistências, por jogo.
+// Fonte principal: DraftKings pela API pública da ESPN (linha e odd de abertura e atuais; buscarDk em core.js),
 // com as lesões do jogo (ESPN) e o histórico gravado pelo Worker a cada 10 min (GET /props-dk). O Polymarket
 // entra como comparação (chance do Over agora) e como gráfico de reserva enquanto não há histórico da DraftKings.
-import { criarApi, linkMercado, buscarPropsDk, datasNba, semMargem } from "./core.js";
+import { criarApi, linkMercado, buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 
 const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências" };
@@ -62,7 +63,9 @@ async function elenco(idTime) {
 }
 
 // movimento desde a referência escolhida: linha, chance sem margem e o movimento EQUIVALENTE, isto é, quanto
-// a chance do Over mudou na linha da referência (a chance na linha nova + o efeito de ter mudado a linha)
+// a chance do lado A (Over, ou o visitante) mudou na linha da referência: a chance na linha nova + o efeito de
+// ter mudado a linha. dirLinha: +1 nos totais (linha maior = Over mais difícil); -1 no handicap do visitante
+// (linha mais negativa = mais difícil cobrir).
 function movimento(x) {
   let ref = { linha: x.dk.linhaAb, p: x.dk.pAb };
   if (f.desde !== "abertura" && x.hist.length) {
@@ -73,24 +76,16 @@ function movimento(x) {
   }
   const dl = ref.linha != null ? x.dk.linha - ref.linha : 0;
   const dp = ref.p != null && x.dk.p != null ? x.dk.p - ref.p : null;
-  const sinal = dl * POR_LINHA[x.tipo] + (dp ?? 0);
+  const sinal = x.dirLinha * dl * (x.porLinha || 0) + (dp ?? 0);
   return { ref, dl, dp, sinal, forca: Math.abs(sinal) };
 }
 
 // ---------- dados ----------
-function macroEspn(ev) {
-  const o = ev.competitions?.[0]?.odds?.[0];
-  const out = [];
-  if (o?.details) out.push(`Handicap <b>${esc(o.details.replace(".", ","))}</b>`);
-  if (o?.overUnder != null) out.push(`Total <b>${lin(o.overUnder)}</b>`);
-  return out;
-}
-
 async function carregarJogo(ev, pmEventos) {
   const c = ev.competitions[0];
   const times = c.competitors.map((t) => ({ id: t.team.id, sigla: t.team.abbreviation, nome: t.team.shortDisplayName, casa: t.homeAway === "home" }));
-  const [props, e1, e2, resumo, hist] = await Promise.all([
-    buscarPropsDk(getJson, ev.id).catch(() => ({})),
+  const [dk, e1, e2, resumo, hist] = await Promise.all([
+    buscarDk(getJson, ev.id).catch(() => ({ props: {}, jogo: {} })),
     elenco(times[0].id), elenco(times[1].id),
     getJson(`${SITE}/summary?event=${ev.id}`).catch(() => null),
     relay ? getJson(`${relay.replace(/\/$/, "")}/props-dk?ev=${ev.id}`).catch(() => null) : null,
@@ -108,7 +103,17 @@ async function carregarJogo(ev, pmEventos) {
     const k = `${normal((m.question || "").split(":")[0])}|${m.sportsMarketType}`;
     (pmMercados[k] ||= []).push(m);
   }
-  const linhas = Object.values(props).map((dk) => {
+  const fora = times.find((t) => !t.casa), casa = times.find((t) => t.casa);
+  const mercados = Object.values(dk.jogo).sort((a, b) => MERCADOS_JOGO[a.k].ordem - MERCADOS_JOGO[b.k].ordem).map((m) => {
+    const total = !["ml", "spread"].includes(m.k);
+    return {
+      id: `${ev.id}|jogo|${m.k}`, k: m.k, nome: MERCADOS_JOGO[m.k].nome, rotA: total ? "Over" : fora.nome, rotB: total ? "Under" : casa.nome,
+      porLinha: MERCADOS_JOGO[m.k].porLinha || 0, dirLinha: total ? 1 : -1, temLinha: m.k !== "ml",
+      dk: { linha: m.linha, linhaAb: m.linhaAb, over: m.a, under: m.b, overAb: m.aAb, underAb: m.bAb, p: m.p, pAb: m.pAb },
+      hist: hist?.h?.[`jogo|${m.k}`] || [], pm: null,
+    };
+  });
+  const linhas = Object.values(dk.props).map((dk) => {
     const jogador = nomes[dk.atleta] || `atleta ${dk.atleta}`;
     const L = pmMercados[`${normal(jogador)}|${dk.tipo}`] || [];
     const m = L.sort((a, b) => Math.abs(a.line - dk.linha) - Math.abs(b.line - dk.linha))[0];
@@ -116,6 +121,7 @@ async function carregarJogo(ev, pmEventos) {
     const pmAgora = m && m.bestAsk != null && m.bestBid != null && m.bestAsk - m.bestBid <= 0.10 ? (m.bestAsk + m.bestBid) / 2 : null;
     return {
       id: `${ev.id}|${dk.atleta}|${dk.tipo}`, jogador, sigla: siglaDe[dk.atleta] || "", tipo: dk.tipo, dk,
+      rotA: "Over", rotB: "Under", porLinha: POR_LINHA[dk.tipo], dirLinha: 1, temLinha: true,
       lesao: lesoes[normal(jogador)] || null, hist: hist?.h?.[`${dk.atleta}|${dk.tipo}`] || [],
       pm: m ? { linha: m.line, p: pmAgora, vol: +(m.volumeNum || 0), tok: JSON.parse(m.clobTokenIds)[0], slug: m.slug, eventSlug: pm.slug } : null,
     };
@@ -123,7 +129,7 @@ async function carregarJogo(ev, pmEventos) {
   return {
     id: ev.id, titulo: `${times.find((t) => !t.casa)?.nome} @ ${times.find((t) => t.casa)?.nome}`, inicio: Date.parse(ev.date),
     estado: ev.status?.type?.state, placar: ev.status?.type?.state === "in" ? `${c.competitors.map((t) => `${t.team.abbreviation} ${t.score}`).join(" · ")} · ${ev.status.type.shortDetail}` : "",
-    macro: macroEspn(ev), lesoes: Object.values(lesoes), linhas, comHist: !!hist?.em,
+    lesoes: Object.values(lesoes), linhas, mercados, comHist: !!hist?.em,
   };
 }
 
@@ -148,7 +154,7 @@ async function carregar() {
     let feitos = 0;
     await emLotes(vivos, 3, async (ev) => {
       const j = await carregarJogo(ev, pmEventos).catch(() => null);
-      if (j?.linhas.length) novos.push(j);
+      if (j && (j.linhas.length || j.mercados.length)) novos.push(j);
       $("#status").textContent = `Carregando jogos: ${++feitos}/${vivos.length}…`;
     });
     jogos = novos.sort((a, b) => a.inicio - b.inicio);
@@ -242,17 +248,26 @@ document.addEventListener("pointermove", (e) => {
   dica.style.top = `${top}px`;
 });
 
+// minigráfico: a linha somada ao efeito da chance (1 ponto de linha = porLinha de chance), no sentido do lado A
+function serieAjustada(x) {
+  return x.hist.filter((h) => h[0] != null).map((h) => {
+    const p = semMargem(h[2], h[3]) ?? 0.5;
+    return x.temLinha && x.porLinha ? x.dirLinha * h[1] + (p - 0.5) / x.porLinha : p;
+  });
+}
+
 function detalhe(j, x) {
   const timed = x.hist.filter((h) => h[0] != null);
   const refs = [{ t: j.inicio / 1000, rot: "início" }];
   if (timed.length >= 2) {
-    const ptsLinha = timed.map((h) => [h[0], h[1], `linha ${lin(h[1])} · Over ${dec(h[2])} / Under ${dec(h[3])}`]);
-    const ptsP = timed.map((h) => [h[0], semMargem(h[2], h[3]), `Over ${prob(semMargem(h[2], h[3]))} na linha ${lin(h[1])} (odd ${dec(h[2])})`]).filter((p) => p[1] != null);
-    return `<div class="graf-duo">
-      ${grafico({ titulo: "Linha da DraftKings", pontos: ptsLinha, eixo: "linha", degrau: true, refs })}
-      ${grafico({ titulo: "Chance do Over sem a margem (DraftKings)", pontos: ptsP, eixo: "pct", refs, rodape: `Abertura: linha ${lin(x.dk.linhaAb)}, Over ${dec(x.dk.overAb)} · gravado pelo Worker a cada 10 min${x.pm ? ` · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Polymarket ↗</a>` : ""}` })}
-    </div>`;
+    const ptsP = timed.map((h) => [h[0], semMargem(h[2], h[3]), `${x.rotA} ${prob(semMargem(h[2], h[3]))}${x.temLinha ? ` na linha ${lin(h[1])}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]).filter((p) => p[1] != null);
+    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado pelo Worker a cada 10 min${x.pm ? ` · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Polymarket ↗</a>` : ""}`;
+    const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem (DraftKings)`, pontos: ptsP, eixo: "pct", refs, rodape });
+    if (!x.temLinha) return chance;
+    const ptsLinha = timed.map((h) => [h[0], h[1], `linha ${lin(h[1])} · ${x.rotA} ${dec(h[2])} / ${x.rotB} ${dec(h[3])}`]);
+    return `<div class="graf-duo">${grafico({ titulo: `Linha da DraftKings${x.k === "spread" ? ` (${x.rotA})` : ""}`, pontos: ptsLinha, eixo: "linha", degrau: true, refs })}${chance}</div>`;
   }
+  if (x.k) return `<p class="muted">Ainda sem histórico da DraftKings para este mercado: o Worker grava a cada 10 min.</p>`;
   // sem histórico da DraftKings ainda: gráfico do Polymarket (reserva)
   if (!x.pm) return `<p class="muted">Ainda sem histórico da DraftKings para esta linha (o Worker grava a cada 10 min) e sem mercado no Polymarket.</p>`;
   const h = pmHist.get(x.pm.tok);
@@ -272,11 +287,11 @@ function quando(j) {
 
 function linha(j, x, mv) {
   const aberto = abertos.has(x.id);
-  const dir = mv.forca < 0.005 ? "" : mv.sinal > 0 ? "▲ Over" : "▼ Under";
+  const dir = mv.forca < 0.005 ? "" : mv.sinal > 0 ? `▲ ${x.rotA}` : `▼ ${x.rotB}`;
   const partes = [mv.dl ? `${mv.dl > 0 ? "+" : "−"}${lin(Math.abs(mv.dl))} na linha` : "", mv.dp != null && Math.abs(mv.dp) >= 0.005 ? pp(mv.dp) : ""].filter(Boolean);
   const les = x.lesao ? ` <span class="tag-les" title="${esc(x.lesao.motivo)}">${esc(x.lesao.status)}</span>` : "";
   // minigráfico: linha + chance do Over (1 ponto de linha = 1 unidade; a chance ajusta dentro da linha)
-  const serie = x.hist.filter((h) => h[0] != null).map((h) => h[1] + ((semMargem(h[2], h[3]) ?? 0.5) - 0.5) / POR_LINHA[x.tipo]);
+  const serie = serieAjustada(x);
   return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
       <td><b>${esc(x.jogador)}</b>${les}<small>${esc(x.sigla)}</small></td><td>${TIPOS[x.tipo]}</td>
       <td class="n">${seta(mv.ref.linha, x.dk.linha, lin)}</td>
@@ -286,6 +301,22 @@ function linha(j, x, mv) {
       <td class="n">${x.pm ? `${prob(x.pm.p)}${x.pm.linha !== x.dk.linha ? `<small>linha ${lin(x.pm.linha)}</small>` : ""}` : "–"}</td>
       <td>${sparkline(serie)}</td></tr>
     ${aberto ? `<tr class="det"><td colspan="8">${detalhe(j, x)}</td></tr>` : ""}`;
+}
+
+// mercado do jogo (vencedor, handicap, totais): mesma leitura das props, com os lados do mercado
+function linhaJogo(j, x, mv) {
+  const aberto = abertos.has(x.id);
+  const dir = mv.forca < 0.005 ? "" : mv.sinal > 0 ? `▲ ${x.rotA}` : `▼ ${x.rotB}`;
+  const partes = [mv.dl ? `${mv.dl > 0 ? "+" : "−"}${lin(Math.abs(mv.dl))} na linha` : "", mv.dp != null && Math.abs(mv.dp) >= 0.005 ? pp(mv.dp) : ""].filter(Boolean);
+  const linhaTxt = (v) => (v == null ? "–" : x.k === "spread" ? `${v > 0 ? "+" : ""}${lin(v)}` : lin(v));
+  return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
+      <td><b>${esc(x.nome)}</b>${x.k === "spread" ? `<small>linha de ${esc(x.rotA)}</small>` : ""}</td>
+      <td class="n">${x.temLinha ? seta(mv.ref.linha, x.dk.linha, linhaTxt) : "–"}</td>
+      <td class="n">${esc(x.rotA)} ${seta(x.dk.overAb, x.dk.over, dec)}<small>${esc(x.rotB)} ${seta(x.dk.underAb, x.dk.under, dec)}</small></td>
+      <td class="n">${seta(mv.ref.p, x.dk.p, prob)}<small>${esc(x.rotA)}</small></td>
+      <td class="n mov${mv.forca >= 0.05 ? " forte" : ""}"><b>${mv.forca < 0.005 ? "–" : `≈ ${pp(mv.sinal)}`}</b><small>${[partes.join(" · "), dir].filter(Boolean).join(" · ")}</small></td>
+      <td>${sparkline(serieAjustada(x))}</td></tr>
+    ${aberto ? `<tr class="det"><td colspan="6">${detalhe(j, x)}</td></tr>` : ""}`;
 }
 
 function render() {
@@ -303,13 +334,16 @@ function render() {
       .filter(({ mv }) => !min || mv.forca >= min)
       .sort((a, b) => b.mv.forca - a.mv.forca || a.x.jogador.localeCompare(b.x.jogador));
     if (!L.length && (busca || min)) return "";
+    const tabJogo = j.mercados.length && !busca ? `<h3 class="sub-jogo">Mercados do jogo</h3><div class="tbl-wrap"><table class="props-tab jogo-tab"><thead><tr><th>Mercado</th><th class="n">Linha</th><th class="n">Odds</th><th class="n">Chance sem margem</th><th class="n">Movimento</th><th>Histórico</th></tr></thead>
+        <tbody>${j.mercados.map((x) => linhaJogo(j, x, movimento(x))).join("")}</tbody></table></div>` : "";
     const top = L.filter(({ mv }) => mv.forca >= 0.03).slice(0, 3).map(({ x, mv }) =>
       `<span class="chip${mv.forca >= 0.10 ? " forte" : ""}">${esc(x.jogador)} · ${TIPOS[x.tipo].toLowerCase()} ${lin(x.dk.linha)} ${mv.sinal > 0 ? "▲" : "▼"}</span>`).join("");
     const les = j.lesoes.length ? `<p class="lesoes"><b>Lesões:</b> ${j.lesoes.map((l) => `${esc(l.sigla)} ${esc(l.nome)} <span class="tag-les">${esc(l.status)}</span>${l.motivo ? ` <small>${esc(l.motivo)}</small>` : ""}`).join(" · ")}</p>` : "";
     return `<section class="panel jogo">
       <div class="jogo-top"><h2>${esc(j.titulo)}</h2><span class="muted">${quando(j)}</span></div>
-      ${j.macro.length ? `<p class="macro">${j.macro.join(" · ")} <small class="muted">(DraftKings)</small></p>` : ""}
       ${les}
+      ${tabJogo}
+      <h3 class="sub-jogo">Props dos jogadores</h3>
       ${top ? `<div class="chips"><span class="muted">Mais movimentadas:</span>${top}</div>` : `<p class="muted">Nenhuma linha andou o equivalente a 3 pp ou mais ${f.desde === "abertura" ? "desde a abertura" : `nas últimas ${f.desde}`}.</p>`}
       ${L.length ? `<div class="tbl-wrap"><table class="props-tab"><thead><tr><th>Jogador</th><th>Estatística</th><th class="n">Linha</th><th class="n">Odd do Over</th><th class="n">Over sem margem</th><th class="n">Movimento</th><th class="n">Polymarket</th><th>Histórico</th></tr></thead>
         <tbody>${L.map(({ x, mv }) => linha(j, x, mv)).join("")}</tbody></table></div>` : ""}
@@ -323,8 +357,8 @@ async function alternar(tr) {
   if (abertos.has(id)) { abertos.delete(id); render(); return; }
   abertos.add(id);
   render();
-  const j = jogos.find((g) => id.startsWith(`${g.id}|`)), x = j?.linhas.find((l) => l.id === id);
-  if (x && x.hist.filter((h) => h[0] != null).length < 2 && x.pm && !pmHist.has(x.pm.tok)) {
+  const j = jogos.find((g) => id.startsWith(`${g.id}|`)), x = j && [...j.linhas, ...j.mercados].find((l) => l.id === id);
+  if (x && !x.k && x.hist.filter((h) => h[0] != null).length < 2 && x.pm && !pmHist.has(x.pm.tok)) {
     const h = (await api.get("clob", `/prices-history?market=${x.pm.tok}&interval=max&fidelity=10`).catch(() => null))?.history || [];
     pmHist.set(x.pm.tok, h.map((p) => ({ t: p.t, p: +p.p })).sort((a, b) => a.t - b.t));
     render();

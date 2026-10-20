@@ -354,8 +354,9 @@ async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
 
 // ---------- PROPS DA NBA NA DRAFTKINGS: histórico para a página props.html ----------
 // A cada 10 min (minuto ≡ 2): jogos da NBA de hoje e amanhã que ainda não acabaram (ESPN), props de pontos,
-// rebotes e assistências da DraftKings (lerPropsDk, core.js) e, por jogo, uma chave "dk:<idEspn>" no KV com o
-// histórico [t, linha, odd Over, odd Under] de cada jogador, gravado só quando algo mudou (3 dias).
+// rebotes e assistências e mercados do jogo (vencedor, handicap, totais do jogo, 1º tempo e quartos) da
+// DraftKings (buscarDk, core.js) e, por jogo, uma chave "dk:<idEspn>" no KV com o histórico [t, linha, odd A,
+// odd B] de cada um (A/B = Over/Under ou visitante/mandante), gravado só quando algo mudou (3 dias).
 // GET /props-dk?ev=<idEspn> devolve esse histórico. Consultas: 2 placares + ~2 por jogo + KV.
 async function gravarPropsDk(env, resumo) {
   if (!env.ENVIADOS) return;
@@ -368,7 +369,8 @@ async function gravarPropsDk(env, resumo) {
   const agora = Math.floor(Date.now() / 1000);
   let gravados = 0;
   for (const id of jogos) {
-    const props = await buscarPropsDk(getJson, id).catch(() => null);
+    const dk = await buscarDk(getJson, id).catch(() => null);
+    const props = dk ? { ...dk.props, ...Object.fromEntries(Object.entries(dk.jogo).map(([k, r]) => [k, { ...r, over: r.a, under: r.b, overAb: r.aAb, underAb: r.bAb }])) } : null;
     if (!props || !Object.keys(props).length) continue;
     const chave = `dk:${id}`;
     const salvo = JSON.parse((await env.ENVIADOS.get(chave)) || "null") || { h: {} };
@@ -377,7 +379,7 @@ async function gravarPropsDk(env, resumo) {
       const H = (salvo.h[k] ||= []);
       const ult = H[H.length - 1];
       const novo = [agora, r.linha, r.over, r.under];
-      if (!ult && r.linhaAb != null) { H.push([null, r.linhaAb, r.overAb, r.underAb]); } // abertura (sem horário)
+      if (!ult && (r.linhaAb != null || r.overAb != null)) { H.push([null, r.linhaAb ?? null, r.overAb ?? null, r.underAb ?? null]); } // abertura (sem horário)
       if (!ult || ult[1] !== novo[1] || ult[2] !== novo[2] || ult[3] !== novo[3]) { H.push(novo); mudou = true; }
     }
     if (mudou) { salvo.em = agora; await env.ENVIADOS.put(chave, JSON.stringify(salvo), { expirationTtl: 3 * 86400 }); gravados++; }
@@ -532,7 +534,8 @@ export default {
     const minuto = Math.floor(event.scheduledTime / 60000);
     const t0 = Date.now();
     ctx.waitUntil(verificar(env, { minuto })
-      .then((r) => ({ consultas: r.consultas, enviados: r.enviados, aoVivo: r.aoVivo.length, erros: r.erros.slice(0, 3) }))
+      .then((r) => ({ consultas: r.consultas, enviados: r.enviados, aoVivo: r.aoVivo.length, erros: r.erros.slice(0, 3),
+        ...(r.publicacao ? { publicacao: r.publicacao } : {}), ...(r.propsDk ? { propsDk: r.propsDk } : {}) }))
       .catch((e) => ({ erro: String(e.message || e) }))
       .then((r) => registrar(env, { inicio: new Date(event.scheduledTime).toISOString(), ms: Date.now() - t0, ...r }, minuto % 5 === 0)));
   },

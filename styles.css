@@ -290,3 +290,5 @@ table.estreita { min-width: 0; max-width: 560px; }
 .jogo .lesoes small { color: var(--ink-3); }
 .graf-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 20px; }
 .graf h4.sub { margin: 0 0 4px; font-size: 13px; }
+.jogo h3.sub-jogo { font-size: 14px; margin-top: 6px; color: var(--ink-2); }
+.jogo-tab { min-width: 640px; }
