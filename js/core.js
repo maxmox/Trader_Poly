@@ -7,6 +7,7 @@ export const HOSTS = {
   gamma: "https://gamma-api.polymarket.com",
   clob: "https://clob.polymarket.com",
   espn: "https://site.api.espn.com", // placar do futebol (Under) e NBA (props.html)
+  espncore: "https://sports.core.api.espn.com", // odds da DraftKings (props.html); no relay para diagnóstico
 };
 // Hosts que nunca passam pelo relay. A ESPN tem CORS aberto, mas em 20/10/2026 o navegador recusou
 // site.api.espn.com ("Failed to fetch") enquanto o relay funcionava: com relay, ela passa por ele.

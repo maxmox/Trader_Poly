@@ -12,6 +12,7 @@ const HOSTS = {
   gamma: "https://gamma-api.polymarket.com",
   clob: "https://clob.polymarket.com",
   espn: "https://site.api.espn.com", // placar do futebol (Under) e NBA (props.html)
+  espncore: "https://sports.core.api.espn.com", // odds da DraftKings (props.html); no relay para diagnóstico
 };
 // Hosts que nunca passam pelo relay. A ESPN tem CORS aberto, mas em 20/10/2026 o navegador recusou
 // site.api.espn.com ("Failed to fetch") enquanto o relay funcionava: com relay, ela passa por ele.
@@ -1216,7 +1217,7 @@ async function gravarPropsDk(env, resumo) {
   const agora = Math.floor(Date.now() / 1000);
   let gravados = 0;
   for (const id of jogos) {
-    const dk = await buscarDk(getJson, id).catch(() => null);
+    const dk = await buscarDk(getJson, id).catch((e) => { if (falhas.length < 3) falhas.push(`erro: ${String(e.message || e).slice(0, 80)}`); return null; });
     const props = dk ? { ...dk.props, ...Object.fromEntries(Object.entries(dk.jogo).map(([k, r]) => [k, { ...r, over: r.a, under: r.b, overAb: r.aAb, underAb: r.bAb }])) } : null;
     if (!props || !Object.keys(props).length) continue;
     const chave = `dk:${id}`;

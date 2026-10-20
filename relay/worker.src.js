@@ -375,7 +375,7 @@ async function gravarPropsDk(env, resumo) {
   const agora = Math.floor(Date.now() / 1000);
   let gravados = 0;
   for (const id of jogos) {
-    const dk = await buscarDk(getJson, id).catch(() => null);
+    const dk = await buscarDk(getJson, id).catch((e) => { if (falhas.length < 3) falhas.push(`erro: ${String(e.message || e).slice(0, 80)}`); return null; });
     const props = dk ? { ...dk.props, ...Object.fromEntries(Object.entries(dk.jogo).map(([k, r]) => [k, { ...r, over: r.a, under: r.b, overAb: r.aAb, underAb: r.bAb }])) } : null;
     if (!props || !Object.keys(props).length) continue;
     const chave = `dk:${id}`;
