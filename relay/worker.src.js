@@ -16,6 +16,7 @@
 //    GET /status      -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
 //    GET /registro    -> todos os sinais enviados (últimos 90 dias) com o resultado, para o placar
 //    GET /teste-saida -> mostra (sem enviar) como fica o alerta SAIR
+//    GET /props-dk?ev=<idEspn> -> histórico das props da NBA na DraftKings de um jogo (página props.html)
 //
 // KV "ENVIADOS":
 //   r:          registro dos sinais (90 dias; dados nos metadados, uma listagem traz tudo). A cada
@@ -23,6 +24,7 @@
 //   v: / p:     sinal ao vivo / pré-jogo já enviado
 //   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
 //   us:         Under enviado (us:<regra>:<mercado>) · bk20: / bk30: / bks: basquete avaliado / enviado
+//   dk:         histórico das props da NBA na DraftKings por jogo (3 dias)
 //   status:     log das execuções
 //
 // Configuração no painel (Settings → Variables and Secrets):
@@ -31,7 +33,7 @@
 //   BANCA, PCT       (opcional) para sugerir o valor da aposta (ex.: 1000 e 1.5)
 //   SITE_URL         (opcional) padrão https://maxmox.github.io/Trader_Poly
 //   GH_TOKEN         (secret, opcional) dispara a publicação do site a cada 10 min (ver dispararPublicacao)
-//   PLANO=gratis, UNDER=0, BKT=0 (opcional) plano grátis / desligar uma regra
+//   PLANO=gratis, UNDER=0, BKT=0, PROPS_DK=0 (opcional) plano grátis / desligar uma regra
 // KV: crie um namespace e ligue com o nome ENVIADOS (Settings → Bindings → KV).
 
 const CORS = {
@@ -350,6 +352,39 @@ async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
   }
 }
 
+// ---------- PROPS DA NBA NA DRAFTKINGS: histórico para a página props.html ----------
+// A cada 10 min (minuto ≡ 2): jogos da NBA de hoje e amanhã que ainda não acabaram (ESPN), props de pontos,
+// rebotes e assistências da DraftKings (lerPropsDk, core.js) e, por jogo, uma chave "dk:<idEspn>" no KV com o
+// histórico [t, linha, odd Over, odd Under] de cada jogador, gravado só quando algo mudou (3 dias).
+// GET /props-dk?ev=<idEspn> devolve esse histórico. Consultas: 2 placares + ~2 por jogo + KV.
+async function gravarPropsDk(env, resumo) {
+  if (!env.ENVIADOS) return;
+  const getJson = async (u) => { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0" } }); return r.ok ? r.json() : null; };
+  const jogos = [];
+  for (const d of datasNba()) {
+    const sb = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${d}`).catch(() => null);
+    for (const ev of sb?.events || []) if (ev.status?.type?.state !== "post") jogos.push(ev.id);
+  }
+  const agora = Math.floor(Date.now() / 1000);
+  let gravados = 0;
+  for (const id of jogos) {
+    const props = await buscarPropsDk(getJson, id).catch(() => null);
+    if (!props || !Object.keys(props).length) continue;
+    const chave = `dk:${id}`;
+    const salvo = JSON.parse((await env.ENVIADOS.get(chave)) || "null") || { h: {} };
+    let mudou = false;
+    for (const [k, r] of Object.entries(props)) {
+      const H = (salvo.h[k] ||= []);
+      const ult = H[H.length - 1];
+      const novo = [agora, r.linha, r.over, r.under];
+      if (!ult && r.linhaAb != null) { H.push([null, r.linhaAb, r.overAb, r.underAb]); } // abertura (sem horário)
+      if (!ult || ult[1] !== novo[1] || ult[2] !== novo[2] || ult[3] !== novo[3]) { H.push(novo); mudou = true; }
+    }
+    if (mudou) { salvo.em = agora; await env.ENVIADOS.put(chave, JSON.stringify(salvo), { expirationTtl: 3 * 86400 }); gravados++; }
+  }
+  resumo.propsDk = { jogos: jogos.length, gravados };
+}
+
 // ---------- PUBLICAÇÃO DO SITE ----------
 // O agendamento do GitHub Actions ("a cada 10 min") atrasa horas na prática. Com o secret GH_TOKEN (token
 // fine-grained só do repositório, permissão Actions: read and write), o Worker dispara a Action a cada 10 min:
@@ -433,6 +468,9 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   if (minuto % 10 === 0) {
     try { resumo.resolvidos = await resolverRegistro(env, api); } catch (e) { resumo.erros.push(`registro: ${e.message || e}`); }
   }
+  if (minuto % 10 === 2 && !preTrader && env.PROPS_DK !== "0") {
+    try { await gravarPropsDk(env, resumo); } catch (e) { resumo.erros.push(`props-dk: ${e.message || e}`); }
+  }
   if (minuto % 10 === 5 && !preTrader) {
     try { resumo.publicacao = await dispararPublicacao(env); } catch (e) { resumo.erros.push(`publicação: ${e.message || e}`); }
   }
@@ -466,6 +504,11 @@ export default {
     if (url.pathname === "/teste-saida") { // mostra (sem enviar) como fica o alerta SAIR
       const v = { preco: 0.62, frac: 1, t: Date.now() / 1000, eventSlug: "exemplo", slug: "exemplo" };
       return new Response(msgSaida({ nome: "Trader" }, v, { e: "Time A vs Time B", l: "Time A vence", p: 0.55 }), { headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } });
+    }
+    if (url.pathname === "/props-dk") { // histórico das props da DraftKings de um jogo (ver gravarPropsDk)
+      const id = (url.searchParams.get("ev") || "").replace(/\D/g, "");
+      const v = id && env.ENVIADOS ? await env.ENVIADOS.get(`dk:${id}`) : null;
+      return new Response(v || '{"h":{}}', { headers: { ...CORS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "max-age=60" } });
     }
     if (url.pathname === "/registro") {
       return json({ agora: Date.now(), sinais: await listarRegistro(env) });

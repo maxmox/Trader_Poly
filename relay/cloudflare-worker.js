@@ -11,9 +11,11 @@ const HOSTS = {
   data: "https://data-api.polymarket.com",
   gamma: "https://gamma-api.polymarket.com",
   clob: "https://clob.polymarket.com",
-  espn: "https://site.api.espn.com", // placar ao vivo do futebol (Under); aceita chamada direta do navegador
+  espn: "https://site.api.espn.com", // placar do futebol (Under) e NBA (props.html)
 };
-const DIRETO = new Set(["espn"]); // não passa pelo relay (não é bloqueado no Brasil e tem CORS aberto)
+// Hosts que nunca passam pelo relay. A ESPN tem CORS aberto, mas em 20/10/2026 o navegador recusou
+// site.api.espn.com ("Failed to fetch") enquanto o relay funcionava: com relay, ela passa por ele.
+const DIRETO = new Set();
 
 // Regras de cópia (mesmas do backtest): teto de 2 centavos acima do preço dele,
 // nada depois do início do jogo, nada acima de 97 centavos (sem margem).
@@ -562,6 +564,55 @@ async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40, checa
 }
 
 // ---------------------------------------------------------------------------
+// PROPS DA NBA NA DRAFTKINGS (API pública da ESPN, 20/10/2026; página props.html e Worker)
+// sports.core.api.espn.com/.../events/<id>/competitions/<id>/odds/100/propBets: DraftKings (provedor 100),
+// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA. Em "Total Points/Rebounds/Assists" cada jogador
+// tem 2 itens na mesma linha: o 1º é o Over (conferido contra o Polymarket: 11/11). O nome do jogador vem do
+// elenco do time (site.api.espn.com/.../teams/<id>/roster), pelo id do atleta.
+const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba";
+const PROPS_DK = { "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists" };
+// datas (AAAAMMDD, horário de Nova York, que é o dia do jogo para a ESPN) de hoje e de amanhã
+const datasNba = (agoraMs = Date.now()) => [0, 1].map((d) => new Date(agoraMs + d * 864e5).toLocaleDateString("en-CA", { timeZone: "America/New_York" }).replaceAll("-", ""));
+// chance do Over sem a margem da casa, a partir das duas odds decimais
+const semMargem = (over, under) => (over > 1 && under > 1 ? (1 / over) / (1 / over + 1 / under) : null);
+// itens do propBets -> { "<idAtleta>|<tipo>": { atleta, tipo, linha, linhaAb, over, under, overAb, underAb, p, pAb, em } }
+function lerPropsDk(itens) {
+  const grupos = new Map();
+  for (const x of itens || []) {
+    const tipo = PROPS_DK[x.type?.name];
+    const atleta = (x.athlete?.$ref || "").match(/athletes\/(\d+)/)?.[1];
+    if (!tipo || !atleta) continue;
+    const k = `${atleta}|${tipo}`;
+    (grupos.get(k) || grupos.set(k, []).get(k)).push(x);
+  }
+  const out = {};
+  for (const [k, L] of grupos) {
+    if (L.length !== 2) continue; // Over e Under na mesma linha
+    const [o, u] = L;
+    const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+    const r = {
+      atleta: k.split("|")[0], tipo: k.split("|")[1],
+      linha: num(o.current?.target?.value), linhaAb: num(o.open?.target?.value),
+      over: num(o.odds?.decimal?.value), under: num(u.odds?.decimal?.value),
+      overAb: num(o.odds?.decimal?.open), underAb: num(u.odds?.decimal?.open), em: o.lastUpdated || null,
+    };
+    if (r.linha == null) continue;
+    r.p = semMargem(r.over, r.under);
+    r.pAb = semMargem(r.overAb, r.underAb);
+    out[k] = r;
+  }
+  return out;
+}
+// todas as páginas do propBets de um jogo
+async function buscarPropsDk(getJson, idEspn) {
+  const base = `${ESPN_CORE}/events/${idEspn}/competitions/${idEspn}/odds/100/propBets?lang=en&region=us&limit=1000`;
+  const p1 = await getJson(`${base}&page=1`);
+  const itens = [...(p1?.items || [])];
+  for (let pg = 2; pg <= Math.min(p1?.pageCount || 1, 4); pg++) itens.push(...((await getJson(`${base}&page=${pg}`))?.items || []));
+  return lerPropsDk(itens);
+}
+
+// ---------------------------------------------------------------------------
 // NOTA DA ENTRADA (modelo de polymarket_traders/modelo_entrada.py, data/indices.json)
 // Vantagem esperada de quem copia, somando o efeito de fatores que se repetiram no tempo:
 //   trader  = convicção (aposta vs mediana dele) + como entrou (absorveu ou "pescou" preço)
@@ -754,6 +805,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //    GET /status      -> últimas execuções do agendamento (para ver se algum minuto foi pulado)
 //    GET /registro    -> todos os sinais enviados (últimos 90 dias) com o resultado, para o placar
 //    GET /teste-saida -> mostra (sem enviar) como fica o alerta SAIR
+//    GET /props-dk?ev=<idEspn> -> histórico das props da NBA na DraftKings de um jogo (página props.html)
 //
 // KV "ENVIADOS":
 //   r:          registro dos sinais (90 dias; dados nos metadados, uma listagem traz tudo). A cada
@@ -761,6 +813,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //   v: / p:     sinal ao vivo / pré-jogo já enviado
 //   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
 //   us:         Under enviado (us:<regra>:<mercado>) · bk20: / bk30: / bks: basquete avaliado / enviado
+//   dk:         histórico das props da NBA na DraftKings por jogo (3 dias)
 //   status:     log das execuções
 //
 // Configuração no painel (Settings → Variables and Secrets):
@@ -769,7 +822,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //   BANCA, PCT       (opcional) para sugerir o valor da aposta (ex.: 1000 e 1.5)
 //   SITE_URL         (opcional) padrão https://maxmox.github.io/Trader_Poly
 //   GH_TOKEN         (secret, opcional) dispara a publicação do site a cada 10 min (ver dispararPublicacao)
-//   PLANO=gratis, UNDER=0, BKT=0 (opcional) plano grátis / desligar uma regra
+//   PLANO=gratis, UNDER=0, BKT=0, PROPS_DK=0 (opcional) plano grátis / desligar uma regra
 // KV: crie um namespace e ligue com o nome ENVIADOS (Settings → Bindings → KV).
 
 const CORS = {
@@ -1088,6 +1141,39 @@ async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
   }
 }
 
+// ---------- PROPS DA NBA NA DRAFTKINGS: histórico para a página props.html ----------
+// A cada 10 min (minuto ≡ 2): jogos da NBA de hoje e amanhã que ainda não acabaram (ESPN), props de pontos,
+// rebotes e assistências da DraftKings (lerPropsDk, core.js) e, por jogo, uma chave "dk:<idEspn>" no KV com o
+// histórico [t, linha, odd Over, odd Under] de cada jogador, gravado só quando algo mudou (3 dias).
+// GET /props-dk?ev=<idEspn> devolve esse histórico. Consultas: 2 placares + ~2 por jogo + KV.
+async function gravarPropsDk(env, resumo) {
+  if (!env.ENVIADOS) return;
+  const getJson = async (u) => { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0" } }); return r.ok ? r.json() : null; };
+  const jogos = [];
+  for (const d of datasNba()) {
+    const sb = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${d}`).catch(() => null);
+    for (const ev of sb?.events || []) if (ev.status?.type?.state !== "post") jogos.push(ev.id);
+  }
+  const agora = Math.floor(Date.now() / 1000);
+  let gravados = 0;
+  for (const id of jogos) {
+    const props = await buscarPropsDk(getJson, id).catch(() => null);
+    if (!props || !Object.keys(props).length) continue;
+    const chave = `dk:${id}`;
+    const salvo = JSON.parse((await env.ENVIADOS.get(chave)) || "null") || { h: {} };
+    let mudou = false;
+    for (const [k, r] of Object.entries(props)) {
+      const H = (salvo.h[k] ||= []);
+      const ult = H[H.length - 1];
+      const novo = [agora, r.linha, r.over, r.under];
+      if (!ult && r.linhaAb != null) { H.push([null, r.linhaAb, r.overAb, r.underAb]); } // abertura (sem horário)
+      if (!ult || ult[1] !== novo[1] || ult[2] !== novo[2] || ult[3] !== novo[3]) { H.push(novo); mudou = true; }
+    }
+    if (mudou) { salvo.em = agora; await env.ENVIADOS.put(chave, JSON.stringify(salvo), { expirationTtl: 3 * 86400 }); gravados++; }
+  }
+  resumo.propsDk = { jogos: jogos.length, gravados };
+}
+
 // ---------- PUBLICAÇÃO DO SITE ----------
 // O agendamento do GitHub Actions ("a cada 10 min") atrasa horas na prática. Com o secret GH_TOKEN (token
 // fine-grained só do repositório, permissão Actions: read and write), o Worker dispara a Action a cada 10 min:
@@ -1171,6 +1257,9 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
   if (minuto % 10 === 0) {
     try { resumo.resolvidos = await resolverRegistro(env, api); } catch (e) { resumo.erros.push(`registro: ${e.message || e}`); }
   }
+  if (minuto % 10 === 2 && !preTrader && env.PROPS_DK !== "0") {
+    try { await gravarPropsDk(env, resumo); } catch (e) { resumo.erros.push(`props-dk: ${e.message || e}`); }
+  }
   if (minuto % 10 === 5 && !preTrader) {
     try { resumo.publicacao = await dispararPublicacao(env); } catch (e) { resumo.erros.push(`publicação: ${e.message || e}`); }
   }
@@ -1204,6 +1293,11 @@ export default {
     if (url.pathname === "/teste-saida") { // mostra (sem enviar) como fica o alerta SAIR
       const v = { preco: 0.62, frac: 1, t: Date.now() / 1000, eventSlug: "exemplo", slug: "exemplo" };
       return new Response(msgSaida({ nome: "Trader" }, v, { e: "Time A vs Time B", l: "Time A vence", p: 0.55 }), { headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } });
+    }
+    if (url.pathname === "/props-dk") { // histórico das props da DraftKings de um jogo (ver gravarPropsDk)
+      const id = (url.searchParams.get("ev") || "").replace(/\D/g, "");
+      const v = id && env.ENVIADOS ? await env.ENVIADOS.get(`dk:${id}`) : null;
+      return new Response(v || '{"h":{}}', { headers: { ...CORS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "max-age=60" } });
     }
     if (url.pathname === "/registro") {
       return json({ agora: Date.now(), sinais: await listarRegistro(env) });

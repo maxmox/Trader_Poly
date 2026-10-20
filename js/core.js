@@ -6,9 +6,11 @@ export const HOSTS = {
   data: "https://data-api.polymarket.com",
   gamma: "https://gamma-api.polymarket.com",
   clob: "https://clob.polymarket.com",
-  espn: "https://site.api.espn.com", // placar ao vivo do futebol (Under); aceita chamada direta do navegador
+  espn: "https://site.api.espn.com", // placar do futebol (Under) e NBA (props.html)
 };
-const DIRETO = new Set(["espn"]); // não passa pelo relay (não é bloqueado no Brasil e tem CORS aberto)
+// Hosts que nunca passam pelo relay. A ESPN tem CORS aberto, mas em 20/10/2026 o navegador recusou
+// site.api.espn.com ("Failed to fetch") enquanto o relay funcionava: com relay, ela passa por ele.
+const DIRETO = new Set();
 
 // Regras de cópia (mesmas do backtest): teto de 2 centavos acima do preço dele,
 // nada depois do início do jogo, nada acima de 97 centavos (sem margem).
@@ -554,6 +556,55 @@ export async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// PROPS DA NBA NA DRAFTKINGS (API pública da ESPN, 20/10/2026; página props.html e Worker)
+// sports.core.api.espn.com/.../events/<id>/competitions/<id>/odds/100/propBets: DraftKings (provedor 100),
+// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA. Em "Total Points/Rebounds/Assists" cada jogador
+// tem 2 itens na mesma linha: o 1º é o Over (conferido contra o Polymarket: 11/11). O nome do jogador vem do
+// elenco do time (site.api.espn.com/.../teams/<id>/roster), pelo id do atleta.
+export const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba";
+export const PROPS_DK = { "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists" };
+// datas (AAAAMMDD, horário de Nova York, que é o dia do jogo para a ESPN) de hoje e de amanhã
+export const datasNba = (agoraMs = Date.now()) => [0, 1].map((d) => new Date(agoraMs + d * 864e5).toLocaleDateString("en-CA", { timeZone: "America/New_York" }).replaceAll("-", ""));
+// chance do Over sem a margem da casa, a partir das duas odds decimais
+export const semMargem = (over, under) => (over > 1 && under > 1 ? (1 / over) / (1 / over + 1 / under) : null);
+// itens do propBets -> { "<idAtleta>|<tipo>": { atleta, tipo, linha, linhaAb, over, under, overAb, underAb, p, pAb, em } }
+export function lerPropsDk(itens) {
+  const grupos = new Map();
+  for (const x of itens || []) {
+    const tipo = PROPS_DK[x.type?.name];
+    const atleta = (x.athlete?.$ref || "").match(/athletes\/(\d+)/)?.[1];
+    if (!tipo || !atleta) continue;
+    const k = `${atleta}|${tipo}`;
+    (grupos.get(k) || grupos.set(k, []).get(k)).push(x);
+  }
+  const out = {};
+  for (const [k, L] of grupos) {
+    if (L.length !== 2) continue; // Over e Under na mesma linha
+    const [o, u] = L;
+    const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+    const r = {
+      atleta: k.split("|")[0], tipo: k.split("|")[1],
+      linha: num(o.current?.target?.value), linhaAb: num(o.open?.target?.value),
+      over: num(o.odds?.decimal?.value), under: num(u.odds?.decimal?.value),
+      overAb: num(o.odds?.decimal?.open), underAb: num(u.odds?.decimal?.open), em: o.lastUpdated || null,
+    };
+    if (r.linha == null) continue;
+    r.p = semMargem(r.over, r.under);
+    r.pAb = semMargem(r.overAb, r.underAb);
+    out[k] = r;
+  }
+  return out;
+}
+// todas as páginas do propBets de um jogo
+export async function buscarPropsDk(getJson, idEspn) {
+  const base = `${ESPN_CORE}/events/${idEspn}/competitions/${idEspn}/odds/100/propBets?lang=en&region=us&limit=1000`;
+  const p1 = await getJson(`${base}&page=1`);
+  const itens = [...(p1?.items || [])];
+  for (let pg = 2; pg <= Math.min(p1?.pageCount || 1, 4); pg++) itens.push(...((await getJson(`${base}&page=${pg}`))?.items || []));
+  return lerPropsDk(itens);
 }
 
 // ---------------------------------------------------------------------------

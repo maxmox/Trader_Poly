@@ -284,3 +284,9 @@ table.estreita { min-width: 0; max-width: 560px; }
 .graf p { margin-top: 6px; }
 .jogo .chip.forte { background: var(--accent); color: var(--panel); }
 .props .regras li { display: block; }
+
+.tag-les { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--warn-bg); color: var(--warn); white-space: nowrap; }
+.jogo .lesoes { font-size: 13px; color: var(--ink-2); }
+.jogo .lesoes small { color: var(--ink-3); }
+.graf-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 20px; }
+.graf h4.sub { margin: 0 0 4px; font-size: 13px; }
