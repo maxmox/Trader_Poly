@@ -252,3 +252,35 @@ table.estreita { min-width: 0; max-width: 560px; }
 .momento.bkt { background: var(--warn); margin-left: 4px; }
 .card.bkt { border-left-color: var(--warn); }
 .card.bkt .ordem { background: var(--warn-bg); }
+
+/* props da NBA (props.html) */
+.props-filtros { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+.props-filtros label { display: grid; gap: 4px; font-size: 12.5px; color: var(--ink-2); font-weight: 500; }
+.props-filtros select, .props-filtros input { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 150px; max-width: 100%; }
+.props-jogos { display: grid; gap: 16px; min-width: 0; }
+.jogo { display: grid; gap: 10px; min-width: 0; }
+.jogo-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.jogo .macro { font-size: 13px; color: var(--ink-2); }
+.jogo .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.props-tab td small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.props-tab tr.mk { cursor: pointer; }
+.props-tab tr.mk:hover td, .props-tab tr.mk.aberto td { background: var(--accent-soft); }
+.props-tab td.mov.forte b { font-size: 14px; }
+.props-tab td.mov.forte { box-shadow: inset 3px 0 0 var(--accent); }
+.props-tab tr.det td { padding: 8px 4px 14px; background: var(--panel); }
+.spark { display: block; }
+.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.graf { position: relative; max-width: 720px; }
+.graf svg { width: 100%; height: auto; display: block; overflow: visible; }
+.graf .g { stroke: var(--line); stroke-width: 1; }
+.graf .ax { fill: var(--ink-3); font-size: 11px; font-family: var(--mono); }
+.graf .ref { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 4 4; }
+.graf .serie { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.graf .ponto, .graf .cp { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+.graf .cx { stroke: var(--ink-2); stroke-width: 1; }
+.graf .alvo { fill: transparent; cursor: crosshair; }
+.graf .dica { position: absolute; transform: translate(-50%, calc(-100% - 12px)); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; pointer-events: none; box-shadow: 0 2px 8px rgb(0 0 0 / .12); }
+.graf .dica span { color: var(--ink-3); }
+.graf p { margin-top: 6px; }
+.jogo .chip.forte { background: var(--accent); color: var(--panel); }
+.props .regras li { display: block; }
