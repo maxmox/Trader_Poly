@@ -849,7 +849,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //    - entradas AO VIVO novas dos traders de data/traders_live.json (+ alerta SAIR de quem vende)
 //    - FUTEBOL UNDER AO VIVO (observação): 0x0 aos 28-33' -> Under 0,5 do 1º tempo
 //    - BASQUETE AO VIVO, SEGUIR (observação): fora da NBA/WNBA, aos 20 e 30 min
-//    - PRÉ-JOGO: todos os traders de data/traders.json (+ alerta SAIR)
+//    - PRÉ-JOGO: os traders de data/traders.json, metade por minuto (+ alerta SAIR)
 //    Plano pago (Workers Paid, desde 18/10/2026). Com PLANO=gratis volta ao rodízio de um trader de
 //    pré-jogo por minuto e ao limite de 50 consultas. O contador corta o trabalho antes do limite.
 //    Cada sinal vai uma vez só para o Telegram (memória no KV "ENVIADOS").
@@ -1212,8 +1212,14 @@ async function dispararPublicacao(env) {
 
 async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
   let usadas = 0;
-  const fetchContado = (url, opts) => {
-    if (++usadas > ORCAMENTO[gratis(env) ? "gratis" : "pago"]) return Promise.reject(new Error("orçamento de consultas desta execução esgotado"));
+  // conta as consultas e, se o Polymarket responder 429 (muitas consultas), espera ~0,5 s e tenta mais uma vez
+  const fetchContado = async (url, opts) => {
+    if (++usadas > ORCAMENTO[gratis(env) ? "gratis" : "pago"]) throw new Error("orçamento de consultas desta execução esgotado");
+    const r = await fetch(url, opts);
+    if (r.status !== 429 || usadas >= ORCAMENTO[gratis(env) ? "gratis" : "pago"]) return r;
+    resumo.repetidas = (resumo.repetidas || 0) + 1;
+    await new Promise((ok) => setTimeout(ok, 400 + Math.random() * 400));
+    usadas++;
     return fetch(url, opts);
   };
   const l = await carregarListas(env);
@@ -1249,12 +1255,13 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     try { await verificarSeguirBkt(env, api, resumo, gratis(env) ? 3 : 10); } catch (e) { resumo.erros.push(`bkt: ${e.message || e}`); }
   }
 
-  // pré-jogo: plano pago = todos os traders a cada minuto; grátis = um por execução, em rodízio
+  // pré-jogo: plano pago = metade dos traders em cada minuto (cada um visto a cada 2 min: com todos a cada
+  // minuto o Polymarket respondia 429 em ~1 de cada 6 execuções); grátis = um por execução, em rodízio
   // (cada um visto a cada ~14 min). Trader de teste entra em toda execução.
   const normais = pre.filter((t) => t.nivel !== "teste");
   const lista = preTrader
     ? pre.filter((t) => t.nome === preTrader || t.carteira === preTrader)
-    : [...pre.filter((t) => t.nivel === "teste"), ...(gratis(env) ? (normais.length ? [normais[minuto % normais.length]] : []) : normais)];
+    : [...pre.filter((t) => t.nivel === "teste"), ...(gratis(env) ? (normais.length ? [normais[minuto % normais.length]] : []) : normais.filter((_, i) => i % 2 === minuto % 2))];
   resumo.preTrader = lista.map((t) => t.nome).join(", ");
   {
     const rp = await carregarTodos(api, lista, { prefixos, limiteAtividade: gratis(env) ? 20 : 50, soEspecialidade: true, maxPosicoes: gratis(env) ? 8 : 15, indices: l.indices });
@@ -1334,7 +1341,7 @@ export default {
     const minuto = Math.floor(event.scheduledTime / 60000);
     const t0 = Date.now();
     ctx.waitUntil(verificar(env, { minuto })
-      .then((r) => ({ consultas: r.consultas, enviados: r.enviados, aoVivo: r.aoVivo.length, erros: r.erros.slice(0, 3),
+      .then((r) => ({ consultas: r.consultas, enviados: r.enviados, aoVivo: r.aoVivo.length, erros: r.erros.slice(0, 3), ...(r.repetidas ? { repetidas: r.repetidas } : {}),
         ...(r.publicacao ? { publicacao: r.publicacao } : {}) }))
       .catch((e) => ({ erro: String(e.message || e) }))
       .then((r) => registrar(env, { inicio: new Date(event.scheduledTime).toISOString(), ms: Date.now() - t0, ...r }, minuto % 5 === 0)));
