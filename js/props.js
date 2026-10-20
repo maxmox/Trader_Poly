@@ -1,7 +1,7 @@
 // Página "Props NBA": movimento dos mercados do jogo (vencedor, handicap, totais do jogo, 1º tempo e quartos) e
 // das props de pontos, rebotes e assistências, por jogo.
 // Fonte principal: DraftKings pela API pública da ESPN (linha e odd de abertura e atuais; buscarDk em core.js),
-// com as lesões do jogo (ESPN) e o histórico gravado pelo Worker a cada 10 min (GET /props-dk). O Polymarket
+// com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json). O Polymarket
 // entra como comparação (chance do Over agora) e como gráfico de reserva enquanto não há histórico da DraftKings.
 import { criarApi, linkMercado, buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
@@ -81,15 +81,15 @@ function movimento(x) {
 }
 
 // ---------- dados ----------
-async function carregarJogo(ev, pmEventos) {
+async function carregarJogo(ev, pmEventos, historico) {
   const c = ev.competitions[0];
   const times = c.competitors.map((t) => ({ id: t.team.id, sigla: t.team.abbreviation, nome: t.team.shortDisplayName, casa: t.homeAway === "home" }));
-  const [dk, e1, e2, resumo, hist] = await Promise.all([
+  const [dk, e1, e2, resumo] = await Promise.all([
     buscarDk(getJson, ev.id).catch(() => ({ props: {}, jogo: {} })),
     elenco(times[0].id), elenco(times[1].id),
     getJson(`${SITE}/summary?event=${ev.id}`).catch(() => null),
-    relay ? getJson(`${relay.replace(/\/$/, "")}/props-dk?ev=${ev.id}`).catch(() => null) : null,
   ]);
+  const hist = historico?.jogos?.[ev.id] || null;
   const nomes = { ...e1, ...e2 }, siglaDe = {};
   for (const id of Object.keys(e1)) siglaDe[id] = times[0].sigla;
   for (const id of Object.keys(e2)) siglaDe[id] = times[1].sigla;
@@ -129,7 +129,7 @@ async function carregarJogo(ev, pmEventos) {
   return {
     id: ev.id, titulo: `${times.find((t) => !t.casa)?.nome} @ ${times.find((t) => t.casa)?.nome}`, inicio: Date.parse(ev.date),
     estado: ev.status?.type?.state, placar: ev.status?.type?.state === "in" ? `${c.competitors.map((t) => `${t.team.abbreviation} ${t.score}`).join(" · ")} · ${ev.status.type.shortDetail}` : "",
-    lesoes: Object.values(lesoes), linhas, mercados, comHist: !!hist?.em,
+    lesoes: Object.values(lesoes), linhas, mercados, comHist: !!hist,
   };
 }
 
@@ -150,10 +150,12 @@ async function carregar() {
     const vivos = evs.filter((e) => e.status?.type?.state !== "post"); // jogo encerrado some da página
     const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
     const pmEventos = (await api.get("gamma", `/events?tag_slug=nba&closed=false&start_time_min=${iso(Date.now() - 4 * 3600e3)}&start_time_max=${iso(Date.now() + 52 * 3600e3)}&limit=100`).catch(() => null)) || [];
+    // histórico gravado pela Action (mesmo site; a ESPN recusa o Worker)
+    const historico = await fetch(`data/linhas_dk.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const novos = [];
     let feitos = 0;
     await emLotes(vivos, 3, async (ev) => {
-      const j = await carregarJogo(ev, pmEventos).catch(() => null);
+      const j = await carregarJogo(ev, pmEventos, historico).catch(() => null);
       if (j && (j.linhas.length || j.mercados.length)) novos.push(j);
       $("#status").textContent = `Carregando jogos: ${++feitos}/${vivos.length}…`;
     });
@@ -261,20 +263,20 @@ function detalhe(j, x) {
   const refs = [{ t: j.inicio / 1000, rot: "início" }];
   if (timed.length >= 2) {
     const ptsP = timed.map((h) => [h[0], semMargem(h[2], h[3]), `${x.rotA} ${prob(semMargem(h[2], h[3]))}${x.temLinha ? ` na linha ${lin(h[1])}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]).filter((p) => p[1] != null);
-    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado pelo Worker a cada 10 min${x.pm ? ` · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Polymarket ↗</a>` : ""}`;
+    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado a cada ~10 min${x.pm ? ` · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Polymarket ↗</a>` : ""}`;
     const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem (DraftKings)`, pontos: ptsP, eixo: "pct", refs, rodape });
     if (!x.temLinha) return chance;
     const ptsLinha = timed.map((h) => [h[0], h[1], `linha ${lin(h[1])} · ${x.rotA} ${dec(h[2])} / ${x.rotB} ${dec(h[3])}`]);
     return `<div class="graf-duo">${grafico({ titulo: `Linha da DraftKings${x.k === "spread" ? ` (${x.rotA})` : ""}`, pontos: ptsLinha, eixo: "linha", degrau: true, refs })}${chance}</div>`;
   }
-  if (x.k) return `<p class="muted">Ainda sem histórico da DraftKings para este mercado: o Worker grava a cada 10 min.</p>`;
+  if (x.k) return `<p class="muted">Ainda sem histórico da DraftKings para este mercado: ele é gravado a cada ~10 min.</p>`;
   // sem histórico da DraftKings ainda: gráfico do Polymarket (reserva)
-  if (!x.pm) return `<p class="muted">Ainda sem histórico da DraftKings para esta linha (o Worker grava a cada 10 min) e sem mercado no Polymarket.</p>`;
+  if (!x.pm) return `<p class="muted">Ainda sem histórico da DraftKings para esta linha (gravado a cada ~10 min) e sem mercado no Polymarket.</p>`;
   const h = pmHist.get(x.pm.tok);
   if (!h) return `<p class="muted">Carregando o histórico do Polymarket…</p>`;
   const pts = h.map((p) => [p.t, p.p, `Polymarket: Over ${prob(p.p)} na linha ${lin(x.pm.linha)}`]);
   return grafico({ titulo: `Chance do Over no Polymarket (linha ${lin(x.pm.linha)})`, pontos: pts, eixo: "pct", refs,
-    rodape: `A DraftKings só informa abertura e agora; o histórico dela começa quando o Worker novo estiver no ar. Volume no Polymarket: $${Math.round(x.pm.vol)} · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Abrir ↗</a>` });
+    rodape: `Ainda sem histórico da DraftKings para esta linha (gravado a cada ~10 min). Volume no Polymarket: $${Math.round(x.pm.vol)} · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Abrir ↗</a>` });
 }
 
 // ---------- render ----------

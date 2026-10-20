@@ -31,6 +31,9 @@ jobs:
           node-version: 22
       - name: Buscar posições abertas
         run: node scripts/snapshot.mjs
+      - name: Linhas da NBA na DraftKings (histórico da página props.html)
+        run: node scripts/linhas_dk.mjs
+        continue-on-error: true
       - name: Desempenho dos últimos 30 dias (placar)
         run: node scripts/desempenho.mjs
         continue-on-error: true

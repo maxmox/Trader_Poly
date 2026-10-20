@@ -37,7 +37,7 @@
         <select id="f-min"><option value="0">todas as linhas</option><option value="0.03">movimento ≥ 3 pp</option><option value="0.05">movimento ≥ 5 pp</option><option value="0.10">movimento ≥ 10 pp</option></select></label>
       <label>Jogador<input id="f-busca" type="search" placeholder="nome…" autocomplete="off"></label>
     </div>
-    <div id="aviso-hist" class="banner" hidden><b>Ainda sem histórico da DraftKings.</b><span>"24 h" e "3 h" usam o histórico que o Worker grava a cada 10 min. Até ele estar no ar, a comparação é com a abertura.</span></div>
+    <div id="aviso-hist" class="banner" hidden><b>Ainda sem histórico da DraftKings.</b><span>"24 h" e "3 h" usam o histórico gravado a cada ~10 min. Enquanto ele não cobre o período, a comparação é com a abertura.</span></div>
     <div id="status" class="muted"></div>
   </section>
 
@@ -46,7 +46,7 @@
   <section class="panel regras">
     <h2>Como ler</h2>
     <ul>
-      <li><b>Fonte:</b> DraftKings, pela API pública da ESPN, com linha e odd de abertura e atuais. O histórico entre a abertura e agora é gravado pelo nosso Worker a cada 10 min.</li>
+      <li><b>Fonte:</b> DraftKings, pela API pública da ESPN, com linha e odd de abertura e atuais. O histórico entre a abertura e agora é gravado no nosso servidor a cada ~10 min.</li>
       <li><b>Movimento:</b> "≈ +X pp" é quanto a chance do Over mudou <b>na linha de abertura</b>, juntando a mudança de linha e a de odd (pp = pontos percentuais). Embaixo, o que a casa fez de fato (ex.: +1 na linha · −13 pp). Como a chance cai quando a linha sobe, cada ponto de linha vale ~6,5 pp em pontos, ~14 pp em rebotes e ~17 pp em assistências (aproximação pela dispersão típica de cada estatística). ▲ Over = a casa foi para o Over.</li>
       <li><b>Mercados do jogo:</b> no vencedor e no handicap, a chance e o movimento são do time visitante (o 1º nome); a linha do handicap é a dele. Nos totais, do Over. No total, cada ponto de linha vale ~2,2 pp no jogo, ~3,2 pp no 1º tempo e ~4,7 pp num quarto; no handicap, ~3,1 pp. Total do jogo andando e os quartos parados é um sinal a olhar.</li>
       <li><b>Lesões:</b> relatório do jogo na ESPN (Out, Day-To-Day…). A etiqueta aparece ao lado do jogador.</li>

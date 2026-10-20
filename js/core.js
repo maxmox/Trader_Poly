@@ -7,7 +7,6 @@ export const HOSTS = {
   gamma: "https://gamma-api.polymarket.com",
   clob: "https://clob.polymarket.com",
   espn: "https://site.api.espn.com", // placar do futebol (Under) e NBA (props.html)
-  espncore: "https://sports.core.api.espn.com", // odds da DraftKings (props.html); no relay para diagnóstico
 };
 // Hosts que nunca passam pelo relay. A ESPN tem CORS aberto, mas em 20/10/2026 o navegador recusou
 // site.api.espn.com ("Failed to fetch") enquanto o relay funcionava: com relay, ela passa por ele.
@@ -562,7 +561,8 @@ export async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40
 // ---------------------------------------------------------------------------
 // PROPS DA NBA NA DRAFTKINGS (API pública da ESPN, 20/10/2026; página props.html e Worker)
 // sports.core.api.espn.com/.../events/<id>/competitions/<id>/odds/100/propBets: DraftKings (provedor 100),
-// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA. Em "Total Points/Rebounds/Assists" cada jogador
+// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA. A ESPN responde 403 ao Cloudflare (Worker); o
+// navegador e a Action (scripts/linhas_dk.mjs, que grava o histórico) leem normalmente. Em "Total Points/Rebounds/Assists" cada jogador
 // tem 2 itens na mesma linha: o 1º é o Over (conferido contra o Polymarket: 11/11). O nome do jogador vem do
 // elenco do time (site.api.espn.com/.../teams/<id>/roster), pelo id do atleta.
 export const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba";
