@@ -360,7 +360,13 @@ async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
 // GET /props-dk?ev=<idEspn> devolve esse histórico. Consultas: 2 placares + ~2 por jogo + KV.
 async function gravarPropsDk(env, resumo) {
   if (!env.ENVIADOS) return;
-  const getJson = async (u) => { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0" } }); return r.ok ? r.json() : null; };
+  const falhas = [];
+  const getJson = async (u) => {
+    const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", Accept: "application/json" } });
+    if (r.ok) return r.json();
+    if (falhas.length < 3) falhas.push(`${r.status} ${new URL(u).host}`);
+    return null;
+  };
   const jogos = [];
   for (const d of datasNba()) {
     const sb = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${d}`).catch(() => null);
@@ -384,7 +390,7 @@ async function gravarPropsDk(env, resumo) {
     }
     if (mudou) { salvo.em = agora; await env.ENVIADOS.put(chave, JSON.stringify(salvo), { expirationTtl: 3 * 86400 }); gravados++; }
   }
-  resumo.propsDk = { jogos: jogos.length, gravados };
+  resumo.propsDk = { jogos: jogos.length, gravados, ...(falhas.length ? { falhas } : {}) };
 }
 
 // ---------- PUBLICAÇÃO DO SITE ----------
@@ -399,7 +405,10 @@ async function dispararPublicacao(env) {
     headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "trader-poly-worker", "Content-Type": "application/json" },
     body: JSON.stringify({ ref: "main" }),
   });
-  return r.status === 204 ? "ok" : `HTTP ${r.status}`;
+  if (r.status === 204) return "ok";
+  // a mensagem do GitHub diz o motivo (ex.: "Resource not accessible by personal access token" = falta permissão)
+  const msg = await r.json().then((j) => j.message).catch(() => "");
+  return `HTTP ${r.status}${msg ? `: ${String(msg).slice(0, 120)}` : ""}`;
 }
 
 async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader = null } = {}) {
