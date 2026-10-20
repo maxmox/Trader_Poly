@@ -1,9 +1,9 @@
 // Página "Props NBA": movimento dos mercados do jogo (vencedor, handicap, totais do jogo, 1º tempo e quartos) e
 // das props de pontos, rebotes, assistências, cestas de 3 e PRA, por jogo.
 // Fonte principal: DraftKings pela API pública da ESPN (linha e odd de abertura e atuais; buscarDk em core.js),
-// com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json). O Polymarket
-// entra como comparação (chance do Over agora) e como gráfico de reserva enquanto não há histórico da DraftKings.
-import { criarApi, linkMercado, buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
+// com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
+// (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
+import { buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 
 const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA (pts+reb+ast)" };
@@ -17,9 +17,8 @@ const CHAVE = "props-filtros";
 const ESPN_NBA = "/apis/site/v2/sports/basketball/nba";
 let SITE = `https://site.api.espn.com${ESPN_NBA}`;
 
-let api = null, relay = "", jogos = [], erro = null, carregadoEm = null, rodando = false;
+let configurado = false, jogos = [], erro = null, carregadoEm = null, rodando = false;
 const abertos = new Set(); // linhas com o gráfico aberto
-const pmHist = new Map(); // token do Polymarket -> histórico (reserva do gráfico)
 
 // ---------- filtros (salvos só neste navegador) ----------
 const PADRAO_F = { tipo: "", desde: "abertura", min: "0", busca: "" };
@@ -81,7 +80,7 @@ function movimento(x) {
 }
 
 // ---------- dados ----------
-async function carregarJogo(ev, pmEventos, historico) {
+async function carregarJogo(ev, historico) {
   const c = ev.competitions[0];
   const times = c.competitors.map((t) => ({ id: t.team.id, sigla: t.team.abbreviation, nome: t.team.shortDisplayName, casa: t.homeAway === "home" }));
   const [dk, e1, e2, resumo] = await Promise.all([
@@ -95,14 +94,6 @@ async function carregarJogo(ev, pmEventos, historico) {
   for (const id of Object.keys(e2)) siglaDe[id] = times[1].sigla;
   const lesoes = {};
   for (const t of resumo?.injuries || []) for (const i of t.injuries || []) lesoes[normal(i.athlete?.displayName)] = { status: i.status, motivo: i.details?.type || "", sigla: t.team?.abbreviation, nome: i.athlete?.displayName };
-  // Polymarket do mesmo jogo (título com os dois apelidos) e os mercados por jogador
-  const pm = pmEventos.find((e) => times.every((t) => (e.title || "").includes(t.nome)));
-  const pmMercados = {};
-  for (const m of pm?.markets || []) {
-    if (!TIPOS[m.sportsMarketType] || m.closed || !m.clobTokenIds) continue;
-    const k = `${normal((m.question || "").split(":")[0])}|${m.sportsMarketType}`;
-    (pmMercados[k] ||= []).push(m);
-  }
   const fora = times.find((t) => !t.casa), casa = times.find((t) => t.casa);
   const mercados = Object.values(dk.jogo).sort((a, b) => MERCADOS_JOGO[a.k].ordem - MERCADOS_JOGO[b.k].ordem).map((m) => {
     const total = !["ml", "spread"].includes(m.k);
@@ -110,20 +101,15 @@ async function carregarJogo(ev, pmEventos, historico) {
       id: `${ev.id}|jogo|${m.k}`, k: m.k, nome: MERCADOS_JOGO[m.k].nome, rotA: total ? "Over" : fora.nome, rotB: total ? "Under" : casa.nome,
       porLinha: MERCADOS_JOGO[m.k].porLinha || 0, dirLinha: total ? 1 : -1, temLinha: m.k !== "ml",
       dk: { linha: m.linha, linhaAb: m.linhaAb, over: m.a, under: m.b, overAb: m.aAb, underAb: m.bAb, p: m.p, pAb: m.pAb },
-      hist: hist?.h?.[`jogo|${m.k}`] || [], pm: null,
+      hist: hist?.h?.[`jogo|${m.k}`] || [],
     };
   });
   const linhas = Object.values(dk.props).map((dk) => {
     const jogador = nomes[dk.atleta] || `atleta ${dk.atleta}`;
-    const L = pmMercados[`${normal(jogador)}|${dk.tipo}`] || [];
-    const m = L.sort((a, b) => Math.abs(a.line - dk.linha) - Math.abs(b.line - dk.linha))[0];
-    // chance do Over no Polymarket = meio do livro, só com spread de até 10¢ (livro vazio cota 50%)
-    const pmAgora = m && m.bestAsk != null && m.bestBid != null && m.bestAsk - m.bestBid <= 0.10 ? (m.bestAsk + m.bestBid) / 2 : null;
     return {
       id: `${ev.id}|${dk.atleta}|${dk.tipo}`, jogador, sigla: siglaDe[dk.atleta] || "", tipo: dk.tipo, dk,
       rotA: "Over", rotB: "Under", porLinha: POR_LINHA[dk.tipo], dirLinha: 1, temLinha: true,
       lesao: lesoes[normal(jogador)] || null, hist: hist?.h?.[`${dk.atleta}|${dk.tipo}`] || [],
-      pm: m ? { linha: m.line, p: pmAgora, vol: +(m.volumeNum || 0), tok: JSON.parse(m.clobTokenIds)[0], slug: m.slug, eventSlug: pm.slug } : null,
     };
   });
   return {
@@ -138,24 +124,22 @@ async function carregar() {
   rodando = true;
   $("#btn-atualizar").textContent = "Atualizando…";
   try {
-    if (!api) {
+    if (!configurado) {
       const cfg = await fetch(`data/config.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
-      relay = cfg.relay || "";
+      let relay = cfg.relay || "";
       try { relay = JSON.parse(localStorage.getItem("traderpoly.cfg") || "{}").relay || relay; } catch { /* padrão */ }
-      api = criarApi({ relay });
       if (relay) SITE = `${relay.replace(/\/$/, "")}/espn${ESPN_NBA}`;
+      configurado = true;
     }
     const evs = [];
     for (const d of datasNba()) evs.push(...(((await getJson(`${SITE}/scoreboard?dates=${d}`)).events) || []));
     const vivos = evs.filter((e) => e.status?.type?.state !== "post"); // jogo encerrado some da página
-    const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
-    const pmEventos = (await api.get("gamma", `/events?tag_slug=nba&closed=false&start_time_min=${iso(Date.now() - 4 * 3600e3)}&start_time_max=${iso(Date.now() + 52 * 3600e3)}&limit=100`).catch(() => null)) || [];
     // histórico gravado pela Action (mesmo site; a ESPN recusa o Worker)
     const historico = await fetch(`data/linhas_dk.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const novos = [];
     let feitos = 0;
     await emLotes(vivos, 3, async (ev) => {
-      const j = await carregarJogo(ev, pmEventos, historico).catch(() => null);
+      const j = await carregarJogo(ev, historico).catch(() => null);
       if (j && (j.linhas.length || j.mercados.length)) novos.push(j);
       $("#status").textContent = `Carregando jogos: ${++feitos}/${vivos.length}…`;
     });
@@ -263,20 +247,13 @@ function detalhe(j, x) {
   const refs = [{ t: j.inicio / 1000, rot: "início" }];
   if (timed.length >= 2) {
     const ptsP = timed.map((h) => [h[0], semMargem(h[2], h[3]), `${x.rotA} ${prob(semMargem(h[2], h[3]))}${x.temLinha ? ` na linha ${lin(h[1])}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]).filter((p) => p[1] != null);
-    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado a cada ~10 min${x.pm ? ` · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Polymarket ↗</a>` : ""}`;
+    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado a cada ~10 min`;
     const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem (DraftKings)`, pontos: ptsP, eixo: "pct", refs, rodape });
     if (!x.temLinha) return chance;
     const ptsLinha = timed.map((h) => [h[0], h[1], `linha ${lin(h[1])} · ${x.rotA} ${dec(h[2])} / ${x.rotB} ${dec(h[3])}`]);
     return `<div class="graf-duo">${grafico({ titulo: `Linha da DraftKings${x.k === "spread" ? ` (${x.rotA})` : ""}`, pontos: ptsLinha, eixo: "linha", degrau: true, refs })}${chance}</div>`;
   }
-  if (x.k) return `<p class="muted">Ainda sem histórico da DraftKings para este mercado: ele é gravado a cada ~10 min.</p>`;
-  // sem histórico da DraftKings ainda: gráfico do Polymarket (reserva)
-  if (!x.pm) return `<p class="muted">Ainda sem histórico da DraftKings para esta linha (gravado a cada ~10 min) e sem mercado no Polymarket.</p>`;
-  const h = pmHist.get(x.pm.tok);
-  if (!h) return `<p class="muted">Carregando o histórico do Polymarket…</p>`;
-  const pts = h.map((p) => [p.t, p.p, `Polymarket: Over ${prob(p.p)} na linha ${lin(x.pm.linha)}`]);
-  return grafico({ titulo: `Chance do Over no Polymarket (linha ${lin(x.pm.linha)})`, pontos: pts, eixo: "pct", refs,
-    rodape: `Ainda sem histórico da DraftKings para esta linha (gravado a cada ~10 min). Volume no Polymarket: $${Math.round(x.pm.vol)} · <a href="${linkMercado(x.pm)}" target="_blank" rel="noopener">Abrir ↗</a>` });
+  return `<p class="muted">Ainda sem histórico da DraftKings para ${x.k ? "este mercado" : "esta linha"}: ele é gravado a cada ~10 min.</p>`;
 }
 
 // ---------- render ----------
@@ -300,9 +277,8 @@ function linha(j, x, mv) {
       <td class="n">${seta(x.dk.overAb, x.dk.over, dec)}<small>Under ${dec(x.dk.under)}</small></td>
       <td class="n">${seta(mv.ref.p, x.dk.p, prob)}</td>
       <td class="n mov${mv.forca >= 0.10 ? " forte" : ""}"><b>${mv.forca < 0.005 ? "–" : `≈ ${pp(mv.sinal)}`}</b><small>${[partes.join(" · "), dir].filter(Boolean).join(" · ")}</small></td>
-      <td class="n">${x.pm ? `${prob(x.pm.p)}${x.pm.linha !== x.dk.linha ? `<small>linha ${lin(x.pm.linha)}</small>` : ""}` : "–"}</td>
       <td>${sparkline(serie)}</td></tr>
-    ${aberto ? `<tr class="det"><td colspan="8">${detalhe(j, x)}</td></tr>` : ""}`;
+    ${aberto ? `<tr class="det"><td colspan="7">${detalhe(j, x)}</td></tr>` : ""}`;
 }
 
 // mercado do jogo (vencedor, handicap, totais): mesma leitura das props, com os lados do mercado
@@ -347,24 +323,18 @@ function render() {
       ${tabJogo}
       <h3 class="sub-jogo">Props dos jogadores</h3>
       ${top ? `<div class="chips"><span class="muted">Mais movimentadas:</span>${top}</div>` : `<p class="muted">Nenhuma linha andou o equivalente a 3 pp ou mais ${f.desde === "abertura" ? "desde a abertura" : `nas últimas ${f.desde}`}.</p>`}
-      ${L.length ? `<div class="tbl-wrap"><table class="props-tab"><thead><tr><th>Jogador</th><th>Estatística</th><th class="n">Linha</th><th class="n">Odd do Over</th><th class="n">Over sem margem</th><th class="n">Movimento</th><th class="n">Polymarket</th><th>Histórico</th></tr></thead>
+      ${L.length ? `<div class="tbl-wrap"><table class="props-tab"><thead><tr><th>Jogador</th><th>Estatística</th><th class="n">Linha</th><th class="n">Odd do Over</th><th class="n">Over sem margem</th><th class="n">Movimento</th><th>Histórico</th></tr></thead>
         <tbody>${L.map(({ x, mv }) => linha(j, x, mv)).join("")}</tbody></table></div>` : ""}
     </section>`;
   }).join("");
   $("#jogos").innerHTML = html || (rodando ? "" : `<div class="vazio"><b>Nenhum jogo da NBA com props na DraftKings hoje ou amanhã${busca || min ? " com esses filtros" : ""}.</b></div>`);
 }
 
-async function alternar(tr) {
+// abrir/fechar o gráfico de uma linha
+function alternar(tr) {
   const id = tr.dataset.id;
-  if (abertos.has(id)) { abertos.delete(id); render(); return; }
-  abertos.add(id);
+  if (abertos.has(id)) abertos.delete(id); else abertos.add(id);
   render();
-  const j = jogos.find((g) => id.startsWith(`${g.id}|`)), x = j && [...j.linhas, ...j.mercados].find((l) => l.id === id);
-  if (x && !x.k && x.hist.filter((h) => h[0] != null).length < 2 && x.pm && !pmHist.has(x.pm.tok)) {
-    const h = (await api.get("clob", `/prices-history?market=${x.pm.tok}&interval=max&fidelity=10`).catch(() => null))?.history || [];
-    pmHist.set(x.pm.tok, h.map((p) => ({ t: p.t, p: +p.p })).sort((a, b) => a.t - b.t));
-    render();
-  }
 }
 $("#jogos").addEventListener("click", (e) => { const tr = e.target.closest("tr.mk"); if (tr && !e.target.closest("a")) alternar(tr); });
 $("#jogos").addEventListener("keydown", (e) => { const tr = e.target.closest("tr.mk"); if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); alternar(tr); } });
