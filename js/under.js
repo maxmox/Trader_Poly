@@ -1,8 +1,8 @@
-// Cards de FUTEBOL UNDER no quadro principal (mesma regra do Worker: buscarUnderFut em core.js).
-// Pré-jogo: 10-30 min antes do início, Under 1,5 do jogo a 0,25-0,40 (o do 1º tempo foi retirado em 19/10/2026).
-// Ao vivo: 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo. Em observação: mercados rasos.
+// Cards de FUTEBOL UNDER AO VIVO no quadro principal (mesma regra do Worker: buscarUnderFut em core.js).
+// 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo. Em observação: mercados rasos.
+// (O Under pré-jogo foi retirado em 19/10/2026.)
 import { buscarUnderFut, odd, cents, custoCopia, linkMercado } from "./core.js";
-import { $, esc, usd, hora, stakeDe } from "./formato.js";
+import { $, esc, usd, stakeDe } from "./formato.js";
 const VIVO_MIN = 5; // o card do ao vivo fica por até 5 min depois de achado (o backtest entra em até 2 min)
 
 export function iniciarUnderFut({ api, getCfg, aoRenderizar }) {
@@ -16,8 +16,8 @@ export function iniciarUnderFut({ api, getCfg, aoRenderizar }) {
       const ids = new Set(novos.map((s) => s.cond));
       for (const s of novos) vistos.set(s.cond, { ...s, visto: agora });
       for (const [k, s] of vistos) {
-        // pré-jogo: some quando o preço sai da faixa ou o jogo começa; ao vivo: alguns minutos depois de achado
-        if (s.regra === "pre" ? (!ids.has(k) || agora >= s.inicio) : agora - s.visto > VIVO_MIN * 60e3) vistos.delete(k);
+        // some alguns minutos depois de achado
+        if (agora - s.visto > VIVO_MIN * 60e3) vistos.delete(k);
       }
     } catch (e) { console.warn("under", e); /* tenta de novo no próximo minuto */ }
     render();
@@ -27,13 +27,12 @@ export function iniciarUnderFut({ api, getCfg, aoRenderizar }) {
   function render() {
     const cfg = getCfg();
     const stake = stakeDe(cfg);
-    const ativos = [...vistos.values()].sort((a, b) => (a.regra === b.regra ? a.inicio - b.inicio : a.regra === "vivo" ? -1 : 1));
+    const ativos = [...vistos.values()].sort((a, b) => a.inicio - b.inicio);
     aoRenderizar?.({ n: ativos.length, copiar: 0 }); // em observação: não conta como entrada recomendada
     $("#under-lista").innerHTML = ativos.map((s) => {
-      const vivo = s.regra === "vivo";
-      const quando = vivo ? `0x0 aos ~${s.minuto} min` : `começa ${hora(s.inicio)}`;
+      const quando = `0x0 aos ~${s.minuto} min`;
       return `<article class="card under">
-        <div class="card-top"><span class="momento ${vivo ? "vivo" : "pre"}">${vivo ? "Ao vivo" : "Pré-jogo"}</span><span class="momento under">Futebol: Under</span><span class="st ESPERAR">Observar</span>
+        <div class="card-top"><span class="momento vivo">Ao vivo</span><span class="momento under">Futebol: Under</span><span class="st ESPERAR">Observar</span>
           <span class="quem">Futebol · ${esc(s.liga)}</span></div>
         <div><div class="evento">${esc(s.tituloEvento)} <span class="placar">${quando}</span></div><div class="lado">${esc(s.aposta)}</div>
           <div class="pergunta">Mercado: ${esc(s.pergunta)} · lado <b>Under</b></div></div>
@@ -47,9 +46,7 @@ export function iniciarUnderFut({ api, getCfg, aoRenderizar }) {
           aposta <b>${usd(stake)}</b> → retorno <b>${usd(stake / custoCopia(s.teto))}</b> se ganhar (já descontada a taxa). Segure até o fim.
           <span class="preco-ref">No Polymarket: ordem limitada a ${cents(s.teto)} (mercado raso: cada 1¢ pesa)</span>
           ${s.liquidez < stake ? `<span class="alerta">Só ${usd(s.liquidez)} à venda até a mínima: a ordem pode ser preenchida em parte.</span>` : ""}</div>
-        <div class="card-foot"><span>${vivo
-          ? "0x0 aos 30': o 0x0 no intervalo sai mais do que o mercado precifica. Backtest 60 dias (placar real, preço real): +16% (385 jogos)."
-          : "Under 1,5 a 0,25–0,40, 10–30 min antes do jogo: backtest 60 dias (preço real) +11% a +13%, mas os sinais reais até agora estão negativos. Valor pequeno."}</span>
+        <div class="card-foot"><span>0x0 aos 30': o 0x0 no intervalo sai mais do que o mercado precifica. Backtest 60 dias (placar real, preço real): +16% (385 jogos).</span>
           <a href="${linkMercado(s)}" target="_blank" rel="noopener">Abrir no Polymarket ↗</a></div>
       </article>`;
     }).join("");

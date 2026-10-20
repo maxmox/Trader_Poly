@@ -5,7 +5,7 @@
 // 1) RELAY: GET /data/..., /gamma/..., /clob/... repassam a API pública do Polymarket com CORS.
 // 2) ALERTAS (Cron Trigger "* * * * *"), a cada minuto, nesta ordem:
 //    - entradas AO VIVO novas dos traders de data/traders_live.json (+ alerta SAIR de quem vende)
-//    - FUTEBOL UNDER (observação): pré-jogo 10-30 min antes e 0x0 aos 28-33'
+//    - FUTEBOL UNDER AO VIVO (observação): 0x0 aos 28-33' -> Under 0,5 do 1º tempo
 //    - BASQUETE AO VIVO, SEGUIR (observação): fora da NBA/WNBA, aos 20 e 30 min
 //    - PRÉ-JOGO: todos os traders de data/traders.json (+ alerta SAIR)
 //    Plano pago (Workers Paid, desde 18/10/2026). Com PLANO=gratis volta ao rodízio de um trader de
@@ -248,22 +248,21 @@ const ORCAMENTO = { pago: 800, gratis: 40 };
 const gratis = (env) => env.PLANO === "gratis";
 
 // ---------- FUTEBOL UNDER (observação; regra em core.js: UNDER_FUT / buscarUnderFut) ----------
-// A cada minuto: (1) pré-jogo, jogos que começam em 10-30 min com Under 1,5 do jogo a 0,25-0,40;
-// (2) ao vivo, 0x0 entre 28' e 33' (placar da ESPN, 1 consulta) -> Under 0,5 do 1º tempo. Cada mercado tem o livro
+// A cada minuto: 0x0 entre 28' e 33' (placar da ESPN, 1 consulta) -> Under 0,5 do 1º tempo (o pré-jogo saiu em
+// 19/10/2026; os sinais antigos têm a regra "pre"). Cada mercado tem o livro
 // consultado no máximo a cada 4 min por regra (memória da instância, para não gastar gravações do KV) e manda um
 // alerta só por regra (KV "us:<regra>:<mercado>"; antes a chave era só o mercado e um alerta pré-jogo bloqueava o
 // ao vivo do mesmo mercado). Sinais vão para o registro como "Futebol: Under", com a regra ("pre"/"vivo") no lugar da nota.
 const UNDER_TRADER = { carteira: "under-fut", nome: "Futebol: Under", nivel: "observar" };
 const checadoUnder = new Map(); // "regra:conditionId" -> último livro consultado (ms)
 function msgUnder(env, x) {
-  const vivo = x.regra === "vivo";
-  return `⚽ <b>${vivo ? "AO VIVO" : "PRÉ-JOGO"} · FUTEBOL UNDER</b> · ${h(x.liga)} · em observação
-${h(x.tituloEvento)} · ${vivo ? `<b>0x0 aos ~${x.minuto} min</b>` : `começa ${horaBR(x.inicio)}`}
+  return `⚽ <b>AO VIVO · FUTEBOL UNDER</b> · ${h(x.liga)} · em observação
+${h(x.tituloEvento)} · <b>0x0 aos ~${x.minuto} min</b>
 Entrar: <b>${h(x.aposta)}</b>
 Mercado: ${h(x.pergunta)} · lado <b>Under</b>
 Odd agora ${odd(x.ask)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}
 ⚠️ Mercado raso: ordem limitada no preço da tela (cada 1¢ pesa) · segure até o fim${aposta(env, x.teto)}
-${vivo ? "Histórico (60 dias, placar real, preço real): 0x0 aos 30' → Under 0,5 do 1º tempo +16% (385 jogos)." : "Histórico (60 dias, preço real): Under 1,5 a 0,25–0,40, 10–30 min antes: +11% a +13%. Sinais reais até agora negativos: valor pequeno."}
+Histórico (60 dias, placar real, preço real): 0x0 aos 30' → Under 0,5 do 1º tempo +16% (385 jogos).
 ${linkMercado(x)}`;
 }
 
@@ -395,7 +394,7 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
     if (t.nivel !== "teste") await avisarSaidas(env, t, d.vendas, resumo);
   }
 
-  // futebol Under: pré-jogo (10-30 min antes) e ao vivo (0x0 aos 28-33')
+  // futebol Under ao vivo (0x0 aos 28-33')
   if (env.UNDER !== "0") {
     try { await verificarUnderFut(env, api, resumo, gratis(env) ? 6 : 40); } catch (e) { resumo.erros.push(`under: ${e.message || e}`); }
   }

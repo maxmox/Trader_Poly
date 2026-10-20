@@ -455,18 +455,16 @@ export function avaliarSeguirBkt(hist, inicioSeg, agoraSeg) {
 }
 
 // ---------------------------------------------------------------------------
-// FUTEBOL UNDER (polymarket_traders/ideias_usuario.py, robustez_under.py, fut_under_placar.py; 19/10/2026)
-// Negócio real (1º negócio de compra + taxa), 60 dias, positivo nos dois períodos de 30 dias:
-//   PRÉ-JOGO: 10-30 min antes do início, Under 1,5 do jogo a 0,25-0,40: +11% a +13% no backtest.
-//     Sensível ao preço (+2¢ -> ~+5%); 2 h antes perde; Under 2,5 na mesma faixa perde.
-//     O Under 0,5 do 1º tempo pré-jogo foi RETIRADO em 19/10/2026 (pedido do usuário; sinais reais: 34, -26%).
-//     Under 1,5 pré-jogo nos sinais reais até 19/10: 22, -19,5% (amostra pequena, em observação).
-//   AO VIVO: 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo: +16% (385 jogos, P 0,00);
-//     odd 1,60-2,10: +12%. Mecanismo: o 0x0 sai mais do que o modelo de Poisson simples prevê.
+// FUTEBOL UNDER AO VIVO (polymarket_traders/fut_under_placar.py; 19/10/2026)
+// 0x0 entre 28' e 33' (placar da ESPN) -> Under 0,5 do 1º tempo. Negócio real (1º negócio de compra + taxa),
+// 60 dias: +16% (385 jogos, P 0,00), positivo nos dois períodos de 30 dias; odd 1,60-2,10: +12%.
+// Mecanismo: o 0x0 sai mais do que o modelo de Poisson simples prevê.
+// O Under PRÉ-JOGO (1º tempo e Under 1,5 a 0,25-0,40, 10-30 min antes; backtest +11% a +13%) foi RETIRADO em
+// 19/10/2026 a pedido do usuário: nos sinais reais deu 34, -26% (1º tempo) e 22, -19,5% (Under 1,5).
+// Os sinais antigos ficam no registro com a regra "pre".
 // (O "contra o movimento" do futebol foi retirado em 19/10/2026 a pedido do usuário.)
 // Os mercados do 1º tempo e as linhas extras ficam no evento "<jogo>-more-markets" (tag soccer, mesmo horário).
 export const UNDER_FUT = {
-  pre: { antesMin: 10, antesMax: 30, precoMin: 0.25, precoMax: 0.40, mercados: [["totals", 1.5]] },
   vivo: { minDe: 28, minAte: 33, precoMin: 0.30, precoMax: 0.77, mercado: ["first_half_totals", 0.5] },
   nivel: "observar",
 };
@@ -533,13 +531,6 @@ export async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40
       liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), vol: +(u.m.volumeNum || 0), ...extra,
     });
   };
-  // PRÉ-JOGO: jogos que começam em 10-30 min, do mais próximo para o mais distante
-  const pre = (await eventosFutebol(api, agoraMs + UNDER_FUT.pre.antesMin * 60e3, agoraMs + UNDER_FUT.pre.antesMax * 60e3))
-    .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime));
-  for (const ev of pre) for (const [tipo, linha] of UNDER_FUT.pre.mercados) {
-    const u = underDe(ev, tipo, linha);
-    if (u) await avaliar(ev, u, "pre");
-  }
   // AO VIVO: jogos que começaram há 20-60 min com Under 0,5 do 1º tempo; placar e minuto pela ESPN
   const vivo = (await eventosFutebol(api, agoraMs - 60 * 60e3, agoraMs - 20 * 60e3)).map((ev) => ({ ev, u: underDe(ev, ...UNDER_FUT.vivo.mercado) })).filter((x) => x.u);
   if (vivo.length) {
