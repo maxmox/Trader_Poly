@@ -1,15 +1,15 @@
 // Página "Props NBA": movimento dos mercados do jogo (vencedor, handicap, totais do jogo, 1º tempo e quartos) e
-// das props de pontos, rebotes e assistências, por jogo.
+// das props de pontos, rebotes, assistências, cestas de 3 e PRA, por jogo.
 // Fonte principal: DraftKings pela API pública da ESPN (linha e odd de abertura e atuais; buscarDk em core.js),
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json). O Polymarket
 // entra como comparação (chance do Over agora) e como gráfico de reserva enquanto não há histórico da DraftKings.
 import { criarApi, linkMercado, buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 
-const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências" };
+const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA (pts+reb+ast)" };
 // quanto 1 ponto de linha muda a chance do Over perto do meio (normal com o desvio típico de cada estatística:
-// pontos ~6, rebotes ~2,8, assistências ~2,3). Serve para comparar a chance em linhas diferentes.
-const POR_LINHA = { points: 0.065, rebounds: 0.14, assists: 0.17 };
+// pontos ~6, rebotes ~2,8, assistências ~2,3, cestas de 3 ~1,5, PRA ~8). Serve para comparar a chance em linhas diferentes.
+const POR_LINHA = { points: 0.065, rebounds: 0.14, assists: 0.17, threes: 0.25, pra: 0.05 };
 const REFRESCO = 5 * 60_000;
 const JANELA = { "24h": 24 * 3600, "3h": 3 * 3600 };
 const CHAVE = "props-filtros";

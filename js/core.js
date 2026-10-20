@@ -561,12 +561,15 @@ export async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40
 // ---------------------------------------------------------------------------
 // PROPS DA NBA NA DRAFTKINGS (API pública da ESPN, 20/10/2026; página props.html e Worker)
 // sports.core.api.espn.com/.../events/<id>/competitions/<id>/odds/100/propBets: DraftKings (provedor 100),
-// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA. A ESPN responde 403 ao Cloudflare (Worker); o
+// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA (pontos, rebotes, assistências, cestas de 3 e PRA). A ESPN responde 403 ao Cloudflare (Worker); o
 // navegador e a Action (scripts/linhas_dk.mjs, que grava o histórico) leem normalmente. Em "Total Points/Rebounds/Assists" cada jogador
 // tem 2 itens na mesma linha: o 1º é o Over (conferido contra o Polymarket: 11/11). O nome do jogador vem do
 // elenco do time (site.api.espn.com/.../teams/<id>/roster), pelo id do atleta.
 export const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba";
-export const PROPS_DK = { "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists" };
+export const PROPS_DK = {
+  "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists",
+  "Total 3-Point Field Goals": "threes", "Total Points, Rebounds, and Assists": "pra",
+};
 // datas (AAAAMMDD, horário de Nova York, que é o dia do jogo para a ESPN) de hoje e de amanhã
 export const datasNba = (agoraMs = Date.now()) => [0, 1].map((d) => new Date(agoraMs + d * 864e5).toLocaleDateString("en-CA", { timeZone: "America/New_York" }).replaceAll("-", ""));
 // chance do Over sem a margem da casa, a partir das duas odds decimais

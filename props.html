@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Props NBA</title>
-<meta name="description" content="Movimento das linhas da NBA na DraftKings, por jogo, desde a abertura: vencedor, handicap, totais do jogo, 1º tempo e quartos, e props de pontos, rebotes e assistências, com as lesões.">
+<meta name="description" content="Movimento das linhas da NBA na DraftKings, por jogo, desde a abertura: vencedor, handicap, totais do jogo, 1º tempo e quartos, e props de pontos, rebotes, assistências, cestas de 3 e PRA, com as lesões.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -27,10 +27,10 @@
 <main class="wrap">
   <section>
     <div class="sec-head"><h1>Movimento das linhas</h1><span id="atualizado" class="muted"></span></div>
-    <p class="muted lede">Linhas da <b>DraftKings</b> em cada jogo da NBA de hoje e amanhã, com a abertura, o agora e as lesões: <b>mercados do jogo</b> (vencedor, handicap, total do jogo, do 1º tempo e de cada quarto) e <b>props</b> de pontos, rebotes e assistências, com quem mais se mexeu primeiro. "Over sem margem" é a chance do Over tirando a margem da casa. Clique numa linha para ver o gráfico. O jogo some quando termina.</p>
+    <p class="muted lede">Linhas da <b>DraftKings</b> em cada jogo da NBA de hoje e amanhã, com a abertura, o agora e as lesões: <b>mercados do jogo</b> (vencedor, handicap, total do jogo, do 1º tempo e de cada quarto) e <b>props</b> de pontos, rebotes, assistências, cestas de 3 e PRA (pontos + rebotes + assistências), com quem mais se mexeu primeiro. "Over sem margem" é a chance do Over tirando a margem da casa. Clique numa linha para ver o gráfico. O jogo some quando termina.</p>
     <div class="props-filtros" role="group" aria-label="Filtros">
       <label>Estatística
-        <select id="f-tipo"><option value="">todas</option><option value="points">pontos</option><option value="rebounds">rebotes</option><option value="assists">assistências</option></select></label>
+        <select id="f-tipo"><option value="">todas</option><option value="points">pontos</option><option value="rebounds">rebotes</option><option value="assists">assistências</option><option value="threes">cestas de 3</option><option value="pra">PRA (pts+reb+ast)</option></select></label>
       <label>Movimento desde
         <select id="f-desde"><option value="abertura">a abertura</option><option value="24h">24 h atrás</option><option value="3h">3 h atrás</option></select></label>
       <label>Mostrar
@@ -47,7 +47,7 @@
     <h2>Como ler</h2>
     <ul>
       <li><b>Fonte:</b> DraftKings, pela API pública da ESPN, com linha e odd de abertura e atuais. O histórico entre a abertura e agora é gravado no nosso servidor a cada ~10 min.</li>
-      <li><b>Movimento:</b> "≈ +X pp" é quanto a chance do Over mudou <b>na linha de abertura</b>, juntando a mudança de linha e a de odd (pp = pontos percentuais). Embaixo, o que a casa fez de fato (ex.: +1 na linha · −13 pp). Como a chance cai quando a linha sobe, cada ponto de linha vale ~6,5 pp em pontos, ~14 pp em rebotes e ~17 pp em assistências (aproximação pela dispersão típica de cada estatística). ▲ Over = a casa foi para o Over.</li>
+      <li><b>Movimento:</b> "≈ +X pp" é quanto a chance do Over mudou <b>na linha de abertura</b>, juntando a mudança de linha e a de odd (pp = pontos percentuais). Embaixo, o que a casa fez de fato (ex.: +1 na linha · −13 pp). Como a chance cai quando a linha sobe, cada ponto de linha vale ~6,5 pp em pontos, ~14 pp em rebotes, ~17 pp em assistências, ~25 pp em cestas de 3 e ~5 pp no PRA (aproximação pela dispersão típica de cada estatística). ▲ Over = a casa foi para o Over.</li>
       <li><b>Mercados do jogo:</b> no vencedor e no handicap, a chance e o movimento são do time visitante (o 1º nome); a linha do handicap é a dele. Nos totais, do Over. No total, cada ponto de linha vale ~2,2 pp no jogo, ~3,2 pp no 1º tempo e ~4,7 pp num quarto; no handicap, ~3,1 pp. Total do jogo andando e os quartos parados é um sinal a olhar.</li>
       <li><b>Lesões:</b> relatório do jogo na ESPN (Out, Day-To-Day…). A etiqueta aparece ao lado do jogador.</li>
       <li><b>Polymarket:</b> chance do Over no meio do livro, só quando o spread é de até 10¢; com o livro vazio aparece "–". Quase não tem volume: serve de comparação, não de sinal.</li>
