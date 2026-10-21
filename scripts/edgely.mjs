@@ -4,6 +4,7 @@
 //   - automático: 1x por dia a partir das 9 h ET (o Edgely carrega a projeção ~8h30 ET e ela já é a final: a de
 //     08:46 e a de 12:58 de 21/10 eram idênticas nos 311 jogadores; o que chega depois são as LINHAS deles, que não
 //     usamos); se ainda vier o dia anterior, tenta de novo 1 h depois;
+//   - de novo quando falta ≤ 45 min para um jogo e a projeção tem > 25 min (pega atualizações do dia);
 //   - quando alguém aperta "Buscar projeções" na página: o Worker guarda o pedido (/edgely-pedido) e dispara a Action.
 // Nunca duas consultas com menos de 10 min. Uma consulta = /api/nba/players/tonight/full (todos os jogadores do dia).
 // Grava data/edgely.json: { data, buscadoEm, tentativa, final, erro, jogos: {idEspn: {fora, casa}}, jogadores: [...] }.
@@ -20,9 +21,9 @@ const getJson = async (u, h = {}) => {
   return r.json();
 };
 
-// o publicado no site; antes da 1ª publicação, o do repositório
-const antes = await getJson(`${SITE}/data/edgely.json?t=${Date.now()}`)
-  .catch(() => readFile(arquivo, "utf8").then(JSON.parse).catch(() => null));
+// o mais novo entre o publicado no site e o do repositório (um commit recente pode ainda não estar publicado)
+const [pub, repo] = await Promise.all([getJson(`${SITE}/data/edgely.json?t=${Date.now()}`).catch(() => null), readFile(arquivo, "utf8").then(JSON.parse).catch(() => null)]);
+const antes = (repo?.buscadoEm || 0) > (pub?.buscadoEm || 0) ? repo : pub;
 const cfg = JSON.parse(await readFile(new URL("data/config.json", raiz), "utf8").catch(() => "{}"));
 const pedido = cfg.relay ? await getJson(`${cfg.relay.replace(/\/$/, "")}/edgely-pedido`).then((j) => j.pedido || 0).catch(() => 0) : 0;
 
@@ -35,8 +36,12 @@ const pedidoNovo = pedido > (antes?.buscadoEm || 0);
 const temHoje = antes?.data === hojeEt;
 let saida = antes || { data: null, buscadoEm: null, tentativa: null, final: true, jogos: {}, jogadores: [] };
 
+// antes de cada jogo: o Edgely às vezes atualiza a projeção durante o dia; com jogo começando em até 45 min e a
+// projeção com mais de 25 min, busca de novo (1 consulta por horário de início) para o registro de 30 min antes
+const jogoPerto = temHoje && Object.values(antes?.jogos || {}).some((j) => j.inicio && j.inicio > agora && j.inicio - agora <= 45 * 60e3);
 const buscar = process.env.FORCAR === "1" || (pedidoNovo && agora - tentativa > 10 * 60e3)
-  || (!temHoje && horaEt >= 9 && agora - tentativa > 3600e3);
+  || (!temHoje && horaEt >= 9 && agora - tentativa > 3600e3)
+  || (jogoPerto && agora - (antes?.buscadoEm || 0) > 25 * 60e3 && agora - tentativa > 10 * 60e3);
 
 if (buscar) {
   try {

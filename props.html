@@ -33,7 +33,7 @@
       <button type="button" role="tab" data-aba="acomp" aria-selected="false">Acompanhamento</button>
     </div>
     <p class="muted lede" data-so="edge" hidden>Projeção de cada jogador no <b>Edgely</b> comparada com a linha e as odds <b>atuais da DraftKings</b>. "Dif." é a projeção menos a linha (o edge do Edgely). "Chance pela projeção" transforma a projeção em chance de Over/Under na linha da DraftKings; "valor esperado" é quanto a aposta rende por unidade se essa chance estiver certa. Ordenado pelo valor esperado. Clique numa linha para ver o gráfico.</p>
-    <p class="muted lede" data-so="acomp" hidden>Todo dia às <b>12 h de Brasília</b> o servidor registra, em cada prop da DraftKings dos jogos de hoje, uma aposta no lado de <b>maior valor esperado</b> pela projeção do Edgely (só quando ele é positivo), com a linha e as odds Over/Under daquele momento. Depois do jogo, o box score da ESPN diz se foi green ou red. Stake de 1 unidade; "anulada" = o jogador não entrou (a casa devolve). Serve para ver, com o tempo, de que lado está o dinheiro.</p>
+    <p class="muted lede" data-so="acomp" hidden>Todo dia às <b>12 h de Brasília</b> e de novo <b>~30 min antes de cada jogo</b> (com a projeção e as linhas mais recentes, inclusive jogadores que a casa abriu depois) o servidor registra, em cada prop da DraftKings dos jogos de hoje, uma aposta no lado de <b>maior valor esperado</b> pela projeção do Edgely (só quando ele é positivo), com a linha e as odds Over/Under daquele momento. Depois do jogo, o box score da ESPN diz se foi green ou red. Stake de 1 unidade; "anulada" = o jogador não entrou (a casa devolve). Serve para ver, com o tempo, de que lado está o dinheiro.</p>
     <div class="edgely-barra" data-so="edge" hidden>
       <button id="btn-edgely" type="button">Buscar projeções no Edgely</button>
       <span id="edgely-info" class="muted"></span>
@@ -46,6 +46,8 @@
         <select id="f-desde"><option value="abertura">a abertura</option><option value="24h">24 h atrás</option><option value="3h">3 h atrás</option></select></label>
       <label data-so="mov">Mostrar
         <select id="f-min"><option value="0">todas as linhas</option><option value="0.03">movimento ≥ 3 pp</option><option value="0.05">movimento ≥ 5 pp</option><option value="0.10">movimento ≥ 10 pp</option></select></label>
+      <label data-so="acomp" hidden>Registro
+        <select id="f-mom"><option value="">12 h e 30 min antes</option><option value="12h">só 12 h de Brasília</option><option value="30m">só ~30 min antes do jogo</option></select></label>
       <label data-so="edge acomp" hidden>Mostrar
         <select id="f-ev"><option value="">todas as linhas</option><option value="0">valor esperado ≥ 0</option><option value="0.05">valor esperado ≥ 5%</option><option value="0.10">valor esperado ≥ 10%</option></select></label>
       <label>Jogador<input id="f-busca" type="search" placeholder="nome…" autocomplete="off"></label>
