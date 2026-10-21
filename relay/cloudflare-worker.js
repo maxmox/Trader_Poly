@@ -566,12 +566,15 @@ async function buscarUnderFut(api, agoraMs = Date.now(), { maxLivros = 40, checa
 // ---------------------------------------------------------------------------
 // PROPS DA NBA NA DRAFTKINGS (API pública da ESPN, 20/10/2026; página props.html e Worker)
 // sports.core.api.espn.com/.../events/<id>/competitions/<id>/odds/100/propBets: DraftKings (provedor 100),
-// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA. A ESPN responde 403 ao Cloudflare (Worker); o
+// ~1.200 itens por jogo, com linha e odd ATUAIS e de ABERTURA (pontos, rebotes, assistências, cestas de 3 e PRA). A ESPN responde 403 ao Cloudflare (Worker); o
 // navegador e a Action (scripts/linhas_dk.mjs, que grava o histórico) leem normalmente. Em "Total Points/Rebounds/Assists" cada jogador
 // tem 2 itens na mesma linha: o 1º é o Over (conferido contra o Polymarket: 11/11). O nome do jogador vem do
 // elenco do time (site.api.espn.com/.../teams/<id>/roster), pelo id do atleta.
 const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba";
-const PROPS_DK = { "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists" };
+const PROPS_DK = {
+  "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists",
+  "Total 3-Point Field Goals": "threes", "Total Points, Rebounds, and Assists": "pra",
+};
 // datas (AAAAMMDD, horário de Nova York, que é o dia do jogo para a ESPN) de hoje e de amanhã
 const datasNba = (agoraMs = Date.now()) => [0, 1].map((d) => new Date(agoraMs + d * 864e5).toLocaleDateString("en-CA", { timeZone: "America/New_York" }).replaceAll("-", ""));
 // chance do Over sem a margem da casa, a partir das duas odds decimais
@@ -866,6 +869,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
 //   us:         Under enviado (us:<regra>:<mercado>) · bk20: / bk30: / bks: basquete avaliado / enviado
 //   status:     log das execuções
+//   edgely:pedido  hora do último pedido de "Buscar projeções" (props.html; /edgely-atualizar, /edgely-pedido)
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
@@ -1321,6 +1325,20 @@ export default {
     }
     if (url.pathname === "/registro") {
       return json({ agora: Date.now(), sinais: await listarRegistro(env) });
+    }
+    // projeções do Edgely (página props.html, aba Edge): quem consulta o Edgely é a Action (scripts/edgely.mjs);
+    // o botão da página só deixa o pedido aqui e dispara a Action, no máximo 1 vez a cada 10 min
+    if (url.pathname === "/edgely-pedido") {
+      return json({ pedido: env.ENVIADOS ? +((await env.ENVIADOS.get("edgely:pedido")) || 0) : 0 });
+    }
+    if (url.pathname === "/edgely-atualizar") {
+      if (!env.ENVIADOS) return json({ ok: false, msg: "KV ENVIADOS não configurado" }, 500);
+      const ultimo = +((await env.ENVIADOS.get("edgely:pedido")) || 0);
+      if (Date.now() - ultimo < 10 * 60e3) return json({ ok: true, pedido: ultimo, msg: "já pedido há menos de 10 min" });
+      const agora = Date.now();
+      await env.ENVIADOS.put("edgely:pedido", String(agora), { expirationTtl: 2 * 86400 });
+      const pub = await dispararPublicacao(env).catch((e) => String(e.message || e));
+      return json({ ok: true, pedido: agora, publicacao: pub, msg: pub === "ok" ? "pedido enviado" : "pedido guardado (a Action pega na próxima rodada)" });
     }
     if (url.pathname === "/verificar") {
       // ?pre=NOME verifica o pré-jogo só desse trader; sem isso, todos (ou o rodízio no plano grátis)

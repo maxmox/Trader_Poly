@@ -34,6 +34,9 @@ jobs:
       - name: Linhas da NBA na DraftKings (histórico da página props.html)
         run: node scripts/linhas_dk.mjs
         continue-on-error: true
+      - name: Projeções do Edgely (aba Edge; consulta 1x por dia ou quando pedida na página)
+        run: node scripts/edgely.mjs
+        continue-on-error: true
       - name: Desempenho dos últimos 30 dias (placar)
         run: node scripts/desempenho.mjs
         continue-on-error: true

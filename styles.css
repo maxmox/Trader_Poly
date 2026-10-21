@@ -292,3 +292,6 @@ table.estreita { min-width: 0; max-width: 560px; }
 .graf h4.sub { margin: 0 0 4px; font-size: 13px; }
 .jogo h3.sub-jogo { font-size: 14px; margin-top: 6px; color: var(--ink-2); }
 .jogo-tab { min-width: 640px; }
+.edgely-barra { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; }
+.edge-tab { min-width: 860px; }
+.props .tabs { margin: 4px 0 2px; }

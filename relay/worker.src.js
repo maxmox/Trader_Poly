@@ -24,6 +24,7 @@
 //   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
 //   us:         Under enviado (us:<regra>:<mercado>) · bk20: / bk30: / bks: basquete avaliado / enviado
 //   status:     log das execuções
+//   edgely:pedido  hora do último pedido de "Buscar projeções" (props.html; /edgely-atualizar, /edgely-pedido)
 //
 // Configuração no painel (Settings → Variables and Secrets):
 //   TELEGRAM_TOKEN   (secret)  token do bot, do @BotFather
@@ -479,6 +480,20 @@ export default {
     }
     if (url.pathname === "/registro") {
       return json({ agora: Date.now(), sinais: await listarRegistro(env) });
+    }
+    // projeções do Edgely (página props.html, aba Edge): quem consulta o Edgely é a Action (scripts/edgely.mjs);
+    // o botão da página só deixa o pedido aqui e dispara a Action, no máximo 1 vez a cada 10 min
+    if (url.pathname === "/edgely-pedido") {
+      return json({ pedido: env.ENVIADOS ? +((await env.ENVIADOS.get("edgely:pedido")) || 0) : 0 });
+    }
+    if (url.pathname === "/edgely-atualizar") {
+      if (!env.ENVIADOS) return json({ ok: false, msg: "KV ENVIADOS não configurado" }, 500);
+      const ultimo = +((await env.ENVIADOS.get("edgely:pedido")) || 0);
+      if (Date.now() - ultimo < 10 * 60e3) return json({ ok: true, pedido: ultimo, msg: "já pedido há menos de 10 min" });
+      const agora = Date.now();
+      await env.ENVIADOS.put("edgely:pedido", String(agora), { expirationTtl: 2 * 86400 });
+      const pub = await dispararPublicacao(env).catch((e) => String(e.message || e));
+      return json({ ok: true, pedido: agora, publicacao: pub, msg: pub === "ok" ? "pedido enviado" : "pedido guardado (a Action pega na próxima rodada)" });
     }
     if (url.pathname === "/verificar") {
       // ?pre=NOME verifica o pré-jogo só desse trader; sem isso, todos (ou o rodízio no plano grátis)

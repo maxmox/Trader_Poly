@@ -3,6 +3,7 @@
 // Fonte principal: DraftKings pela API pública da ESPN (linha e odd de abertura e atuais; buscarDk em core.js),
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
+// Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
 import { buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 
@@ -17,22 +18,50 @@ const CHAVE = "props-filtros";
 const ESPN_NBA = "/apis/site/v2/sports/basketball/nba";
 let SITE = `https://site.api.espn.com${ESPN_NBA}`;
 
-let configurado = false, jogos = [], erro = null, carregadoEm = null, rodando = false;
+let configurado = false, RELAY = "", jogos = [], erro = null, carregadoEm = null, rodando = false;
+let edgely = null, pedidoMsg = ""; // data/edgely.json e a resposta do último "Buscar projeções"
 const abertos = new Set(); // linhas com o gráfico aberto
 
 // ---------- filtros (salvos só neste navegador) ----------
-const PADRAO_F = { tipo: "", desde: "abertura", min: "0", busca: "" };
+const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", busca: "" };
 let f = (() => { try { return { ...PADRAO_F, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO_F }; } })();
-for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["busca", "#f-busca"]]) {
+{ const a = new URLSearchParams(location.search).get("aba"); if (a === "mov" || a === "edge") f.aba = a; } // link direto: props.html?aba=edge
+const salvarF = () => { try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ } };
+for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["busca", "#f-busca"]]) {
   const el = $(sel);
   el.value = f[k];
   el.addEventListener(k === "busca" ? "input" : "change", () => {
     f[k] = el.value;
-    try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ }
+    salvarF();
     render();
   });
 }
 $("#btn-atualizar").addEventListener("click", () => carregar());
+
+// abas: Movimento | Edge (os elementos com data-so só aparecem na aba deles)
+function mostrarAba() {
+  document.querySelectorAll(".tabs [data-aba]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.aba === f.aba)));
+  document.querySelectorAll("[data-so]").forEach((el) => { el.hidden = el.dataset.so !== f.aba; });
+}
+document.querySelectorAll(".tabs [data-aba]").forEach((b) => b.addEventListener("click", () => { f.aba = b.dataset.aba; salvarF(); mostrarAba(); render(); }));
+mostrarAba();
+
+// botão "Buscar projeções no Edgely": o Worker guarda o pedido e dispara a Action, que consulta o Edgely 1 vez
+// (no máximo 1 busca a cada 10 min) e publica data/edgely.json; esta página relê o arquivo a cada 5 min
+$("#btn-edgely").addEventListener("click", async () => {
+  const b = $("#btn-edgely");
+  b.disabled = true; b.textContent = "Pedindo…";
+  try {
+    if (!RELAY) throw new Error("relay não configurado");
+    const r = await getJson(`${RELAY}/edgely-atualizar`);
+    pedidoMsg = r.msg?.startsWith("já") ? `Já foi pedido às ${hora(r.pedido)} (no máximo 1 busca a cada 10 min).`
+      : `Pedido enviado às ${hora(r.pedido)}: o servidor busca no Edgely e publica em ~10–15 min; a página confere sozinha a cada 5 min.`;
+  } catch (e) {
+    pedidoMsg = /404/.test(e.message) ? "O Worker ainda não tem este botão: cole o Worker novo na Cloudflare." : `Não consegui pedir: ${e.message}`;
+  }
+  b.disabled = false; b.textContent = "Buscar projeções no Edgely";
+  render();
+});
 
 // ---------- números ----------
 const pp = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(100 * v).toFixed(1).replace(".", ",")} pp`);
@@ -80,7 +109,38 @@ function movimento(x) {
 }
 
 // ---------- dados ----------
-async function carregarJogo(ev, historico) {
+// ---------- Edge (projeção do Edgely × DraftKings) ----------
+// chance do Over pela projeção (aproximação ainda não calibrada com resultados): pontos e PRA ~ normal com desvio
+// 1,4·√projeção (25 pts → ~7, 10 → ~4,4); rebotes, assistências e cestas de 3 ~ binomial negativa com variância
+// 1,25 × a média (contagem: Over 6,5 = 7 ou mais; linha inteira devolve no empate).
+const fi = (z) => {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+  const q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - q : q;
+};
+function chanceOver(tipo, media, linha) {
+  if (media == null || linha == null || media <= 0) return null;
+  if (tipo === "points" || tipo === "pra") return 1 - fi((linha - media) / (1.4 * Math.sqrt(media)));
+  const q = 1 / 1.25, r = (media * q) / (1 - q); // p(0) = q^r; p(k+1) = p(k)·(k+r)/(k+1)·(1−q)
+  const k0 = Math.floor(linha);
+  let pk = q ** r, abaixo = 0;
+  for (let k = 0; k < k0; k++) { abaixo += pk; pk *= ((k + r) / (k + 1)) * (1 - q); }
+  return Number.isInteger(linha) ? (1 - abaixo - pk) / (1 - pk) : 1 - abaixo - pk;
+}
+// lado com o maior valor esperado nas odds atuais da DraftKings
+function edgeDe(x) {
+  if (x.proj == null || x.dk.linha == null || !x.dk.over || !x.dk.under) return null;
+  const po = chanceOver(x.tipo, x.proj, x.dk.linha);
+  if (po == null) return null;
+  const evO = po * x.dk.over - 1, evU = (1 - po) * x.dk.under - 1, over = evO >= evU;
+  return { dif: x.proj - x.dk.linha, lado: over ? "Over" : "Under", odd: over ? x.dk.over : x.dk.under, chance: over ? po : 1 - po,
+    mercado: x.dk.p == null ? null : over ? x.dk.p : 1 - x.dk.p, ev: over ? evO : evU };
+}
+const hojeEt = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+// projeções por jogo da ESPN + nome (o Edgely traz o id do jogo na ESPN): projeção de outro dia não casa
+const projecoes = (e) => new Map((e?.jogadores || []).filter((p) => p.ev).map((p) => [`${p.ev}|${normal(p.nome)}`, p]));
+
+async function carregarJogo(ev, historico, projs) {
   const c = ev.competitions[0];
   const times = c.competitors.map((t) => ({ id: t.team.id, sigla: t.team.abbreviation, nome: t.team.shortDisplayName, casa: t.homeAway === "home" }));
   const [dk, e1, e2, resumo] = await Promise.all([
@@ -106,10 +166,11 @@ async function carregarJogo(ev, historico) {
   });
   const linhas = Object.values(dk.props).map((dk) => {
     const jogador = nomes[dk.atleta] || `atleta ${dk.atleta}`;
+    const pe = projs.get(`${ev.id}|${normal(jogador)}`);
     return {
       id: `${ev.id}|${dk.atleta}|${dk.tipo}`, jogador, sigla: siglaDe[dk.atleta] || "", tipo: dk.tipo, dk,
       rotA: "Over", rotB: "Under", porLinha: POR_LINHA[dk.tipo], dirLinha: 1, temLinha: true,
-      lesao: lesoes[normal(jogador)] || null, hist: hist?.h?.[`${dk.atleta}|${dk.tipo}`] || [],
+      lesao: lesoes[normal(jogador)] || null, hist: hist?.h?.[`${dk.atleta}|${dk.tipo}`] || [], proj: pe?.proj?.[dk.tipo] ?? null, projMin: pe?.proj?.min ?? null,
     };
   });
   return {
@@ -128,18 +189,22 @@ async function carregar() {
       const cfg = await fetch(`data/config.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
       let relay = cfg.relay || "";
       try { relay = JSON.parse(localStorage.getItem("traderpoly.cfg") || "{}").relay || relay; } catch { /* padrão */ }
-      if (relay) SITE = `${relay.replace(/\/$/, "")}/espn${ESPN_NBA}`;
+      RELAY = relay.replace(/\/$/, "");
+      if (relay) SITE = `${RELAY}/espn${ESPN_NBA}`;
       configurado = true;
     }
     const evs = [];
     for (const d of datasNba()) evs.push(...(((await getJson(`${SITE}/scoreboard?dates=${d}`)).events) || []));
     const vivos = evs.filter((e) => e.status?.type?.state !== "post"); // jogo encerrado some da página
     // histórico gravado pela Action (mesmo site; a ESPN recusa o Worker)
-    const historico = await fetch(`data/linhas_dk.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const lerData = (nome) => fetch(`data/${nome}?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const [historico, ed] = await Promise.all([lerData("linhas_dk.json"), lerData("edgely.json")]);
+    edgely = ed;
+    const projs = projecoes(edgely);
     const novos = [];
     let feitos = 0;
     await emLotes(vivos, 3, async (ev) => {
-      const j = await carregarJogo(ev, historico).catch(() => null);
+      const j = await carregarJogo(ev, historico, projs).catch(() => null);
       if (j && (j.linhas.length || j.mercados.length)) novos.push(j);
       $("#status").textContent = `Carregando jogos: ${++feitos}/${vivos.length}…`;
     });
@@ -272,7 +337,7 @@ function linha(j, x, mv) {
   // minigráfico: linha + chance do Over (1 ponto de linha = 1 unidade; a chance ajusta dentro da linha)
   const serie = serieAjustada(x);
   return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
-      <td><b>${esc(x.jogador)}</b>${les}<small>${esc(x.sigla)}</small></td><td>${TIPOS[x.tipo]}</td>
+      <td><b>${esc(x.jogador)}</b>${les}<small>${esc(x.sigla)}</small></td><td>${TIPOS[x.tipo]}${x.proj != null ? `<small>Edgely ${lin(x.proj)}</small>` : ""}</td>
       <td class="n">${seta(mv.ref.linha, x.dk.linha, lin)}</td>
       <td class="n">${seta(x.dk.overAb, x.dk.over, dec)}<small>Under ${dec(x.dk.under)}</small></td>
       <td class="n">${seta(mv.ref.p, x.dk.p, prob)}</td>
@@ -297,14 +362,76 @@ function linhaJogo(j, x, mv) {
     ${aberto ? `<tr class="det"><td colspan="6">${detalhe(j, x)}</td></tr>` : ""}`;
 }
 
+// aba Edge: todas as props de todos os jogos com projeção, da maior para a menor em valor esperado
+function infoEdgely() {
+  let t;
+  if (!edgely?.data) t = "Ainda sem projeções do Edgely: a busca automática é a partir das 9 h de Nova York (10 h de Brasília), ou use o botão.";
+  else {
+    t = `Projeções do Edgely de ${edgely.data.split("-").reverse().slice(0, 2).join("/")} · buscadas ${dataHora(edgely.buscadoEm)} · ${edgely.jogadores.length} jogadores`;
+    if (edgely.data !== hojeEt()) t += " · <b>são de outro dia</b> (os jogos de hoje ficam sem projeção até a próxima busca)";
+  }
+  if (edgely?.erro) t += ` · última tentativa falhou (${esc(edgely.erro)})`;
+  $("#edgely-info").innerHTML = [t, pedidoMsg && `<b>${esc(pedidoMsg)}</b>`].filter(Boolean).join("<br>");
+}
+const pctSinal = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(100 * v).toFixed(1).replace(".", ",")}%`;
+function renderEdge() {
+  infoEdgely();
+  const busca = normal(f.busca), min = f.ev === "" ? -Infinity : +f.ev;
+  const L = [];
+  for (const j of jogos) for (const x of j.linhas) {
+    if ((f.tipo && x.tipo !== f.tipo) || (busca && !normal(x.jogador).includes(busca))) continue;
+    const e = edgeDe(x);
+    if (e && e.ev >= min) L.push({ j, x, e });
+  }
+  L.sort((a, b) => b.e.ev - a.e.ev);
+  if (!L.length) {
+    const comProj = jogos.some((j) => j.linhas.some((x) => x.proj != null));
+    $("#jogos").innerHTML = rodando ? "" : `<div class="vazio"><b>${comProj ? "Nenhuma linha com esses filtros." : "Nenhuma prop da DraftKings com projeção do Edgely para casar agora."}</b></div>`;
+    return;
+  }
+  // divergência extrema (≥ 30 pp entre a chance pela projeção e a da DraftKings): quase sempre minutos/papel
+  // diferentes na projeção (troca de time, volta de lesão, começo de temporada); ficam numa lista à parte
+  const extrema = (e) => e.mercado != null && Math.abs(e.chance - e.mercado) >= 0.30;
+  const normais = L.filter(({ e }) => !extrema(e)), extremas = L.filter(({ e }) => extrema(e));
+  $("#jogos").innerHTML = [
+    normais.length ? tabelaEdge(normais, `${normais.length} linhas`) : "",
+    extremas.length ? tabelaEdge(extremas, `Divergências extremas · ${extremas.length} linhas`, "A projeção e a DraftKings discordam em 30 pp ou mais. Quase sempre a projeção usa minutos diferentes (veja os minutos projetados): troca de time, volta de lesão, rotação nova. Confira antes de confiar.") : "",
+  ].join("");
+}
+function tabelaEdge(L, titulo, nota = "") {
+  return `<section class="panel"><h2>${esc(titulo)}</h2>${nota ? `<p class="muted">${nota}</p>` : ""}<div class="tbl-wrap"><table class="props-tab edge-tab"><thead><tr>
+      <th>Jogador</th><th>Jogo</th><th>Estatística</th><th class="n">Projeção</th><th class="n">Linha DK</th><th class="n">Dif.</th><th class="n">Aposta</th><th class="n">Chance pela projeção</th><th class="n">Chance DK sem margem</th><th class="n">Valor esperado</th></tr></thead>
+    <tbody>${L.map(({ j, x, e }) => {
+      const aberto = abertos.has(x.id);
+      const les = x.lesao ? ` <span class="tag-les" title="${esc(x.lesao.motivo)}">${esc(x.lesao.status)}</span>` : "";
+      return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
+        <td><b>${esc(x.jogador)}</b>${les}<small>${esc(x.sigla)}</small></td>
+        <td>${esc(j.titulo)}<small>${j.estado === "in" ? "ao vivo" : hora(j.inicio)}</small></td>
+        <td>${TIPOS[x.tipo]}</td>
+        <td class="n">${lin(x.proj)}${x.projMin != null ? `<small>${lin(x.projMin)} min</small>` : ""}</td>
+        <td class="n">${seta(x.dk.linhaAb, x.dk.linha, lin)}</td>
+        <td class="n">${e.dif >= 0 ? "+" : "−"}${lin(Math.round(10 * Math.abs(e.dif)) / 10)}</td>
+        <td class="n"><b>${e.lado}</b> ${dec(e.odd)}</td>
+        <td class="n">${prob(e.chance)}</td>
+        <td class="n">${prob(e.mercado)}</td>
+        <td class="n mov${e.ev >= 0.10 ? " forte" : ""}"><b>${pctSinal(e.ev)}</b></td></tr>
+      ${aberto ? `<tr class="det"><td colspan="10">${detalhe(j, x)}</td></tr>` : ""}`;
+    }).join("")}</tbody></table></div></section>`;
+}
+
 function render() {
+  if (f.aba === "edge" && !(erro && !jogos.length)) {
+    if (carregadoEm) $("#atualizado").textContent = `atualizado ${hora(carregadoEm)} · a cada 5 min`;
+    renderEdge();
+    return;
+  }
   if (erro && !jogos.length) {
     $("#jogos").innerHTML = `<div class="banner"><b>Não consegui ler os dados.</b><span>${esc(erro.message || erro)}</span></div>`;
     return;
   }
   if (carregadoEm) $("#atualizado").textContent = `atualizado ${hora(carregadoEm)} · a cada 5 min`;
   const busca = normal(f.busca), min = +f.min;
-  $("#aviso-hist").hidden = !(jogos.length && !jogos.some((j) => j.comHist) && f.desde !== "abertura");
+  $("#aviso-hist").hidden = f.aba !== "mov" || !(jogos.length && !jogos.some((j) => j.comHist) && f.desde !== "abertura");
   const html = jogos.map((j) => {
     const L = j.linhas
       .filter((x) => (!f.tipo || x.tipo === f.tipo) && (!busca || normal(x.jogador).includes(busca)))
