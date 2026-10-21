@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # commit de data/apostas_edgely (acompanhamento das apostas do Edgely)
   pages: write
   id-token: write
 
@@ -36,6 +36,18 @@ jobs:
         continue-on-error: true
       - name: Projeções do Edgely (aba Edge; consulta 1x por dia ou quando pedida na página)
         run: node scripts/edgely.mjs
+        continue-on-error: true
+      - name: Apostas do Edgely (registro às 12 h de Brasília e resultados)
+        run: node scripts/apostas_edgely.mjs
+        continue-on-error: true
+      # o acompanhamento é histórico permanente: fica no repositório (commits do GITHUB_TOKEN não disparam a Action)
+      - name: Guardar as apostas no repositório
+        run: |
+          git add data/apostas_edgely
+          if ! git diff --cached --quiet; then
+            git -c user.name="github-actions[bot]" -c user.email="41898283+github-actions[bot]@users.noreply.github.com" commit -m "Apostas do Edgely: registro/resultados"
+            git pull --rebase --autostash && git push
+          fi
         continue-on-error: true
       - name: Desempenho dos últimos 30 dias (placar)
         run: node scripts/desempenho.mjs

@@ -4,8 +4,9 @@
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
 // Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
-import { buscarDk, datasNba, semMargem, MERCADOS_JOGO } from "./core.js";
+import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
+import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 
 const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA (pts+reb+ast)" };
 // quanto 1 ponto de linha muda a chance do Over perto do meio (normal com o desvio típico de cada estatística:
@@ -23,11 +24,11 @@ let edgely = null, pedidoMsg = ""; // data/edgely.json e a resposta do último "
 const abertos = new Set(); // linhas com o gráfico aberto
 
 // ---------- filtros (salvos só neste navegador) ----------
-const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", busca: "" };
+const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", proj: "", busca: "" };
 let f = (() => { try { return { ...PADRAO_F, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO_F }; } })();
-{ const a = new URLSearchParams(location.search).get("aba"); if (a === "mov" || a === "edge") f.aba = a; } // link direto: props.html?aba=edge
+{ const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "acomp"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
 const salvarF = () => { try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ } };
-for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["busca", "#f-busca"]]) {
+for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["proj", "#f-proj"], ["busca", "#f-busca"]]) {
   const el = $(sel);
   el.value = f[k];
   el.addEventListener(k === "busca" ? "input" : "change", () => {
@@ -38,10 +39,10 @@ for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-
 }
 $("#btn-atualizar").addEventListener("click", () => carregar());
 
-// abas: Movimento | Edge (os elementos com data-so só aparecem na aba deles)
+// abas: Movimento | Edge | Acompanhamento (os elementos com data-so só aparecem nas abas listadas nele)
 function mostrarAba() {
   document.querySelectorAll(".tabs [data-aba]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.aba === f.aba)));
-  document.querySelectorAll("[data-so]").forEach((el) => { el.hidden = el.dataset.so !== f.aba; });
+  document.querySelectorAll("[data-so]").forEach((el) => { el.hidden = !el.dataset.so.split(" ").includes(f.aba); });
 }
 document.querySelectorAll(".tabs [data-aba]").forEach((b) => b.addEventListener("click", () => { f.aba = b.dataset.aba; salvarF(); mostrarAba(); render(); }));
 mostrarAba();
@@ -69,7 +70,7 @@ const prob = (p) => (p == null ? "–" : `${Math.round(100 * p)}%`);
 const dec = (v) => (v == null ? "–" : v.toFixed(2).replace(".", ","));
 const lin = (v) => (v == null ? "–" : String(v).replace(".", ","));
 const seta = (a, b, fmt) => (a == null || a === b ? fmt(b) : `${fmt(a)} → <b>${fmt(b)}</b>`);
-const normal = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z]/g, "");
+const normal = nomeChave;
 const getJson = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(`${new URL(u).host} respondeu ${r.status}`); return r.json(); };
 
 async function emLotes(itens, n, fn) {
@@ -109,33 +110,9 @@ function movimento(x) {
 }
 
 // ---------- dados ----------
-// ---------- Edge (projeção do Edgely × DraftKings) ----------
-// chance do Over pela projeção (aproximação ainda não calibrada com resultados): pontos e PRA ~ normal com desvio
-// 1,4·√projeção (25 pts → ~7, 10 → ~4,4); rebotes, assistências e cestas de 3 ~ binomial negativa com variância
-// 1,25 × a média (contagem: Over 6,5 = 7 ou mais; linha inteira devolve no empate).
-const fi = (z) => {
-  const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
-  const q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-  return z > 0 ? 1 - q : q;
-};
-function chanceOver(tipo, media, linha) {
-  if (media == null || linha == null || media <= 0) return null;
-  if (tipo === "points" || tipo === "pra") return 1 - fi((linha - media) / (1.4 * Math.sqrt(media)));
-  const q = 1 / 1.25, r = (media * q) / (1 - q); // p(0) = q^r; p(k+1) = p(k)·(k+r)/(k+1)·(1−q)
-  const k0 = Math.floor(linha);
-  let pk = q ** r, abaixo = 0;
-  for (let k = 0; k < k0; k++) { abaixo += pk; pk *= ((k + r) / (k + 1)) * (1 - q); }
-  return Number.isInteger(linha) ? (1 - abaixo - pk) / (1 - pk) : 1 - abaixo - pk;
-}
+// ---------- Edge (projeção do Edgely × DraftKings; conta em core.js: chanceOver/edgeProp) ----------
 // lado com o maior valor esperado nas odds atuais da DraftKings
-function edgeDe(x) {
-  if (x.proj == null || x.dk.linha == null || !x.dk.over || !x.dk.under) return null;
-  const po = chanceOver(x.tipo, x.proj, x.dk.linha);
-  if (po == null) return null;
-  const evO = po * x.dk.over - 1, evU = (1 - po) * x.dk.under - 1, over = evO >= evU;
-  return { dif: x.proj - x.dk.linha, lado: over ? "Over" : "Under", odd: over ? x.dk.over : x.dk.under, chance: over ? po : 1 - po,
-    mercado: x.dk.p == null ? null : over ? x.dk.p : 1 - x.dk.p, ev: over ? evO : evU };
-}
+const edgeDe = (x) => edgeProp(x.tipo, x.proj, x.dk.linha, x.dk.over, x.dk.under);
 const hojeEt = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 // projeções por jogo da ESPN + nome (o Edgely traz o id do jogo na ESPN): projeção de outro dia não casa
 const projecoes = (e) => new Map((e?.jogadores || []).filter((p) => p.ev).map((p) => [`${p.ev}|${normal(p.nome)}`, p]));
@@ -420,6 +397,11 @@ function tabelaEdge(L, titulo, nota = "") {
 }
 
 function render() {
+  if (f.aba === "acomp") { // não depende dos jogos de hoje: lê data/apostas_edgely (relido a cada 5 min)
+    if (acompVelho()) carregarAcomp().then(() => f.aba === "acomp" && renderAcomp($("#jogos"), f));
+    renderAcomp($("#jogos"), f);
+    return;
+  }
   if (f.aba === "edge" && !(erro && !jogos.length)) {
     if (carregadoEm) $("#atualizado").textContent = `atualizado ${hora(carregadoEm)} · a cada 5 min`;
     renderEdge();

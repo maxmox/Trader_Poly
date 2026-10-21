@@ -668,6 +668,43 @@ async function buscarDk(getJson, idEspn) {
   return { props: lerPropsDk(itens), jogo: lerJogoDk(odd, itens) };
 }
 
+// PROJEÇÃO × LINHA (aba Edge e acompanhamento das apostas do Edgely, 21/10/2026)
+// chance do Over pela projeção (aproximação ainda não calibrada com resultados): pontos e PRA ~ normal com desvio
+// 1,4·√projeção (25 pts → ~7, 10 → ~4,4); rebotes, assistências e cestas de 3 ~ binomial negativa com variância
+// 1,25 × a média (contagem: Over 6,5 = 7 ou mais; linha inteira devolve no empate).
+const fiNormal = (z) => {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+  const q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - q : q;
+};
+function chanceOver(tipo, media, linha) {
+  if (media == null || linha == null || media <= 0) return null;
+  if (tipo === "points" || tipo === "pra") return 1 - fiNormal((linha - media) / (1.4 * Math.sqrt(media)));
+  const q = 1 / 1.25, r = (media * q) / (1 - q); // p(0) = q^r; p(k+1) = p(k)·(k+r)/(k+1)·(1−q)
+  const k0 = Math.floor(linha);
+  let pk = q ** r, abaixo = 0;
+  for (let k = 0; k < k0; k++) { abaixo += pk; pk *= ((k + r) / (k + 1)) * (1 - q); }
+  return Number.isInteger(linha) ? (1 - abaixo - pk) / (1 - pk) : 1 - abaixo - pk;
+}
+// lado com o maior valor esperado nas odds dadas: { dif, lado, odd, chance, mercado, ev }
+function edgeProp(tipo, proj, linha, over, under) {
+  if (proj == null || linha == null || !over || !under) return null;
+  const po = chanceOver(tipo, proj, linha);
+  if (po == null) return null;
+  const evO = po * over - 1, evU = (1 - po) * under - 1, ehOver = evO >= evU, p = semMargem(over, under);
+  return { dif: proj - linha, lado: ehOver ? "Over" : "Under", odd: ehOver ? over : under, chance: ehOver ? po : 1 - po,
+    mercado: p == null ? null : ehOver ? p : 1 - p, ev: ehOver ? evO : evU };
+}
+// nome para casar jogadores entre fontes (sem acento, sufixo nem pontuação)
+const nomeChave = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z]/g, "");
+// valor da estatística no box score da ESPN (summary → boxscore.players[].statistics[0]: keys + athletes[].stats)
+function estatisticaBox(keys, stats, tipo) {
+  const v = (k) => { const i = keys.indexOf(k); return i < 0 ? null : parseFloat(String(stats[i]).split("-")[0]); };
+  const n = { points: v("points"), rebounds: v("rebounds"), assists: v("assists"), threes: v("threePointFieldGoalsMade-threePointFieldGoalsAttempted") };
+  if (tipo === "pra") return [n.points, n.rebounds, n.assists].some((x) => x == null || Number.isNaN(x)) ? null : n.points + n.rebounds + n.assists;
+  return Number.isFinite(n[tipo]) ? n[tipo] : null;
+}
+
 // ---------------------------------------------------------------------------
 // NOTA DA ENTRADA (modelo de polymarket_traders/modelo_entrada.py, data/indices.json)
 // Vantagem esperada de quem copia, somando o efeito de fatores que se repetiram no tempo:

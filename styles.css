@@ -295,3 +295,16 @@ table.estreita { min-width: 0; max-width: 560px; }
 .edgely-barra { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; }
 .edge-tab { min-width: 860px; }
 .props .tabs { margin: 4px 0 2px; }
+/* aba Acompanhamento (apostas do Edgely) */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.tile { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.tile b { font-family: var(--mono); font-size: 22px; }
+.tile small { color: var(--ink-3); font-size: 12px; }
+.acomp-grupos { min-width: 620px; margin-top: 10px; }
+.acomp-tab { min-width: 820px; }
+.acomp-dia { border-top: 1px solid var(--line); padding: 8px 0; }
+.acomp-dia summary { cursor: pointer; font-size: 14px; }
+.res { font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.res.green { background: var(--good-bg); color: var(--good); }
+.res.red { background: var(--bad-bg); color: var(--bad); }
+.res.push, .res.anulada { background: var(--accent-soft); color: var(--ink-2); }
