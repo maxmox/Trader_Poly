@@ -24,11 +24,11 @@ let edgely = null, pedidoMsg = ""; // data/edgely.json e a resposta do último "
 const abertos = new Set(); // linhas com o gráfico aberto
 
 // ---------- filtros (salvos só neste navegador) ----------
-const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", proj: "", busca: "" };
+const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", busca: "" };
 let f = (() => { try { return { ...PADRAO_F, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO_F }; } })();
 { const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "acomp"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
 const salvarF = () => { try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ } };
-for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["proj", "#f-proj"], ["busca", "#f-busca"]]) {
+for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["busca", "#f-busca"]]) {
   const el = $(sel);
   el.value = f[k];
   el.addEventListener(k === "busca" ? "input" : "change", () => {
@@ -344,7 +344,7 @@ function infoEdgely() {
   let t;
   if (!edgely?.data) t = "Ainda sem projeções do Edgely: a busca automática é a partir das 9 h de Nova York (10 h de Brasília), ou use o botão.";
   else {
-    t = `Projeções do Edgely de ${edgely.data.split("-").reverse().slice(0, 2).join("/")} · ${edgely.final ? "<b>finais</b>" : "<b>preliminares</b> (o Edgely ainda não pôs as linhas; a final é buscada sozinha quando sair)"} · buscadas ${dataHora(edgely.buscadoEm)} · ${edgely.jogadores.length} jogadores`;
+    t = `Projeções do Edgely de ${edgely.data.split("-").reverse().slice(0, 2).join("/")} · buscadas ${dataHora(edgely.buscadoEm)} · ${edgely.jogadores.length} jogadores`;
     if (edgely.data !== hojeEt()) t += " · <b>são de outro dia</b> (os jogos de hoje ficam sem projeção até a próxima busca)";
   }
   if (edgely?.erro) t += ` · última tentativa falhou (${esc(edgely.erro)})`;

@@ -81,8 +81,7 @@ export function renderAcomp(el, f) {
   if (erro) { el.innerHTML = `<div class="banner"><b>Não consegui ler o acompanhamento.</b><span>${esc(erro.message || erro)}</span></div>`; return; }
   if (!dados) { el.innerHTML = `<p class="muted">Carregando…</p>`; return; }
   const busca = nomeChave(f.busca), min = f.ev === "" ? -Infinity : +f.ev;
-  const L = dados.apostas.filter((a) => (!f.tipo || a.tipo === f.tipo) && (!busca || nomeChave(a.nome).includes(busca)) && a.valor >= min
-    && (!f.proj || (f.proj === "final") === a.final));
+  const L = dados.apostas.filter((a) => (!f.tipo || a.tipo === f.tipo) && (!busca || nomeChave(a.nome).includes(busca)) && a.valor >= min);
   if (!L.length) {
     el.innerHTML = `<div class="vazio"><b>${dados.apostas.length ? "Nenhuma aposta com esses filtros." : "Ainda não há apostas registradas: o 1º registro é hoje às 12 h de Brasília (jogos que ainda não começaram)."}</b></div>`;
     return;
@@ -102,7 +101,6 @@ export function renderAcomp(el, f) {
     tabelaGrupos("Lado", [["Over", L.filter((a) => a.lado === "Over")], ["Under", L.filter((a) => a.lado === "Under")]]),
     tabelaGrupos("Valor esperado no registro", faixas.map(([r, a, b]) => [r, L.filter((x) => x.valor >= a && x.valor < b)])),
     tabelaGrupos("|Projeção − linha|", difs.map(([r, a, b]) => [r, L.filter((x) => Math.abs(x.proj - x.linha) >= a && Math.abs(x.proj - x.linha) < b)])),
-    tabelaGrupos("Projeção do Edgely no registro", [["final", L.filter((a) => a.final)], ["preliminar", L.filter((a) => !a.final)]]),
   ].join("");
 
   // por dia, do mais recente; o dia mais recente aberto
@@ -113,7 +111,7 @@ export function renderAcomp(el, f) {
     return `<details class="acomp-dia"${i === 0 ? " open" : ""}><summary><b>${d.split("-").reverse().join("/")}</b> · ${D.length} apostas · ${sd.g}–${sd.r}${sd.n ? ` · ${sinal(sd.lucro)} u (${roiTxt(sd)})` : ""}${D.some((a) => !a.res) ? ` · ${D.filter((a) => !a.res).length} pendentes` : ""}</summary>
       <div class="tbl-wrap"><table class="props-tab acomp-tab"><thead><tr><th>Jogo</th><th>Jogador</th><th>Estatística</th><th class="n">Projeção</th><th class="n">Aposta</th><th class="n">Odds O / U</th><th class="n">Valor esperado</th><th class="n">Resultado</th></tr></thead><tbody>
       ${D.map((a) => `<tr><td>${esc(a.titulo)}<small>${a.inicio ? hora(a.inicio) : ""}</small></td><td><b>${esc(a.nome)}</b></td><td>${TIPOS[a.tipo] || a.tipo}</td>
-        <td class="n">${num(a.proj)}${a.min != null ? `<small>${num(a.min)} min${a.final ? "" : " · prelim."}</small>` : ""}</td>
+        <td class="n">${num(a.proj)}${a.min != null ? `<small>${num(a.min)} min</small>` : ""}</td>
         <td class="n"><b>${a.lado} ${String(a.linha).replace(".", ",")}</b> @ ${num(a.odd, 2)}</td><td class="n">${num(a.over, 2)} / ${num(a.under, 2)}</td>
         <td class="n">${sinal(100 * a.valor)}%</td>
         <td class="n">${a.res ? `<span class="res ${RES[a.res][0]}">${RES[a.res][1]}</span>${a.real != null ? `<small>fez ${String(a.real).replace(".", ",")}</small>` : ""}` : `<span class="muted">pendente</span>`}</td></tr>`).join("")}
