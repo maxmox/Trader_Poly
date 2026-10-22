@@ -355,7 +355,8 @@ function infoEdgely() {
   let t;
   if (!edgely?.data) t = "Ainda sem projeções do Edgely: a busca automática é a partir das 9 h de Nova York (10 h de Brasília), ou use o botão.";
   else {
-    t = `Projeções do Edgely de ${edgely.data.split("-").reverse().slice(0, 2).join("/")} · buscadas ${dataHora(edgely.buscadoEm)} · ${edgely.jogadores.length} jogadores`;
+    const ult = edgely.versoes?.[edgely.versoes.length - 1];
+    t = `Projeções do Edgely de ${edgely.data.split("-").reverse().slice(0, 2).join("/")} · <b>atualizadas pelo Edgely às ${hora(edgely.mudouEm || edgely.buscadoEm)}</b>${ult?.mudaram && edgely.versoes.length > 1 ? ` (${ult.mudaram} jogadores mudaram)` : ""} · conferido às ${hora(edgely.buscadoEm)} (a cada 30 min; 10 min perto dos jogos) · ${edgely.jogadores.length} jogadores`;
     if (edgely.data !== hojeEt()) t += " · <b>são de outro dia</b> (os jogos de hoje ficam sem projeção até a próxima busca)";
   }
   if (edgely?.erro) t += ` · última tentativa falhou (${esc(edgely.erro)})`;

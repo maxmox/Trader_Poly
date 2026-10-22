@@ -1,13 +1,15 @@
 // Projeções dos jogadores da NBA no Edgely (edgely.bet/nba) para a aba Edge da página props.html.
-// Roda na Action (a cada ~10 min), mas só consulta o Edgely quando precisa (é raspagem de site alheio: poucas
-// consultas para não arriscar bloqueio do IP):
-//   - automático: 1x por dia a partir das 9 h ET (o Edgely carrega a projeção ~8h30 ET e ela já é a final: a de
-//     08:46 e a de 12:58 de 21/10 eram idênticas nos 311 jogadores; o que chega depois são as LINHAS deles, que não
-//     usamos); se ainda vier o dia anterior, tenta de novo 1 h depois;
-//   - de novo quando falta ≤ 45 min para um jogo e a projeção tem > 25 min (pega atualizações do dia);
-//   - quando alguém aperta "Buscar projeções" na página: o Worker guarda o pedido (/edgely-pedido) e dispara a Action.
+// Roda na Action (a cada ~10 min). O Edgely ATUALIZA a projeção em horários imprevisíveis durante o dia (21/10: 174 de
+// 311 jogadores mudaram à tarde; 22/10: atualização ~13h30 de Brasília) e a API não diz quando (sem data nem ETag;
+// o "Data loaded" da página deles é a hora do navegador). Então, do dia da NBA (9 h ET) até o último jogo começar:
+//   - consulta a cada 30 min, e a cada 10 min quando falta ≤ 1 h para algum jogo (a resposta passa pelo cache deles,
+//     60 s; ~80–570 KB conforme o número de jogos; ~25–40 consultas por dia, como alguém recarregando a página);
+//   - quando alguém aperta "Buscar projeções" na página: o Worker guarda o pedido (/edgely-pedido) e dispara a Action;
+//   - dia novo ainda não publicado por eles: tenta de hora em hora.
+// Cada consulta é comparada com a anterior: "mudouEm" = quando o Edgely mudou a projeção pela última vez e "versoes" =
+// histórico do dia ({em, mudaram}).
 // Nunca duas consultas com menos de 10 min. Uma consulta = /api/nba/players/tonight/full (todos os jogadores do dia).
-// Grava data/edgely.json: { data, buscadoEm, tentativa, final, erro, jogos: {idEspn: {fora, casa}}, jogadores: [...] }.
+// Grava data/edgely.json: { data, buscadoEm, mudouEm, versoes, tentativa, final, erro, jogos: {idEspn: {fora, casa, inicio}}, jogadores }.
 // Local: node scripts/edgely.mjs   (FORCAR=1 ignora as regras acima)
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -36,16 +38,12 @@ const pedidoNovo = pedido > (antes?.buscadoEm || 0);
 const temHoje = antes?.data === hojeEt;
 let saida = antes || { data: null, buscadoEm: null, tentativa: null, final: true, jogos: {}, jogadores: [] };
 
-// antes de cada jogo: o Edgely às vezes atualiza a projeção durante o dia; com jogo começando em até 45 min e a
-// projeção com mais de 25 min, busca de novo (1 consulta por horário de início) para o registro de 30 min antes
-const jogoPerto = temHoje && Object.values(antes?.jogos || {}).some((j) => j.inicio && j.inicio > agora && j.inicio - agora <= 45 * 60e3);
-// antes do registro das 12 h de Brasília: a projeção do dia é refeita durante a manhã (a preliminar diverge da final),
-// então às 11h30 de Brasília (14h30 UTC) busca de novo se a que temos é mais antiga
-const d = new Date(agora), corte12 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 14, 30);
-const antesDo12 = temHoje && agora >= corte12 && (antes?.buscadoEm || 0) < corte12 && agora - tentativa > 10 * 60e3;
-const buscar = process.env.FORCAR === "1" || antesDo12 || (pedidoNovo && agora - tentativa > 10 * 60e3)
+const inicios = Object.values(antes?.jogos || {}).map((j) => j.inicio).filter(Boolean);
+const emJanela = temHoje && horaEt >= 9 && inicios.some((t) => t > agora); // ainda há jogo de hoje por começar
+const intervalo = inicios.some((t) => t > agora && t - agora <= 3600e3) ? 10 * 60e3 : 30 * 60e3;
+const buscar = process.env.FORCAR === "1" || (pedidoNovo && agora - tentativa > 10 * 60e3)
   || (!temHoje && horaEt >= 9 && agora - tentativa > 3600e3)
-  || (jogoPerto && agora - (antes?.buscadoEm || 0) > 25 * 60e3 && agora - tentativa > 10 * 60e3);
+  || (emJanela && agora - tentativa >= intervalo - 2 * 60e3); // folga: a Action roda a cada ~10 min
 
 if (buscar) {
   try {
@@ -62,8 +60,16 @@ if (buscar) {
       proj: { points: n(p.projections.points), rebounds: n(p.projections.rebounds), assists: n(p.projections.assists),
         threes: n(p.projections.three_pointers_made), pra: n(p.projections.pra), min: n(p.projections.minutes) },
     }));
-    saida = { data: d.date || null, buscadoEm: agora, tentativa: agora, final: true, erro: null, pedido: pedidoNovo, jogos, jogadores };
-    console.log(`Edgely ${saida.data}: ${jogadores.length} jogadores em ${Object.keys(jogos).length} jogos${pedidoNovo ? " (pedido da página)" : ""}`);
+    // mudou desde a consulta anterior? (mesmo dia: compara jogador a jogador; dia novo conta como mudança)
+    const mesmoDia = antes?.data === d.date;
+    const ant = new Map((mesmoDia ? antes.jogadores : []).map((p) => [`${p.time}|${p.nome}`, p]));
+    const mudaram = jogadores.filter((p) => { const a = ant.get(`${p.time}|${p.nome}`); return !a || Object.keys(p.proj).some((k) => Math.abs((p.proj[k] ?? 0) - (a.proj[k] ?? 0)) > 0.05) || p.lesao !== a.lesao; }).length;
+    const mudou = !mesmoDia || mudaram > 0;
+    // arquivo antigo sem histórico: a versão anterior vale desde a busca dela
+    const anteriores = mesmoDia ? antes.versoes?.length ? antes.versoes : [{ em: antes.buscadoEm, mudaram: null }] : [];
+    const versoes = [...anteriores, ...(mudou ? [{ em: agora, mudaram }] : [])].slice(-50);
+    saida = { data: d.date || null, buscadoEm: agora, mudouEm: mudou ? agora : antes?.mudouEm ?? antes?.buscadoEm ?? agora, versoes, tentativa: agora, final: true, erro: null, pedido: pedidoNovo, jogos, jogadores };
+    console.log(`Edgely ${saida.data}: ${jogadores.length} jogadores em ${Object.keys(jogos).length} jogos · ${mudou ? `MUDOU (${mudaram} jogadores)` : "sem mudança"}${pedidoNovo ? " (pedido da página)" : ""}`);
   } catch (e) {
     saida = { ...saida, tentativa: agora, erro: String(e.message || e) };
     console.error("Edgely:", saida.erro);

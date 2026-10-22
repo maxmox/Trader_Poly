@@ -15,6 +15,18 @@ const api = criarApi({ relay: process.env.RELAY || "", timeoutMs: 30000 });
 const DIAS = 30, MAX_ENTRADAS = 80, SLIP = 0.005;
 const agora = Date.now();
 
+// este cálculo leva ~6 min e segurava toda publicação (inclusive a das projeções da NBA): se o publicado tem menos
+// de 20 min, reaproveita (o placar e as entradas recentes ficam com no máximo ~30 min de atraso). FORCAR=1 recalcula.
+{
+  const SITE = process.env.SITE_URL || "https://maxmox.github.io/Trader_Poly";
+  const pub = await fetch(`${SITE}/data/desempenho.json?t=${agora}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (process.env.FORCAR !== "1" && pub?.geradoEm && agora - pub.geradoEm < 20 * 60e3 && pub.traders) {
+    await writeFile(new URL("data/desempenho.json", raiz), JSON.stringify(pub));
+    console.log(`Desempenho: reaproveitado o publicado (de ${Math.round((agora - pub.geradoEm) / 60e3)} min atrás)`);
+    process.exit(0);
+  }
+}
+
 const prefixos = await ler("data/prefixos.json");
 const indices = await ler("data/indices.json").catch(() => null);
 const listas = [
