@@ -39,7 +39,11 @@ let saida = antes || { data: null, buscadoEm: null, tentativa: null, final: true
 // antes de cada jogo: o Edgely às vezes atualiza a projeção durante o dia; com jogo começando em até 45 min e a
 // projeção com mais de 25 min, busca de novo (1 consulta por horário de início) para o registro de 30 min antes
 const jogoPerto = temHoje && Object.values(antes?.jogos || {}).some((j) => j.inicio && j.inicio > agora && j.inicio - agora <= 45 * 60e3);
-const buscar = process.env.FORCAR === "1" || (pedidoNovo && agora - tentativa > 10 * 60e3)
+// antes do registro das 12 h de Brasília: a projeção do dia é refeita durante a manhã (a preliminar diverge da final),
+// então às 11h30 de Brasília (14h30 UTC) busca de novo se a que temos é mais antiga
+const d = new Date(agora), corte12 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 14, 30);
+const antesDo12 = temHoje && agora >= corte12 && (antes?.buscadoEm || 0) < corte12 && agora - tentativa > 10 * 60e3;
+const buscar = process.env.FORCAR === "1" || antesDo12 || (pedidoNovo && agora - tentativa > 10 * 60e3)
   || (!temHoje && horaEt >= 9 && agora - tentativa > 3600e3)
   || (jogoPerto && agora - (antes?.buscadoEm || 0) > 25 * 60e3 && agora - tentativa > 10 * 60e3);
 
