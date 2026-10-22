@@ -695,6 +695,12 @@ function edgeProp(tipo, proj, linha, over, under) {
   return { dif: proj - linha, lado: ehOver ? "Over" : "Under", odd: ehOver ? over : under, chance: ehOver ? po : 1 - po,
     mercado: p == null ? null : ehOver ? p : 1 - p, ev: ehOver ? evO : evU };
 }
+// quanto 1 ponto de linha muda a chance do Over perto do meio (normal com o desvio típico de cada estatística:
+// pontos ~6, rebotes ~2,8, assistências ~2,3, cestas de 3 ~1,5, PRA ~8). Serve para comparar a chance em linhas diferentes.
+const POR_LINHA_PROPS = { points: 0.065, rebounds: 0.14, assists: 0.17, threes: 0.25, pra: 0.05 };
+// movimento EQUIVALENTE de uma prop desde a abertura, em chance do Over na linha de abertura (mudança de linha + de odd)
+const movimentoProp = (tipo, linhaAb, linha, pAb, p) =>
+  linhaAb == null || linha == null || p == null || pAb == null ? null : (linha - linhaAb) * POR_LINHA_PROPS[tipo] + (p - pAb);
 // nome para casar jogadores entre fontes (sem acento, sufixo nem pontuação)
 const nomeChave = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z]/g, "");
 // valor da estatística no box score da ESPN (summary → boxscore.players[].statistics[0]: keys + athletes[].stats)

@@ -7,18 +7,20 @@
 //      a linha e as odds Over/Under da DraftKings daquele momento. Jogador "Out" no Edgely fica de fora.
 //   1b) ~30 MIN ANTES de cada jogo, de novo, com a projeção e as linhas mais recentes (momento "30m"): pega a
 //      atualização do Edgely durante o dia e os jogadores que a casa abre mais tarde. O registro das 12 h fica como está.
+//   1c) ESTRATÉGIAS (22/10), ~10 min antes de cada jogo, com as odds daquele momento (campo momento = código da
+//      estratégia; mov = movimento equivalente desde a abertura): ver ESTRATEGIAS abaixo.
 //   2) RESULTADO: jogo encerrado (ESPN) → box score → green / red / devolvida (linha inteira, empate) / anulada
 //      (não jogou; a casa devolve). Jogo adiado ou cancelado → anulada.
 // Arquivos: data/apostas_edgely/indice.json { meses, registrados: [dias], em } e data/apostas_edgely/AAAA-MM.json
 //   { campos, jogos: {idEspn: {dia, titulo, inicio, fim}}, nomes: {idAtleta: nome}, apostas: [[...campos]] }
 // Local: node scripts/apostas_edgely.mjs   (REGISTRAR=1 registra fora do horário; SAIDA=<pasta> grava em outro lugar)
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { buscarDk, edgeProp, nomeChave, estatisticaBox } from "../js/core.js";
+import { buscarDk, edgeProp, nomeChave, estatisticaBox, movimentoProp } from "../js/core.js";
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 const raiz = new URL("../", import.meta.url);
 const DIR = process.env.SAIDA ? new URL(`file:///${process.env.SAIDA.replace(/\\/g, "/").replace(/\/?$/, "/")}`) : new URL("data/apostas_edgely/", raiz);
-export const CAMPOS = ["jogo", "atleta", "tipo", "linha", "over", "under", "lado", "proj", "min", "valor", "final", "em", "res", "real", "momento"];
+export const CAMPOS = ["jogo", "atleta", "tipo", "linha", "over", "under", "lado", "proj", "min", "valor", "final", "em", "res", "real", "momento", "mov"];
 const C = Object.fromEntries(CAMPOS.map((k, i) => [k, i]));
 const getJson = async (u) => {
   const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } });
@@ -39,13 +41,18 @@ const hojeEt = new Date(agora).toLocaleDateString("en-CA", { timeZone: "America/
 
 // registra as apostas de um jogo (momento "12h" = registro diário; "30m" = ~30 min antes do jogo, com a projeção e
 // as linhas mais recentes, inclusive jogadores que a casa abriu depois)
-async function registrarJogo(ev, M, projs, edgely, momento) {
+// props da DraftKings do jogo + nomes dos atletas (elencos da ESPN); cria o jogo no arquivo do mês se faltar
+async function lerJogo(ev, M) {
   const c = ev.competitions[0];
   const times = c.competitors.map((t) => t.team);
   const [dk, ...elencos] = await Promise.all([buscarDk(getJson, ev.id), ...times.map((t) => getJson(`${ESPN}/teams/${t.id}/roster`).catch(() => null))]);
   const nomes = Object.fromEntries(elencos.flatMap((r) => (r?.athletes || []).map((a) => [a.id, a.displayName])));
   const fora = c.competitors.find((t) => t.homeAway === "away")?.team, casa = c.competitors.find((t) => t.homeAway === "home")?.team;
   M.jogos[ev.id] ||= { dia: hojeEt, titulo: `${fora?.abbreviation} @ ${casa?.abbreviation}`, inicio: Date.parse(ev.date), fim: false };
+  return { dk, nomes };
+}
+async function registrarJogo(ev, M, projs, edgely, momento) {
+  const { dk, nomes } = await lerJogo(ev, M);
   // retrato das projeções do jogo neste momento (para o arquivo do mercado): nome -> [pts, reb, ast, 3PM, PRA, min]
   M.jogos[ev.id][momento === "12h" ? "p12" : "p30"] = Object.fromEntries((edgely.jogadores || []).filter((p) => p.ev === ev.id)
     .map((p) => [nomeChave(p.nome), ["points", "rebounds", "assists", "threes", "pra", "min"].map((k) => p.proj?.[k] ?? null)]));
@@ -59,11 +66,13 @@ async function registrarJogo(ev, M, projs, edgely, momento) {
     if (!e || !(e.ev > 0)) continue;
     M.nomes[p.atleta] = nome;
     M.apostas.push([ev.id, p.atleta, p.tipo, p.linha, p.over, p.under, e.lado === "Over" ? "O" : "U", proj, pe.proj?.min ?? null,
-      Math.round(e.ev * 1000) / 1000, edgely.final ? 1 : 0, Math.floor(agora / 1000), null, null, momento]);
+      Math.round(e.ev * 1000) / 1000, edgely.final ? 1 : 0, Math.floor(agora / 1000), null, null, momento,
+      arred(movimentoProp(p.tipo, p.linhaAb, p.linha, p.pAb, p.p))]);
     novas++;
   }
   return novas;
 }
+const arred = (v) => (v == null ? null : Math.round(v * 1000) / 1000);
 const projecoesDe = (edgely) => new Map((edgely?.jogadores || []).filter((p) => p.ev).map((p) => [`${p.ev}|${nomeChave(p.nome)}`, p]));
 
 // ---------- 1) registro ----------
@@ -106,6 +115,59 @@ if ((horaUtc >= 15 || process.env.REGISTRAR === "1") && !indice.registrados.incl
         console.log(`Apostas 30 min antes: ${ev.shortName}: ${n} registradas (projeção do Edgely de ${new Date(edgely.buscadoEm).toISOString().slice(11, 16)} UTC)`);
       } catch (e) { console.error(`Apostas 30 min: ${ev.shortName}: ${e.message || e}`); }
     }
+  }
+}
+
+// ---------- 1c) ESTRATÉGIAS, ~10 min antes de cada jogo ----------
+// Hipóteses da 1ª análise (21/10, 1 noite: ver CLAUDE.md), registradas para acompanhar o resultado real. "Movimento" =
+// movimentoProp (mudança de linha + de odd desde a abertura, em chance do Over); "andou" = |movimento| ≥ 3 pp.
+// A projeção é a mais recente do Edgely (scripts/edgely.mjs rebusca antes dos jogos), comparada com a linha de ABERTURA.
+export const ESTRATEGIAS = {
+  mov: "Seguir o movimento da linha",            // andou → lado do movimento (sem projeção)
+  conf: "Projeção confirmada pela linha",        // projeção apontava um lado e a linha andou para ele → esse lado
+  contra: "Linha contra a projeção: lado da linha", // projeção apontava um lado e a linha andou para o outro → lado da linha
+  mudou: "Projeção mudou e a linha acompanhou",  // projeção mudou ≥ 0,5 desde as 12 h e a linha andou no mesmo sentido
+  under: "Controle: Under em tudo",              // régua: separa o efeito da estratégia de uma noite de Under
+};
+const ANDOU = 0.03, IDX_P = { points: 0, rebounds: 1, assists: 2, threes: 3, pra: 4 };
+{
+  const janela = +(process.env.JANELA_EST_MIN || 15) * 60e3;
+  const edgely = await lerJson(new URL("data/edgely.json", raiz), null);
+  const evs = ((await getJson(`${ESPN}/scoreboard?dates=${hojeEt.replaceAll("-", "")}`).catch(() => ({}))).events || [])
+    .filter((e) => e.status?.type?.state === "pre" && Date.parse(e.date) > agora && Date.parse(e.date) - agora <= janela);
+  const M = await mes(hojeEt.slice(0, 7)), projs = projecoesDe(edgely?.data === hojeEt ? edgely : null);
+  for (const ev of evs) {
+    if (M.jogos[ev.id]?.regE) continue;
+    try {
+      const { dk, nomes } = await lerJogo(ev, M);
+      const j = M.jogos[ev.id], conta = {};
+      for (const p of Object.values(dk.props)) {
+        const nome = nomes[p.atleta], chave = nome && nomeChave(nome);
+        const pe = chave && projs.get(`${ev.id}|${chave}`);
+        if (pe?.lesao === "Out" || !p.over || !p.under) continue;
+        const mov = movimentoProp(p.tipo, p.linhaAb, p.linha, p.pAb, p.p);
+        const ladoMov = mov == null ? null : mov >= ANDOU ? "O" : mov <= -ANDOU ? "U" : null;
+        const proj = pe?.proj?.[p.tipo] ?? null, proj12 = j.p12?.[chave]?.[IDX_P[p.tipo]] ?? null;
+        const dirProj = proj == null || p.linhaAb == null || proj === p.linhaAb ? null : proj > p.linhaAb ? "O" : "U";
+        // valor esperado do lado escolhido pela projeção (só informativo; null sem projeção)
+        const e = proj == null ? null : edgeProp(p.tipo, proj, p.linha, p.over, p.under);
+        const pOver = e ? (e.lado === "Over" ? e.chance : 1 - e.chance) : null;
+        const reg = (est, lado) => {
+          M.nomes[p.atleta] = nome || M.nomes[p.atleta] || null;
+          M.apostas.push([ev.id, p.atleta, p.tipo, p.linha, p.over, p.under, lado, proj, pe?.proj?.min ?? null,
+            pOver == null ? null : arred(lado === "O" ? pOver * p.over - 1 : (1 - pOver) * p.under - 1),
+            1, Math.floor(agora / 1000), null, null, est, arred(mov)]);
+          conta[est] = (conta[est] || 0) + 1;
+        };
+        if (ladoMov) reg("mov", ladoMov);
+        if (ladoMov && dirProj) reg(ladoMov === dirProj ? "conf" : "contra", ladoMov);
+        if (ladoMov && proj != null && proj12 != null && Math.abs(proj - proj12) >= 0.5 && (proj > proj12 ? "O" : "U") === ladoMov) reg("mudou", ladoMov);
+        reg("under", "U");
+      }
+      j.regE = Math.floor(agora / 1000);
+      mudou.add(hojeEt.slice(0, 7));
+      console.log(`Estratégias: ${ev.shortName}: ${Object.entries(conta).map(([k, n]) => `${k} ${n}`).join(", ") || "nada"}`);
+    } catch (e) { console.error(`Estratégias: ${ev.shortName}: ${e.message || e}`); }
   }
 }
 

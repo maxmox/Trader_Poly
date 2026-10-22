@@ -4,14 +4,12 @@
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
 // Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
-import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave } from "./core.js";
+import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 
 const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA (pts+reb+ast)" };
-// quanto 1 ponto de linha muda a chance do Over perto do meio (normal com o desvio típico de cada estatística:
-// pontos ~6, rebotes ~2,8, assistências ~2,3, cestas de 3 ~1,5, PRA ~8). Serve para comparar a chance em linhas diferentes.
-const POR_LINHA = { points: 0.065, rebounds: 0.14, assists: 0.17, threes: 0.25, pra: 0.05 };
+const POR_LINHA = POR_LINHA_PROPS; // core.js: quanto 1 ponto de linha vale em chance do Over
 const REFRESCO = 5 * 60_000;
 const JANELA = { "24h": 24 * 3600, "3h": 3 * 3600 };
 const CHAVE = "props-filtros";

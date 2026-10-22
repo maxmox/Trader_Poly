@@ -1,12 +1,22 @@
-// Aba "Acompanhamento" de props.html: as apostas registradas todo dia às 12 h de Brasília pelo lado de maior valor
-// esperado da projeção do Edgely contra a DraftKings (scripts/apostas_edgely.mjs) e o resultado de cada uma.
+// Aba "Acompanhamento" de props.html: as apostas registradas por scripts/apostas_edgely.mjs e o resultado de cada uma:
+// o lado de maior valor esperado pela projeção do Edgely (12 h de Brasília e ~30 min antes do jogo) e as ESTRATÉGIAS
+// de mercado (~10 min antes: seguir o movimento da linha, projeção confirmada/contrariada, controle Under).
 // Stake fixo de 1 unidade; devolvida conta como aposta com lucro 0, anulada (não jogou) fica fora.
 // Intervalo de 95% do ROI por bootstrap por JOGO inteiro (as props do mesmo jogo andam juntas).
 import { esc, hora } from "./formato.js";
 import { nomeChave } from "./core.js";
 
 const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA" };
-const MOMENTOS = { "12h": "12 h de Brasília", "30m": "~30 min antes do jogo" };
+// registro/estratégia (campo momento): [nome, rótulo curto da lista]
+const MOMENTOS = {
+  mov: ["Seguir o movimento da linha (≥ 3 pp)", "seguir movimento"],
+  conf: ["Projeção confirmada pela linha", "proj. confirmada"],
+  contra: ["Linha contra a projeção: lado da linha", "linha × projeção"],
+  mudou: ["Projeção mudou e a linha acompanhou", "proj. mudou"],
+  under: ["Controle: Under em tudo", "controle Under"],
+  "12h": ["Edgely, registro das 12 h", "Edgely 12 h"],
+  "30m": ["Edgely, ~30 min antes do jogo", "Edgely 30 min"],
+};
 const RES = { G: ["green", "Green"], R: ["red", "Red"], P: ["push", "Devolvida"], A: ["anulada", "Anulada"] };
 let dados = null, erro = null, lidoEm = 0;
 
@@ -26,7 +36,7 @@ export async function carregarAcomp() {
         apostas.push({
           jogo: a[C.jogo], dia: j.dia, titulo: j.titulo || "", inicio: j.inicio, nome: M.nomes[a[C.atleta]] || `atleta ${a[C.atleta]}`,
           tipo: a[C.tipo], linha: a[C.linha], over: a[C.over], under: a[C.under], lado: a[C.lado] === "O" ? "Over" : "Under",
-          odd: a[C.lado] === "O" ? a[C.over] : a[C.under], proj: a[C.proj], min: a[C.min], valor: a[C.valor], final: !!a[C.final], res: a[C.res], real: a[C.real], momento: a[C.momento] || "12h",
+          odd: a[C.lado] === "O" ? a[C.over] : a[C.under], proj: a[C.proj], min: a[C.min], valor: a[C.valor], final: !!a[C.final], res: a[C.res], real: a[C.real], momento: a[C.momento] || "12h", mov: C.mov == null ? null : a[C.mov],
         });
       }
     }
@@ -40,7 +50,7 @@ export async function carregarAcomp() {
 export const acompVelho = () => Date.now() - lidoEm > 5 * 60e3;
 
 const lucroDe = (a) => (a.res === "G" ? a.odd - 1 : a.res === "R" ? -1 : 0);
-const num = (v, c = 1) => v.toFixed(c).replace(".", ",");
+const num = (v, c = 1) => (v == null ? "–" : v.toFixed(c).replace(".", ","));
 const sinal = (v, c = 1) => `${v >= 0 ? "+" : "−"}${num(Math.abs(v), c)}`;
 
 // resumo de um grupo de apostas resolvidas (sem as anuladas)
@@ -69,7 +79,8 @@ function intervalo(v) {
 const roiTxt = (s) => (s.roi == null ? "–" : `${sinal(100 * s.roi)}%`);
 function linhaGrupo(rot, L) {
   const s = resumo(L), ic = intervalo(s.v);
-  return `<tr><td>${rot}</td><td class="n">${s.n}</td><td class="n">${s.g}–${s.r}</td><td class="n">${s.acerto == null ? "–" : `${Math.round(100 * s.acerto)}%`}</td>
+  const pend = L.filter((a) => !a.res).length;
+  return `<tr><td>${rot}</td><td class="n">${s.n}${pend ? `<small>+${pend} pendentes</small>` : ""}</td><td class="n">${s.g}–${s.r}</td><td class="n">${s.acerto == null ? "–" : `${Math.round(100 * s.acerto)}%`}</td>
     <td class="n">${s.oddMedia == null ? "–" : num(s.oddMedia, 2)}</td><td class="n">${s.n ? sinal(s.lucro) : "–"}</td>
     <td class="n"><b>${roiTxt(s)}</b>${ic ? `<small>${sinal(100 * ic[0], 0)}% a ${sinal(100 * ic[1], 0)}%</small>` : ""}</td></tr>`;
 }
@@ -82,9 +93,13 @@ export function renderAcomp(el, f) {
   if (erro) { el.innerHTML = `<div class="banner"><b>Não consegui ler o acompanhamento.</b><span>${esc(erro.message || erro)}</span></div>`; return; }
   if (!dados) { el.innerHTML = `<p class="muted">Carregando…</p>`; return; }
   const busca = nomeChave(f.busca), min = f.ev === "" ? -Infinity : +f.ev;
-  const L = dados.apostas.filter((a) => (!f.tipo || a.tipo === f.tipo) && (!busca || nomeChave(a.nome).includes(busca)) && a.valor >= min && (!f.mom || a.momento === f.mom));
+  const L0 = dados.apostas.filter((a) => (!f.tipo || a.tipo === f.tipo) && (!busca || nomeChave(a.nome).includes(busca)) && (f.ev === "" || (a.valor != null && a.valor >= min)));
+  const L = L0.filter((a) => !f.mom || a.momento === f.mom);
+  // placar de todas as estratégias e registros lado a lado (ignora o filtro "Registro")
+  const placar = `<section class="panel"><h2>Placar das estratégias</h2>${tabelaGrupos("Estratégia / registro", Object.entries(MOMENTOS).map(([k, [r]]) => [r, L0.filter((a) => a.momento === k)]))}
+    <p class="muted">Estratégias registradas ~10 min antes de cada jogo, com as odds daquele momento: hipóteses da 1ª noite (21/10), acompanhadas para confirmar ou descartar. "Andou" = a linha mudou o equivalente a ≥ 3 pp de chance desde a abertura (linha + odd). O controle (Under em tudo) mostra se a noite favoreceu o Under. Escolha uma no filtro "Registro" para ver os recortes dela.</p></section>`;
   if (!L.length) {
-    el.innerHTML = `<div class="vazio"><b>${dados.apostas.length ? "Nenhuma aposta com esses filtros." : "Ainda não há apostas registradas: o 1º registro é hoje às 12 h de Brasília (jogos que ainda não começaram)."}</b></div>`;
+    el.innerHTML = placar + `<div class="vazio"><b>${dados.apostas.length ? "Nenhuma aposta com esses filtros." : "Ainda não há apostas registradas: o 1º registro é hoje às 12 h de Brasília (jogos que ainda não começaram)."}</b></div>`;
     return;
   }
   const s = resumo(L), ic = intervalo(s.v), pend = L.filter((a) => !a.res).length, anul = L.filter((a) => a.res === "A").length;
@@ -98,29 +113,30 @@ export function renderAcomp(el, f) {
   const faixas = [["0 a 5%", 0, 0.05], ["5 a 10%", 0.05, 0.10], ["10 a 20%", 0.10, 0.20], ["20 a 40%", 0.20, 0.40], ["40% ou mais", 0.40, Infinity]];
   const difs = [["até 1", 0, 1], ["1 a 2", 1, 2], ["2 a 4", 2, 4], ["4 ou mais", 4, Infinity]];
   const grupos = [
-    tabelaGrupos("Momento do registro", Object.entries(MOMENTOS).map(([k, r]) => [r, L.filter((a) => a.momento === k)])),
+    tabelaGrupos("Linha até o registro", [["andou a favor da aposta (≥ 3 pp)", L.filter((a) => a.mov != null && (a.lado === "Over" ? a.mov : -a.mov) >= 0.03)],
+      ["parada (< 3 pp)", L.filter((a) => a.mov != null && Math.abs(a.mov) < 0.03)], ["andou contra a aposta (≥ 3 pp)", L.filter((a) => a.mov != null && (a.lado === "Over" ? a.mov : -a.mov) <= -0.03)]]),
     tabelaGrupos("Estatística", Object.entries(TIPOS).map(([k, r]) => [r, L.filter((a) => a.tipo === k)])),
     tabelaGrupos("Lado", [["Over", L.filter((a) => a.lado === "Over")], ["Under", L.filter((a) => a.lado === "Under")]]),
-    tabelaGrupos("Valor esperado no registro", faixas.map(([r, a, b]) => [r, L.filter((x) => x.valor >= a && x.valor < b)])),
-    tabelaGrupos("|Projeção − linha|", difs.map(([r, a, b]) => [r, L.filter((x) => Math.abs(x.proj - x.linha) >= a && Math.abs(x.proj - x.linha) < b)])),
+    tabelaGrupos("Valor esperado no registro", faixas.map(([r, a, b]) => [r, L.filter((x) => x.valor != null && x.valor >= a && x.valor < b)])),
+    tabelaGrupos("|Projeção − linha|", difs.map(([r, a, b]) => [r, L.filter((x) => x.proj != null && Math.abs(x.proj - x.linha) >= a && Math.abs(x.proj - x.linha) < b)])),
   ].join("");
 
   // por dia, do mais recente; o dia mais recente aberto
   const dias = [...new Set(L.map((a) => a.dia))].sort().reverse();
   const porDia = dias.map((d, i) => {
-    const D = L.filter((a) => a.dia === d).sort((a, b) => a.inicio - b.inicio || a.titulo.localeCompare(b.titulo) || a.momento.localeCompare(b.momento) || b.valor - a.valor);
+    const D = L.filter((a) => a.dia === d).sort((a, b) => a.inicio - b.inicio || a.titulo.localeCompare(b.titulo) || a.momento.localeCompare(b.momento) || (b.valor ?? 0) - (a.valor ?? 0));
     const sd = resumo(D);
     return `<details class="acomp-dia"${i === 0 ? " open" : ""}><summary><b>${d.split("-").reverse().join("/")}</b> · ${D.length} apostas · ${sd.g}–${sd.r}${sd.n ? ` · ${sinal(sd.lucro)} u (${roiTxt(sd)})` : ""}${D.some((a) => !a.res) ? ` · ${D.filter((a) => !a.res).length} pendentes` : ""}</summary>
       <div class="tbl-wrap"><table class="props-tab acomp-tab"><thead><tr><th>Jogo</th><th>Jogador</th><th>Estatística</th><th class="n">Projeção</th><th class="n">Aposta</th><th class="n">Odds O / U</th><th class="n">Valor esperado</th><th>Registro</th><th class="n">Resultado</th></tr></thead><tbody>
       ${D.map((a) => `<tr><td>${esc(a.titulo)}<small>${a.inicio ? hora(a.inicio) : ""}</small></td><td><b>${esc(a.nome)}</b></td><td>${TIPOS[a.tipo] || a.tipo}</td>
         <td class="n">${num(a.proj)}${a.min != null ? `<small>${num(a.min)} min</small>` : ""}</td>
         <td class="n"><b>${a.lado} ${String(a.linha).replace(".", ",")}</b> @ ${num(a.odd, 2)}</td><td class="n">${num(a.over, 2)} / ${num(a.under, 2)}</td>
-        <td class="n">${sinal(100 * a.valor)}%</td><td>${a.momento === "30m" ? "30 min antes" : "12 h"}</td>
+        <td class="n">${a.valor == null ? "–" : `${sinal(100 * a.valor)}%`}</td><td>${MOMENTOS[a.momento]?.[1] || a.momento}${a.mov != null ? `<small>linha ${sinal(100 * a.mov)} pp</small>` : ""}</td>
         <td class="n">${a.res ? `<span class="res ${RES[a.res][0]}">${RES[a.res][1]}</span>${a.real != null ? `<small>fez ${String(a.real).replace(".", ",")}</small>` : ""}` : `<span class="muted">pendente</span>`}</td></tr>`).join("")}
       </tbody></table></div></details>`;
   }).join("");
 
-  el.innerHTML = `<section class="panel"><h2>Resultado</h2><div class="tiles">${tiles}</div>${grupos}
+  el.innerHTML = placar + `<section class="panel"><h2>${f.mom ? esc(MOMENTOS[f.mom]?.[0] || f.mom) : "Tudo junto"}</h2>${f.mom ? "" : `<p class="muted">Tudo junto mistura estratégias (a mesma prop pode entrar em várias): para avaliar, escolha uma no filtro "Registro".</p>`}<div class="tiles">${tiles}</div>${grupos}
       <p class="muted">Intervalo de 95% por sorteio de jogos inteiros (as props do mesmo jogo não são independentes). Com poucas semanas ele é largo: só confie num lado quando o intervalo inteiro ficar acima de zero.</p></section>
     <section class="panel"><h2>Apostas por dia</h2>${porDia}</section>`;
 }
