@@ -319,3 +319,7 @@ table.estreita { min-width: 0; max-width: 560px; }
 .filtros-hoje td.chips { display: table-cell; }
 .filtros-hoje .chip { display: inline-block; margin: 1px 0; }
 .chip.ruim { background: var(--bad-bg); color: var(--bad); }
+/* linha que apareceu nas últimas 2 h */
+.props-tab tr.nova td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.props-tab tr.nova td { background: var(--warn-bg); }
+.tag-nova { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--warn); color: var(--panel); white-space: nowrap; }

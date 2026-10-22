@@ -9,12 +9,14 @@
 // Cada consulta é comparada com a anterior: "mudouEm" = quando o Edgely mudou a projeção pela última vez e "versoes" =
 // histórico do dia ({em, mudaram}).
 // Nunca duas consultas com menos de 10 min. Uma consulta = /api/nba/players/tonight/full (todos os jogadores do dia).
-// Grava data/edgely.json: { data, buscadoEm, mudouEm, versoes, tentativa, final, erro, jogos: {idEspn: {fora, casa, inicio}}, jogadores }.
+// Grava data/edgely.json: { data, buscadoEm, mudouEm, versoes, tentativa, final, erro, jogos: {idEspn: {fora, casa, inicio, proj}}, jogadores }.
 // Local: node scripts/edgely.mjs   (FORCAR=1 ignora as regras acima)
 import { readFile, writeFile } from "node:fs/promises";
+import { projecaoJogoEdgely } from "../js/core.js";
 
 const SITE = process.env.SITE_URL || "https://maxmox.github.io/Trader_Poly";
 const FONTE = "https://edgely.bet/api/nba/players/tonight/full";
+const JOGOS = "https://edgely.bet/api/nba/games/today"; // estatísticas avançadas dos times (projeção do jogo), ~12 KB
 const raiz = new URL("../", import.meta.url);
 const arquivo = new URL("data/edgely.json", raiz);
 const getJson = async (u, h = {}) => {
@@ -48,22 +50,30 @@ const buscar = process.env.FORCAR === "1" || (pedidoNovo && agora - tentativa > 
 if (buscar) {
   try {
     const d = await getJson(FONTE, { Referer: "https://edgely.bet/nba/" });
+    const gt = await getJson(JOGOS, { Referer: "https://edgely.bet/nba/" }).catch(() => null);
+    const adv = Object.fromEntries((gt?.games || []).map((g) => [g.espn_event_id, g]));
     const jogos = {}, timeEv = {};
     for (const g of d.games || []) {
       if (!g.espn_event_id) continue;
-      jogos[g.espn_event_id] = { fora: g.away_team?.code, casa: g.home_team?.code, inicio: Date.parse(g.game_time_est) || null };
+      const a = adv[g.espn_event_id];
+      jogos[g.espn_event_id] = { fora: g.away_team?.code, casa: g.home_team?.code, inicio: Date.parse(g.game_time_est) || null,
+        proj: projecaoJogoEdgely(a?.home_team?.advanced, a?.away_team?.advanced) };
       timeEv[g.away_team?.code] = timeEv[g.home_team?.code] = g.espn_event_id;
     }
     const n = (v) => (typeof v === "number" ? v : null);
+    const soma = (...v) => (v.every((x) => x != null) ? Math.round(v.reduce((t, x) => t + x, 0) * 10) / 10 : null);
+    // combinações (P+A, P+R, R+A, roubos + tocos) = soma das projeções do Edgely
+    const proj = (q) => { const o = { points: n(q.points), rebounds: n(q.rebounds), assists: n(q.assists), threes: n(q.three_pointers_made), pra: n(q.pra),
+      min: n(q.minutes), steals: n(q.steals), blocks: n(q.blocks) };
+      return { ...o, pa: soma(o.points, o.assists), pr: soma(o.points, o.rebounds), ra: soma(o.rebounds, o.assists), stocks: soma(o.steals, o.blocks) }; };
     const jogadores = (d.players || []).filter((p) => p.projections).map((p) => ({
       nome: p.name, time: p.team, ev: timeEv[p.team] || null, pos: p.position || "", lesao: p.injury_status || null,
-      proj: { points: n(p.projections.points), rebounds: n(p.projections.rebounds), assists: n(p.projections.assists),
-        threes: n(p.projections.three_pointers_made), pra: n(p.projections.pra), min: n(p.projections.minutes) },
+      proj: proj(p.projections),
     }));
     // mudou desde a consulta anterior? (mesmo dia: compara jogador a jogador; dia novo conta como mudança)
     const mesmoDia = antes?.data === d.date;
     const ant = new Map((mesmoDia ? antes.jogadores : []).map((p) => [`${p.time}|${p.nome}`, p]));
-    const mudaram = jogadores.filter((p) => { const a = ant.get(`${p.time}|${p.nome}`); return !a || Object.keys(p.proj).some((k) => Math.abs((p.proj[k] ?? 0) - (a.proj[k] ?? 0)) > 0.05) || p.lesao !== a.lesao; }).length;
+    const mudaram = jogadores.filter((p) => { const a = ant.get(`${p.time}|${p.nome}`); return !a || Object.keys(p.proj).some((k) => k in a.proj && Math.abs((p.proj[k] ?? 0) - (a.proj[k] ?? 0)) > 0.05) || p.lesao !== a.lesao; }).length;
     const mudou = !mesmoDia || mudaram > 0;
     // arquivo antigo sem histórico: a versão anterior vale desde a busca dela
     const anteriores = mesmoDia ? antes.versoes?.length ? antes.versoes : [{ em: antes.buscadoEm, mudaram: null }] : [];

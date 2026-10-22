@@ -4,9 +4,10 @@
 // Stake fixo de 1 unidade; devolvida conta como aposta com lucro 0, anulada (não jogou) fica fora.
 // Intervalo de 95% do ROI por bootstrap por JOGO inteiro (as props do mesmo jogo andam juntas).
 import { esc, hora } from "./formato.js";
-import { nomeChave } from "./core.js";
+import { nomeChave, TIPOS_PROP, MERCADOS_JOGO } from "./core.js";
 
-const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA" };
+// props + mercados do jogo ("jogo-<k>": lado "O" = Over ou visitante, "U" = Under ou mandante)
+const TIPOS = { ...TIPOS_PROP, ...Object.fromEntries(Object.entries(MERCADOS_JOGO).map(([k, m]) => [`jogo-${k}`, m.nome])) };
 // registro/estratégia (campo momento): [nome, rótulo curto da lista]
 const MOMENTOS = {
   mov: ["Seguir o movimento da linha (≥ 3 pp)", "seguir movimento"],
@@ -19,6 +20,14 @@ const MOMENTOS = {
 };
 const RES = { G: ["green", "Green"], R: ["red", "Red"], P: ["push", "Devolvida"], A: ["anulada", "Anulada"] };
 let dados = null, erro = null, lidoEm = 0;
+
+// lado como texto: Over/Under; no handicap e no vencedor, a sigla do time (título "VIS @ MAN")
+function ladoTxt(tipo, lado, titulo) {
+  if (tipo === "jogo-spread" || tipo === "jogo-ml") { const [fora, casa] = String(titulo || "").split(" @ "); return (lado === "O" ? fora : casa) || lado; }
+  return lado === "O" ? "Over" : "Under";
+}
+// texto da linha apostada: handicap do mandante = −linha do visitante; vencedor não tem linha
+const linhaTxt = (a) => (a.tipo === "jogo-ml" ? "" : ` ${String(a.tipo === "jogo-spread" && !a.ladoA ? -a.linha : a.linha).replace(".", ",")}`);
 
 // todas as apostas de todos os meses, como objetos
 export async function carregarAcomp() {
@@ -34,8 +43,8 @@ export async function carregarAcomp() {
       for (const a of M.apostas) {
         const j = M.jogos[a[C.jogo]] || {};
         apostas.push({
-          jogo: a[C.jogo], dia: j.dia, titulo: j.titulo || "", inicio: j.inicio, nome: M.nomes[a[C.atleta]] || `atleta ${a[C.atleta]}`,
-          tipo: a[C.tipo], linha: a[C.linha], over: a[C.over], under: a[C.under], lado: a[C.lado] === "O" ? "Over" : "Under",
+          jogo: a[C.jogo], dia: j.dia, titulo: j.titulo || "", inicio: j.inicio, nome: a[C.atleta] === "jogo" ? MERCADOS_JOGO[a[C.tipo].slice(5)]?.nome || a[C.tipo] : M.nomes[a[C.atleta]] || `atleta ${a[C.atleta]}`,
+          tipo: a[C.tipo], linha: a[C.linha], over: a[C.over], under: a[C.under], lado: ladoTxt(a[C.tipo], a[C.lado], j.titulo), ladoA: a[C.lado] === "O",
           odd: a[C.lado] === "O" ? a[C.over] : a[C.under], proj: a[C.proj], min: a[C.min], valor: a[C.valor], final: !!a[C.final], res: a[C.res], real: a[C.real], momento: a[C.momento] || "12h", mov: C.mov == null ? null : a[C.mov],
         });
       }
@@ -114,8 +123,8 @@ export function renderAcomp(el, f) {
   const faixas = [["0 a 5%", 0, 0.05], ["5 a 10%", 0.05, 0.10], ["10 a 20%", 0.10, 0.20], ["20 a 40%", 0.20, 0.40], ["40% ou mais", 0.40, Infinity]];
   const difs = [["até 1", 0, 1], ["1 a 2", 1, 2], ["2 a 4", 2, 4], ["4 ou mais", 4, Infinity]];
   const grupos = [
-    tabelaGrupos("Linha até o registro", [["andou a favor da aposta (≥ 3 pp)", L.filter((a) => a.mov != null && (a.lado === "Over" ? a.mov : -a.mov) >= 0.03)],
-      ["parada (< 3 pp)", L.filter((a) => a.mov != null && Math.abs(a.mov) < 0.03)], ["andou contra a aposta (≥ 3 pp)", L.filter((a) => a.mov != null && (a.lado === "Over" ? a.mov : -a.mov) <= -0.03)]]),
+    tabelaGrupos("Linha até o registro", [["andou a favor da aposta (≥ 3 pp)", L.filter((a) => a.mov != null && (a.ladoA ? a.mov : -a.mov) >= 0.03)],
+      ["parada (< 3 pp)", L.filter((a) => a.mov != null && Math.abs(a.mov) < 0.03)], ["andou contra a aposta (≥ 3 pp)", L.filter((a) => a.mov != null && (a.ladoA ? a.mov : -a.mov) <= -0.03)]]),
     tabelaGrupos("Estatística", Object.entries(TIPOS).map(([k, r]) => [r, L.filter((a) => a.tipo === k)])),
     tabelaGrupos("Lado", [["Over", L.filter((a) => a.lado === "Over")], ["Under", L.filter((a) => a.lado === "Under")]]),
     tabelaGrupos("Valor esperado no registro", faixas.map(([r, a, b]) => [r, L.filter((x) => x.valor != null && x.valor >= a && x.valor < b)])),
@@ -131,7 +140,7 @@ export function renderAcomp(el, f) {
       <div class="tbl-wrap"><table class="props-tab acomp-tab"><thead><tr><th>Jogo</th><th>Jogador</th><th>Estatística</th><th class="n">Projeção</th><th class="n">Aposta</th><th class="n">Odds O / U</th><th class="n">Valor esperado</th><th>Registro</th><th class="n">Resultado</th></tr></thead><tbody>
       ${D.map((a) => `<tr><td>${esc(a.titulo)}<small>${a.inicio ? hora(a.inicio) : ""}</small></td><td><b>${esc(a.nome)}</b></td><td>${TIPOS[a.tipo] || a.tipo}</td>
         <td class="n">${num(a.proj)}${a.min != null ? `<small>${num(a.min)} min</small>` : ""}</td>
-        <td class="n"><b>${a.lado} ${String(a.linha).replace(".", ",")}</b> @ ${num(a.odd, 2)}</td><td class="n">${num(a.over, 2)} / ${num(a.under, 2)}</td>
+        <td class="n"><b>${esc(a.lado)}${linhaTxt(a)}</b> @ ${num(a.odd, 2)}</td><td class="n">${num(a.over, 2)} / ${num(a.under, 2)}</td>
         <td class="n">${a.valor == null ? "–" : `${sinal(100 * a.valor)}%`}</td><td>${MOMENTOS[a.momento]?.[1] || a.momento}${a.mov != null ? `<small>linha ${sinal(100 * a.mov)} pp</small>` : ""}</td>
         <td class="n">${a.res ? `<span class="res ${RES[a.res][0]}">${RES[a.res][1]}</span>${a.real != null ? `<small>fez ${String(a.real).replace(".", ",")}</small>` : ""}` : `<span class="muted">pendente</span>`}</td></tr>`).join("")}
       </tbody></table></div></details>`;

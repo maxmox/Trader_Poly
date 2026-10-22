@@ -574,7 +574,17 @@ const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/basketball/leagues
 const PROPS_DK = {
   "Total Points": "points", "Total Rebounds": "rebounds", "Total Assists": "assists",
   "Total 3-Point Field Goals": "threes", "Total Points, Rebounds, and Assists": "pra",
+  // 22/10/2026: os outros mercados com projeção no Edgely (roubos e tocos direto; combinações somadas)
+  "Total Steals": "steals", "Total Blocks": "blocks", "Total Points and Assists": "pa", "Total Points and Rebounds": "pr",
+  "Total Assists and Rebounds": "ra", "Total Steals and Blocks": "stocks",
 };
+// estatísticas das props: nome curto
+const TIPOS_PROP = {
+  points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA", steals: "Roubos", blocks: "Tocos",
+  pa: "Pontos + assist.", pr: "Pontos + rebotes", ra: "Rebotes + assist.", stocks: "Roubos + tocos",
+};
+// ordem fixa do retrato das projeções p12/p30 (as 6 primeiras posições são as antigas: arquivos de 21–22/10 continuam valendo)
+const ORDEM_PROJ = ["points", "rebounds", "assists", "threes", "pra", "min", "steals", "blocks", "pa", "pr", "ra", "stocks"];
 // datas (AAAAMMDD, horário de Nova York, que é o dia do jogo para a ESPN) de hoje e de amanhã
 const datasNba = (agoraMs = Date.now()) => [0, 1].map((d) => new Date(agoraMs + d * 864e5).toLocaleDateString("en-CA", { timeZone: "America/New_York" }).replaceAll("-", ""));
 // chance do Over sem a margem da casa, a partir das duas odds decimais
@@ -691,15 +701,18 @@ const nomeAtletaEspn = (getJson, id) => getJson(`${ESPN_CORE}/athletes/${id}?lan
 // PROJEÇÃO × LINHA (aba Edge e acompanhamento das apostas do Edgely, 21/10/2026)
 // chance do Over pela projeção (aproximação ainda não calibrada com resultados): pontos e PRA ~ normal com desvio
 // 1,4·√projeção (25 pts → ~7, 10 → ~4,4); rebotes, assistências e cestas de 3 ~ binomial negativa com variância
-// 1,25 × a média (contagem: Over 6,5 = 7 ou mais; linha inteira devolve no empate).
+// 1,25 × a média (contagem: Over 6,5 = 7 ou mais; linha inteira devolve no empate). Desde 22/10 também P+A e P+R
+// (normal) e roubos, tocos, R+A e roubos + tocos (binomial negativa) — mesma aproximação, também não calibrada.
 const fiNormal = (z) => {
   const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
   const q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
   return z > 0 ? 1 - q : q;
 };
+// somas grandes ~ normal; contagens pequenas (rebotes, assist., 3PM, roubos, tocos, R+A) ~ binomial negativa
+const NORMAIS = new Set(["points", "pra", "pa", "pr"]);
 function chanceOver(tipo, media, linha) {
   if (media == null || linha == null || media <= 0) return null;
-  if (tipo === "points" || tipo === "pra") return 1 - fiNormal((linha - media) / (1.4 * Math.sqrt(media)));
+  if (NORMAIS.has(tipo)) return 1 - fiNormal((linha - media) / (1.4 * Math.sqrt(media)));
   const q = 1 / 1.25, r = (media * q) / (1 - q); // p(0) = q^r; p(k+1) = p(k)·(k+r)/(k+1)·(1−q)
   const k0 = Math.floor(linha);
   let pk = q ** r, abaixo = 0;
@@ -717,7 +730,8 @@ function edgeProp(tipo, proj, linha, over, under) {
 }
 // quanto 1 ponto de linha muda a chance do Over perto do meio (normal com o desvio típico de cada estatística:
 // pontos ~6, rebotes ~2,8, assistências ~2,3, cestas de 3 ~1,5, PRA ~8). Serve para comparar a chance em linhas diferentes.
-const POR_LINHA_PROPS = { points: 0.065, rebounds: 0.14, assists: 0.17, threes: 0.25, pra: 0.05 };
+const POR_LINHA_PROPS = { points: 0.065, rebounds: 0.14, assists: 0.17, threes: 0.25, pra: 0.05,
+  steals: 0.4, blocks: 0.4, pa: 0.057, pr: 0.057, ra: 0.11, stocks: 0.3 };
 // movimento EQUIVALENTE de uma prop desde a abertura, em chance do Over na linha de ABERTURA: acha a média que o mercado
 // precifica agora (linha + chance sem margem, pela mesma distribuição de chanceOver) e calcula a chance do Over na linha
 // de abertura com ela. (Até 22/10 era linear: Δlinha × POR_LINHA + Δchance, que erra em saltos de linha baixa, ex.:
@@ -733,13 +747,84 @@ function movimentoProp(tipo, linhaAb, linha, pAb, p) {
   const q = chanceOver(tipo, mediaImplicita(tipo, linha, p), linhaAb);
   return q == null ? null : q - pAb;
 }
+// MERCADOS DO JOGO com projeção (22/10/2026). Tipos nos registros/arquivo: "jogo-<k>" (k de MERCADOS_JOGO). Lado "O" =
+// lado A (Over nos totais; VISITANTE no vencedor e no handicap, linha = do visitante), "U" = lado B.
+// Projeção do Edgely (fórmula da página deles, nba.js _findBestOUPick): pontos do mandante = (ORtg mandante + DRtg
+// visitante) / 200 × ritmo médio; idem visitante. Guardamos {casa, fora, total, margem = mandante − visitante}.
+const DP_JOGO = { total: 18, margem: 12.5 }; // desvio típico do total e da margem de um jogo da NBA
+function projecaoJogoEdgely(advCasa, advFora) {
+  if (!advCasa || !advFora) return null;
+  const ritmo = ((advCasa.pace || 100) + (advFora.pace || 100)) / 2;
+  const casa = (((advCasa.ortg || 110) + (advFora.drtg || 110)) / 200) * ritmo, fora = (((advFora.ortg || 110) + (advCasa.drtg || 110)) / 200) * ritmo;
+  const r = (v) => Math.round(v * 10) / 10;
+  return { casa: r(casa), fora: r(fora), total: r(casa + fora), margem: r(casa - fora) };
+}
+// valor da projeção que vai em cada mercado: total → pontos do jogo; handicap/vencedor → margem (mandante − visitante)
+const projDoMercado = (k, pj) => (!pj ? null : k === "total" ? pj.total : k === "spread" || k === "ml" ? pj.margem : null);
+// chance do lado A pela projeção (só total, handicap e vencedor do jogo)
+function chanceLadoA(k, proj, linha) {
+  if (proj == null) return null;
+  if (k === "total") return linha == null ? null : 1 - fiNormal((linha - proj) / DP_JOGO.total);
+  if (k === "spread") return linha == null ? null : fiNormal((linha - proj) / DP_JOGO.margem); // visitante cobre: margem < linha dele
+  if (k === "ml") return fiNormal(-proj / DP_JOGO.margem);
+  return null;
+}
+function edgeJogo(k, proj, linha, a, b) {
+  const pa = chanceLadoA(k, proj, linha);
+  if (pa == null || !a || !b) return null;
+  const evA = pa * a - 1, evB = (1 - pa) * b - 1, ehA = evA >= evB, p = semMargem(a, b);
+  return { lado: ehA ? "O" : "U", odd: ehA ? a : b, chance: ehA ? pa : 1 - pa, mercado: p == null ? null : ehA ? p : 1 - p, ev: ehA ? evA : evB };
+}
+// lado para onde a projeção aponta em relação a uma linha (props e totais: acima → "O"; handicap: margem projetada
+// menor que a linha do visitante → visitante "O"; vencedor: margem < 0 → visitante "O")
+function ladoDaProjecao(tipo, proj, linha) {
+  if (proj == null) return null;
+  if (tipo === "jogo-ml") return proj === 0 ? null : proj < 0 ? "O" : "U";
+  if (linha == null || proj === linha) return null;
+  if (tipo === "jogo-spread") return proj < linha ? "O" : "U";
+  return proj > linha ? "O" : "U";
+}
+// lado para onde a projeção MUDOU (de p0 para p1): props/totais subir → "O"; margem do mandante subir → visitante pior
+const ladoDaMudanca = (tipo, p0, p1) => (p0 == null || p1 == null || p0 === p1 ? null
+  : tipo === "jogo-spread" || tipo === "jogo-ml" ? (p1 < p0 ? "O" : "U") : (p1 > p0 ? "O" : "U"));
+// movimento de qualquer mercado: props pela média implícita; mercados do jogo linear (porLinha de MERCADOS_JOGO;
+// handicap: linha do visitante mais negativa = mais difícil para ele)
+function movimentoMercado(tipo, L0, L1, p0, p1) {
+  if (!tipo.startsWith("jogo-")) return movimentoProp(tipo, L0, L1, p0, p1);
+  if (p0 == null || p1 == null) return null;
+  const k = tipo.slice(5), m = MERCADOS_JOGO[k];
+  if (!m) return null;
+  const dl = L0 == null || L1 == null ? 0 : L1 - L0;
+  return (k === "spread" ? -1 : 1) * dl * (m.porLinha || 0) + (p1 - p0);
+}
+// resultado do lado A ("O"): 1 ganha, 0 devolve, −1 perde. real: props/totais = o número; handicap/vencedor = margem
+// do VISITANTE (visitante − mandante)
+function resultadoA(tipo, real, linha) {
+  if (real == null) return null;
+  const v = tipo === "jogo-ml" ? real : tipo === "jogo-spread" ? real + linha : real - linha;
+  return v > 0 ? 1 : v < 0 ? -1 : 0;
+}
+// resultado real de um mercado do jogo a partir dos placares por período do summary da ESPN
+// (linhas: [{casa: [q1..q4, prorrog.], fora: [...]}]); total → soma; h1 → 1º + 2º; qN → quarto N; spread/ml → visitante − mandante
+function realDoJogo(k, casa, fora) {
+  const s = (L) => L.reduce((t, v) => t + v, 0);
+  if (!casa?.length || !fora?.length) return null;
+  if (k === "total") return s(casa) + s(fora);
+  if (k === "spread" || k === "ml") return s(fora) - s(casa);
+  if (k === "h1") return casa.length >= 2 && fora.length >= 2 ? casa[0] + casa[1] + fora[0] + fora[1] : null;
+  const q = { q1: 0, q2: 1, q3: 2, q4: 3 }[k];
+  return q != null && casa.length > q && fora.length > q ? casa[q] + fora[q] : null;
+}
+
 // nome para casar jogadores entre fontes (sem acento, sufixo nem pontuação)
 const nomeChave = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z]/g, "");
 // valor da estatística no box score da ESPN (summary → boxscore.players[].statistics[0]: keys + athletes[].stats)
 function estatisticaBox(keys, stats, tipo) {
   const v = (k) => { const i = keys.indexOf(k); return i < 0 ? null : parseFloat(String(stats[i]).split("-")[0]); };
-  const n = { points: v("points"), rebounds: v("rebounds"), assists: v("assists"), threes: v("threePointFieldGoalsMade-threePointFieldGoalsAttempted") };
-  if (tipo === "pra") return [n.points, n.rebounds, n.assists].some((x) => x == null || Number.isNaN(x)) ? null : n.points + n.rebounds + n.assists;
+  const n = { points: v("points"), rebounds: v("rebounds"), assists: v("assists"), threes: v("threePointFieldGoalsMade-threePointFieldGoalsAttempted"),
+    steals: v("steals"), blocks: v("blocks") };
+  const soma = { pra: ["points", "rebounds", "assists"], pa: ["points", "assists"], pr: ["points", "rebounds"], ra: ["rebounds", "assists"], stocks: ["steals", "blocks"] }[tipo];
+  if (soma) return soma.some((k) => !Number.isFinite(n[k])) ? null : soma.reduce((t, k) => t + n[k], 0);
   return Number.isFinite(n[tipo]) ? n[tipo] : null;
 }
 

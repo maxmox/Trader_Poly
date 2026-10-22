@@ -4,12 +4,13 @@
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
 // Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
-import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn } from "./core.js";
+import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn, TIPOS_PROP, edgeJogo, projDoMercado } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
 
-const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA (pts+reb+ast)" };
+const TIPOS = { ...TIPOS_PROP, pra: "PRA (pts+reb+ast)" };
+const NOVA_MS = 2 * 3600e3; // linha que apareceu há menos de 2 h ganha destaque
 const POR_LINHA = POR_LINHA_PROPS; // core.js: quanto 1 ponto de linha vale em chance do Over
 const REFRESCO = 5 * 60_000;
 const JANELA = { "24h": 24 * 3600, "3h": 3 * 3600 };
@@ -122,10 +123,28 @@ function movimento(x) {
 // ---------- dados ----------
 // ---------- Edge (projeção do Edgely × DraftKings; conta em core.js: chanceOver/edgeProp) ----------
 // lado com o maior valor esperado nas odds atuais da DraftKings
-const edgeDe = (x) => edgeProp(x.tipo, x.proj, x.dk.linha, x.dk.over, x.dk.under);
+function edgeDe(x) {
+  if (x.k) { // mercado do jogo
+    const e = edgeJogo(x.k, x.proj, x.dk.linha, x.dk.over, x.dk.under);
+    return e && { ...e, dif: x.k === "total" ? x.proj - x.dk.linha : null, ladoTxt: e.lado === "O" ? x.rotA : x.rotB };
+  }
+  const e = edgeProp(x.tipo, x.proj, x.dk.linha, x.dk.over, x.dk.under);
+  return e && { ...e, ladoTxt: e.lado };
+}
 const hojeEt = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 // projeções por jogo da ESPN + nome (o Edgely traz o id do jogo na ESPN): projeção de outro dia não casa
 const projecoes = (e) => new Map((e?.jogadores || []).filter((p) => p.ev).map((p) => [`${p.ev}|${normal(p.nome)}`, p]));
+
+// quando a linha apareceu pela 1ª vez: 1º ponto com hora no histórico (gravado a cada ~10 min); se o jogo já tem
+// histórico e esta linha ainda não, ela abriu depois da última gravação (agora)
+function vistoEm(hist, chave) {
+  const H = hist?.h?.[chave];
+  if (!H) return hist ? Date.now() : null;
+  const t = H.find((h) => h[0] != null)?.[0];
+  return t ? t * 1000 : null;
+}
+const ehNova = (x) => x.vistoEm != null && Date.now() - x.vistoEm < NOVA_MS;
+const tagNova = (x) => (ehNova(x) ? ` <span class="tag-nova" title="linha vista pela 1ª vez às ${hora(x.vistoEm)}">nova · ${Math.max(1, Math.round((Date.now() - x.vistoEm) / 60e3))} min</span>` : "");
 
 async function carregarJogo(ev, historico, projs) {
   const c = ev.competitions[0];
@@ -149,7 +168,8 @@ async function carregarJogo(ev, historico, projs) {
       id: `${ev.id}|jogo|${m.k}`, k: m.k, nome: MERCADOS_JOGO[m.k].nome, rotA: total ? "Over" : fora.nome, rotB: total ? "Under" : casa.nome,
       porLinha: MERCADOS_JOGO[m.k].porLinha || 0, dirLinha: total ? 1 : -1, temLinha: m.k !== "ml",
       dk: { linha: m.linha, linhaAb: m.linhaAb, over: m.a, under: m.b, overAb: m.aAb, underAb: m.bAb, p: m.p, pAb: m.pAb },
-      hist: hist?.h?.[`jogo|${m.k}`] || [],
+      hist: hist?.h?.[`jogo|${m.k}`] || [], vistoEm: vistoEm(hist, `jogo|${m.k}`),
+      tipo: `jogo-${m.k}`, proj: projDoMercado(m.k, edgely?.data === hojeEt() ? edgely?.jogos?.[ev.id]?.proj : null),
     };
   });
   const linhas = Object.values(dk.props).map((dk) => {
@@ -159,6 +179,7 @@ async function carregarJogo(ev, historico, projs) {
       id: `${ev.id}|${dk.atleta}|${dk.tipo}`, jogador, sigla: siglaDe[dk.atleta] || "", tipo: dk.tipo, dk,
       rotA: "Over", rotB: "Under", porLinha: POR_LINHA[dk.tipo], dirLinha: 1, temLinha: true,
       lesao: lesoes[normal(jogador)] || null, hist: hist?.h?.[`${dk.atleta}|${dk.tipo}`] || [], proj: pe?.proj?.[dk.tipo] ?? null, projMin: pe?.proj?.min ?? null,
+      vistoEm: vistoEm(hist, `${dk.atleta}|${dk.tipo}`),
     };
   });
   return {
@@ -324,8 +345,8 @@ function linha(j, x, mv) {
   const les = x.lesao ? ` <span class="tag-les" title="${esc(x.lesao.motivo)}">${esc(x.lesao.status)}</span>` : "";
   // minigráfico: linha + chance do Over (1 ponto de linha = 1 unidade; a chance ajusta dentro da linha)
   const serie = serieAjustada(x);
-  return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
-      <td><b>${esc(x.jogador)}</b>${les}<small>${esc(x.sigla)}</small></td><td>${TIPOS[x.tipo]}${x.proj != null ? `<small>Edgely ${lin(x.proj)}</small>` : ""}</td>
+  return `<tr class="mk${aberto ? " aberto" : ""}${ehNova(x) ? " nova" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
+      <td><b>${esc(x.jogador)}</b>${les}${tagNova(x)}<small>${esc(x.sigla)}</small></td><td>${TIPOS[x.tipo]}${x.proj != null ? `<small>Edgely ${lin(x.proj)}</small>` : ""}</td>
       <td class="n">${seta(mv.ref.linha, x.dk.linha, lin)}</td>
       <td class="n">${seta(x.dk.overAb, x.dk.over, dec)}<small>Under ${dec(x.dk.under)}</small></td>
       <td class="n">${seta(mv.ref.p, x.dk.p, prob)}</td>
@@ -334,14 +355,17 @@ function linha(j, x, mv) {
     ${aberto ? `<tr class="det"><td colspan="7">${detalhe(j, x)}</td></tr>` : ""}`;
 }
 
+// projeção do Edgely num mercado do jogo: total → pontos; handicap/vencedor → quem vence e por quanto (margem = mandante − visitante)
+const projJogoTxt = (x) => (x.proj == null ? "" : x.k === "total" ? `<small>Edgely ${lin(x.proj)}</small>`
+  : `<small>Edgely: ${esc(x.proj < 0 ? x.rotA : x.rotB)} por ${lin(Math.abs(x.proj))}</small>`);
 // mercado do jogo (vencedor, handicap, totais): mesma leitura das props, com os lados do mercado
 function linhaJogo(j, x, mv) {
   const aberto = abertos.has(x.id);
   const dir = mv.forca < 0.005 ? "" : mv.sinal > 0 ? `▲ ${x.rotA}` : `▼ ${x.rotB}`;
   const partes = [mv.dl ? `${mv.dl > 0 ? "+" : "−"}${lin(Math.abs(mv.dl))} na linha` : "", mv.dp != null && Math.abs(mv.dp) >= 0.005 ? pp(mv.dp) : ""].filter(Boolean);
   const linhaTxt = (v) => (v == null ? "–" : x.k === "spread" ? `${v > 0 ? "+" : ""}${lin(v)}` : lin(v));
-  return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
-      <td><b>${esc(x.nome)}</b>${x.k === "spread" ? `<small>linha de ${esc(x.rotA)}</small>` : ""}</td>
+  return `<tr class="mk${aberto ? " aberto" : ""}${ehNova(x) ? " nova" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
+      <td><b>${esc(x.nome)}</b>${tagNova(x)}${x.k === "spread" ? `<small>linha de ${esc(x.rotA)}</small>` : ""}${projJogoTxt(x)}</td>
       <td class="n">${x.temLinha ? seta(mv.ref.linha, x.dk.linha, linhaTxt) : "–"}</td>
       <td class="n">${esc(x.rotA)} ${seta(x.dk.overAb, x.dk.over, dec)}<small>${esc(x.rotB)} ${seta(x.dk.underAb, x.dk.under, dec)}</small></td>
       <td class="n">${seta(mv.ref.p, x.dk.p, prob)}<small>${esc(x.rotA)}</small></td>
@@ -367,10 +391,17 @@ function renderEdge() {
   infoEdgely();
   const busca = normal(f.busca), min = f.ev === "" ? -Infinity : +f.ev;
   const L = [];
-  for (const j of jogos) for (const x of j.linhas) {
-    if ((f.tipo && x.tipo !== f.tipo) || (busca && !normal(x.jogador).includes(busca))) continue;
-    const e = edgeDe(x);
-    if (e && e.ev >= min) L.push({ j, x, e });
+  for (const j of jogos) {
+    for (const x of j.linhas) {
+      if ((f.tipo && x.tipo !== f.tipo) || (busca && !normal(x.jogador).includes(busca))) continue;
+      const e = edgeDe(x);
+      if (e && e.ev >= min) L.push({ j, x, e });
+    }
+    if (!f.tipo || f.tipo === "jogo") for (const x of j.mercados) { // total, handicap e vencedor com a projeção de jogo do Edgely
+      if (x.proj == null || (busca && !normal(j.titulo).includes(busca))) continue;
+      const e = edgeDe(x);
+      if (e && e.ev >= min) L.push({ j, x, e });
+    }
   }
   L.sort((a, b) => b.e.ev - a.e.ev);
   if (!L.length) {
@@ -393,14 +424,15 @@ function tabelaEdge(L, titulo, nota = "") {
     <tbody>${L.map(({ j, x, e }) => {
       const aberto = abertos.has(x.id);
       const les = x.lesao ? ` <span class="tag-les" title="${esc(x.lesao.motivo)}">${esc(x.lesao.status)}</span>` : "";
-      return `<tr class="mk${aberto ? " aberto" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
-        <td><b>${esc(x.jogador)}</b>${les}<small>${esc(x.sigla)}</small></td>
+      const projTxt = x.k ? (x.k === "total" ? lin(x.proj) : `${esc(x.proj < 0 ? x.rotA : x.rotB)} por ${lin(Math.abs(x.proj))}`) : lin(x.proj);
+      return `<tr class="mk${aberto ? " aberto" : ""}${ehNova(x) ? " nova" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
+        <td><b>${esc(x.k ? x.nome : x.jogador)}</b>${les}${tagNova(x)}<small>${esc(x.k ? "mercado do jogo" : x.sigla)}</small></td>
         <td>${esc(j.titulo)}<small>${j.estado === "in" ? "ao vivo" : hora(j.inicio)}</small></td>
-        <td>${TIPOS[x.tipo]}</td>
-        <td class="n">${lin(x.proj)}${x.projMin != null ? `<small>${lin(x.projMin)} min</small>` : ""}</td>
-        <td class="n">${seta(x.dk.linhaAb, x.dk.linha, lin)}</td>
-        <td class="n">${e.dif >= 0 ? "+" : "−"}${lin(Math.round(10 * Math.abs(e.dif)) / 10)}</td>
-        <td class="n"><b>${e.lado}</b> ${dec(e.odd)}</td>
+        <td>${x.k ? "Jogo" : TIPOS[x.tipo]}</td>
+        <td class="n">${projTxt}${x.projMin != null ? `<small>${lin(x.projMin)} min</small>` : ""}</td>
+        <td class="n">${x.k === "ml" ? "–" : seta(x.dk.linhaAb, x.dk.linha, lin)}</td>
+        <td class="n">${e.dif == null ? "–" : `${e.dif >= 0 ? "+" : "−"}${lin(Math.round(10 * Math.abs(e.dif)) / 10)}`}</td>
+        <td class="n"><b>${esc(e.ladoTxt)}</b> ${dec(e.odd)}</td>
         <td class="n">${prob(e.chance)}</td>
         <td class="n">${prob(e.mercado)}</td>
         <td class="n mov${e.ev >= 0.10 ? " forte" : ""}"><b>${pctSinal(e.ev)}</b></td></tr>

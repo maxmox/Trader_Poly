@@ -7,49 +7,55 @@
 // Uma prop "x" tem: tipo, L0/O0/U0 (abertura), L1/O1/U1 (fechamento ou agora), proj12 (Edgely às 12 h), proj30
 // (Edgely mais recente antes do jogo). Cada filtro devolve o lado ("O"/"U") ou null.
 import { esc, hora } from "./formato.js";
-import { semMargem, movimentoProp, nomeChave } from "./core.js";
+import { semMargem, movimentoMercado, nomeChave, TIPOS_PROP, ORDEM_PROJ, MERCADOS_JOGO, ladoDaProjecao, ladoDaMudanca, resultadoA } from "./core.js";
 
-const TIPOS = { points: "pontos", rebounds: "rebotes", assists: "assistências", threes: "cestas de 3", pra: "PRA" };
+// props e mercados do jogo (tipo "jogo-<k>": lado "O" = Over ou VISITANTE, "U" = Under ou mandante)
+const TIPOS = { ...Object.fromEntries(Object.entries(TIPOS_PROP).map(([k, v]) => [k, v.toLowerCase()])), pra: "PRA",
+  ...Object.fromEntries(Object.entries(MERCADOS_JOGO).map(([k, m]) => [`jogo-${k}`, m.nome.toLowerCase()])) };
+const temUnder = (x) => x.tipo !== "jogo-spread" && x.tipo !== "jogo-ml"; // Over/Under existe (props e totais)
 const ANDOU = 0.03;
-const mov = (x) => { if (x._m === undefined) x._m = movimentoProp(x.tipo, x.L0, x.L1, semMargem(x.O0, x.U0), semMargem(x.O1, x.U1)); return x._m; };
+const mov = (x) => { if (x._m === undefined) x._m = movimentoMercado(x.tipo, x.L0, x.L1, semMargem(x.O0, x.U0), semMargem(x.O1, x.U1)); return x._m; };
 const ladoMov = (x, c = ANDOU) => { const m = mov(x); return m == null ? null : m >= c ? "O" : m <= -c ? "U" : null; };
 const projAtual = (x) => x.proj30 ?? x.proj12;
-const dirProj = (x) => { const p = projAtual(x); return p == null || x.L0 == null || p === x.L0 ? null : p > x.L0 ? "O" : "U"; };
+const dirProj = (x) => ladoDaProjecao(x.tipo, projAtual(x), x.L0 ?? x.L1);
+// lado da projeção em relação à linha ATUAL se a distância for ≥ d (vencedor: não tem linha)
+const difProj = (x, d) => { const p = projAtual(x); return p == null || x.L1 == null || x.tipo === "jogo-ml" || Math.abs(p - x.L1) < d ? null : ladoDaProjecao(x.tipo, p, x.L1); };
+const mudouLado = (x) => (x.proj12 == null || x.proj30 == null || Math.abs(x.proj30 - x.proj12) < 0.5 ? null : ladoDaMudanca(x.tipo, x.proj12, x.proj30));
 const oposto = (l) => (l === "O" ? "U" : "O");
 
 // catálogo: [id, grupo, nome, lado(x)]
 export const FILTROS = [
-  ["under", "Base", "Under em tudo", () => "U"],
-  ["over", "Base", "Over em tudo", () => "O"],
-  ...Object.entries(TIPOS).map(([t, r]) => [`under-${t}`, "Base", `Under em ${r}`, (x) => (x.tipo === t ? "U" : null)]),
+  ["under", "Base", "Under em tudo (props e totais)", (x) => (temUnder(x) ? "U" : null)],
+  ["over", "Base", "Over em tudo (props e totais)", (x) => (temUnder(x) ? "O" : null)],
+  ...Object.entries(TIPOS).filter(([t]) => t !== "jogo-spread" && t !== "jogo-ml").map(([t, r]) => [`under-${t}`, "Base", `Under em ${r}`, (x) => (x.tipo === t ? "U" : null)]),
+  ["visitante-spread", "Base", "Handicap: visitante", (x) => (x.tipo === "jogo-spread" ? "O" : null)],
+  ["visitante-ml", "Base", "Vencedor: visitante", (x) => (x.tipo === "jogo-ml" ? "O" : null)],
   ["mov", "Linha andou", "Seguir o movimento (≥ 3 pp)", (x) => ladoMov(x)],
   ["mov6", "Linha andou", "Seguir o movimento forte (≥ 6 pp)", (x) => ladoMov(x, 0.06)],
   ["mov-over", "Linha andou", "Linha subiu p/ Over → Over", (x) => (ladoMov(x) === "O" ? "O" : null)],
   ["mov-under", "Linha andou", "Linha caiu p/ Under → Under", (x) => (ladoMov(x) === "U" ? "U" : null)],
   ["mov-under-pontos", "Linha andou", "Pontos: linha caiu p/ Under → Under", (x) => (x.tipo === "points" && ladoMov(x) === "U" ? "U" : null)],
-  ["parada-under", "Linha andou", "Linha parada (< 3 pp) → Under", (x) => (mov(x) != null && !ladoMov(x) ? "U" : null)],
+  ["parada-under", "Linha andou", "Linha parada (< 3 pp) → Under", (x) => (temUnder(x) && mov(x) != null && !ladoMov(x) ? "U" : null)],
+  ["mov-jogo", "Linha andou", "Mercados do jogo: seguir o movimento", (x) => (x.tipo.startsWith("jogo-") ? ladoMov(x) : null)],
   ["conf", "Projeção × linha", "Projeção confirmada pela linha → lado da projeção", (x) => (dirProj(x) && ladoMov(x) === dirProj(x) ? dirProj(x) : null)],
   ["contra", "Projeção × linha", "Linha contra a projeção → lado da linha", (x) => (dirProj(x) && ladoMov(x) && ladoMov(x) !== dirProj(x) ? ladoMov(x) : null)],
   ["proj-parada", "Projeção × linha", "Linha parada → lado da projeção", (x) => (dirProj(x) && mov(x) != null && !ladoMov(x) ? dirProj(x) : null)],
-  ["dif1", "Projeção × linha", "Projeção a ≥ 1 da linha atual → lado da projeção", (x) => { const p = projAtual(x); return p != null && Math.abs(p - x.L1) >= 1 ? (p > x.L1 ? "O" : "U") : null; }],
-  ["dif2", "Projeção × linha", "Projeção a ≥ 2 da linha atual → lado da projeção", (x) => { const p = projAtual(x); return p != null && Math.abs(p - x.L1) >= 2 ? (p > x.L1 ? "O" : "U") : null; }],
-  ["mudou-seguiu", "Projeção mudou", "Projeção mudou ≥ 0,5 e a linha foi junto → esse lado", (x) => {
-    if (x.proj12 == null || x.proj30 == null || Math.abs(x.proj30 - x.proj12) < 0.5) return null;
-    const l = x.proj30 > x.proj12 ? "O" : "U"; return ladoMov(x) === l ? l : null; }],
-  ["mudou-sozinha", "Projeção mudou", "Projeção mudou ≥ 0,5 e a linha NÃO foi junto → lado da projeção", (x) => {
-    if (x.proj12 == null || x.proj30 == null || Math.abs(x.proj30 - x.proj12) < 0.5) return null;
-    const l = x.proj30 > x.proj12 ? "O" : "U"; return ladoMov(x) !== l ? l : null; }],
-  ["over-loteria", "Over de loteria", "Over pagando ≥ 2,10 → Under", (x) => (x.O1 >= 2.1 ? "U" : null)],
-  ["under-fav", "Over de loteria", "Under favorito (odd ≤ 1,75) → Under", (x) => (x.U1 && x.U1 <= 1.75 ? "U" : null)],
-  ["linha-baixa", "Over de loteria", "Linha baixa (≤ 1,5) → Under", (x) => (x.L1 != null && x.L1 <= 1.5 ? "U" : null)],
+  ["dif1", "Projeção × linha", "Projeção a ≥ 1 da linha atual → lado da projeção", (x) => difProj(x, 1)],
+  ["dif2", "Projeção × linha", "Projeção a ≥ 2 da linha atual → lado da projeção", (x) => difProj(x, 2)],
+  ["proj-jogo", "Projeção × linha", "Mercados do jogo: lado da projeção do Edgely", (x) => (x.tipo.startsWith("jogo-") ? ladoDaProjecao(x.tipo, projAtual(x), x.L1) : null)],
+  ["mudou-seguiu", "Projeção mudou", "Projeção mudou ≥ 0,5 e a linha foi junto → esse lado", (x) => { const l = mudouLado(x); return l && ladoMov(x) === l ? l : null; }],
+  ["mudou-sozinha", "Projeção mudou", "Projeção mudou ≥ 0,5 e a linha NÃO foi junto → lado da projeção", (x) => { const l = mudouLado(x); return l && ladoMov(x) !== l ? l : null; }],
+  ["over-loteria", "Over de loteria", "Over pagando ≥ 2,10 → Under", (x) => (temUnder(x) && x.O1 >= 2.1 ? "U" : null)],
+  ["under-fav", "Over de loteria", "Under favorito (odd ≤ 1,75) → Under", (x) => (temUnder(x) && x.U1 && x.U1 <= 1.75 ? "U" : null)],
+  ["linha-baixa", "Over de loteria", "Linha baixa (≤ 1,5) → Under", (x) => (temUnder(x) && x.L1 != null && x.L1 <= 1.5 ? "U" : null)],
   ["under-3pm-andou", "Over de loteria", "Cestas de 3: linha caiu ou parada → Under", (x) => (x.tipo === "threes" && mov(x) != null && ladoMov(x) !== "O" ? "U" : null)],
 ];
 
 const lucro = (x, lado) => {
   const o = lado === "O" ? x.O1 : x.U1;
-  if (x.real == null || x.L1 == null || !o) return null;
-  if (x.real === x.L1) return 0;
-  return (x.real > x.L1) === (lado === "O") ? o - 1 : -1;
+  const r = o ? resultadoA(x.tipo, x.real, x.L1) : null; // 1 = lado A ganha, 0 devolve, −1 perde
+  if (r == null || (x.L1 == null && x.tipo !== "jogo-ml")) return null;
+  return r === 0 ? 0 : (r > 0) === (lado === "O") ? o - 1 : -1;
 };
 function estat(v) { // v: [{jogo, dia, l}]
   if (!v.length) return null;
@@ -71,7 +77,7 @@ function estat(v) { // v: [{jogo, dia, l}]
 }
 
 // ---------- dados ----------
-let arquivo = null, p12 = {}, lidoEm = 0, erro = null;
+let arquivo = null, p12 = {}, pj12 = {}, lidoEm = 0, erro = null;
 export async function carregarFiltros() {
   lidoEm = Date.now();
   try {
@@ -89,8 +95,8 @@ export async function carregarFiltros() {
       }
     }
     // retrato das 12 h de hoje (para "projeção mudou"): jogos[id].p12 = { nome: [pts, reb, ast, 3PM, PRA, min] }
-    p12 = {};
-    for (const A of apos.filter(Boolean)) for (const [id, j] of Object.entries(A.jogos || {})) if (j.p12) p12[id] = j.p12;
+    p12 = {}; pj12 = {};
+    for (const A of apos.filter(Boolean)) for (const [id, j] of Object.entries(A.jogos || {})) { if (j.p12) p12[id] = j.p12; if (j.pj12) pj12[id] = j.pj12; }
     // simulação de cada filtro, nos dois lados
     const sim = {};
     for (const [id, , , regra] of FILTROS) {
@@ -112,6 +118,10 @@ export async function carregarFiltros() {
 export const filtrosVelho = () => Date.now() - lidoEm > 10 * 60e3;
 
 // ---------- render ----------
+// linha que apareceu há menos de 2 h: minutos desde a 1ª vez vista (props.js preenche x.vistoEm)
+const novaDesde = (x) => (x.vistoEm != null && Date.now() - x.vistoEm < 2 * 3600e3 ? Math.max(1, Math.round((Date.now() - x.vistoEm) / 60e3)) : 0);
+// hora do jogo; "amanhã" quando é do dia seguinte (a página carrega hoje e amanhã)
+const quandoJogo = (j) => { const d = new Date(j.inicio), h = new Date(); return d.toDateString() === h.toDateString() ? hora(j.inicio) : `amanhã ${hora(j.inicio)}`; };
 const num = (v, c = 1) => (v == null ? "–" : v.toFixed(c).replace(".", ","));
 const pc = (v, c = 1) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${num(Math.abs(100 * v), c)}%`);
 const lin = (v) => (v == null ? "–" : String(v).replace(".", ","));
@@ -160,10 +170,14 @@ export function renderFiltros(el, f, jogos) {
   const hoje = [];
   for (const j of jogos) {
     if (j.estado !== "pre") continue;
-    for (const x of j.linhas) {
-      if ((f.tipo && x.tipo !== f.tipo) || (busca && !nomeChave(x.jogador).includes(busca))) continue;
-      const p12v = p12[j.id]?.[nomeChave(x.jogador)]?.[{ points: 0, rebounds: 1, assists: 2, threes: 3, pra: 4 }[x.tipo]] ?? null;
-      const y = { tipo: x.tipo, L0: x.dk.linhaAb, O0: x.dk.overAb, U0: x.dk.underAb, L1: x.dk.linha, O1: x.dk.over, U1: x.dk.under, proj12: p12v, proj30: x.proj };
+    const itens = [
+      ...j.linhas.filter((x) => (!f.tipo || x.tipo === f.tipo) && (!busca || nomeChave(x.jogador).includes(busca))),
+      ...(!f.tipo || f.tipo === "jogo" ? j.mercados.filter(() => !busca || nomeChave(j.titulo).includes(busca)) : []),
+    ];
+    for (const x of itens) {
+      const p12v = x.k ? (x.k === "total" ? pj12[j.id]?.total : x.k === "spread" || x.k === "ml" ? pj12[j.id]?.margem : null) ?? null
+        : p12[j.id]?.[nomeChave(x.jogador)]?.[ORDEM_PROJ.indexOf(x.tipo)] ?? null;
+      const y = { tipo: x.tipo, L0: x.dk.linhaAb, O0: x.dk.overAb, U0: x.dk.underAb, L1: x.dk.linha, O1: x.dk.over, U1: x.dk.under, proj12: p12v, proj30: x.proj ?? null };
       const sin = sinaisDe(y, minN, minRoi);
       // lado sugerido = o com sinais bons de mais GRUPOS diferentes (filtros parecidos contam uma vez), depois o
       // melhor ROI; conflito = também há sinal bom do outro lado; alerta = filtro que perde NESSE lado
@@ -180,12 +194,12 @@ export function renderFiltros(el, f, jogos) {
   hoje.sort((a, b) => b.grupos - a.grupos || b.melhor - a.melhor);
   const chip = (s) => `<span class="chip ${s.bom ? "forte" : "ruim"}" title="${esc(`${s.nome}: ${s.s.n} apostas na temporada, ROI ${pc(s.s.roi)}`)}">${esc(s.nome.replace(/ → .*/, ""))} ${pc(s.s.roi, 0)}</span>`;
   const tabHoje = hoje.length ? `<div class="tbl-wrap"><table class="props-tab filtros-hoje"><thead><tr><th>Jogador</th><th>Jogo</th><th>Estatística</th><th class="n">Linha</th><th class="n">Odds O / U</th><th class="n">Projeção</th><th class="n">Linha andou</th><th class="n">Entrada</th><th>Sinais a favor (ROI na temporada)</th></tr></thead><tbody>
-    ${hoje.slice(0, 150).map(({ j, x, y, lado, meus, alertas, conflito, m }) => `<tr><td><b>${esc(x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}<small>${esc(x.sigla)}</small></td>
-      <td>${esc(j.titulo)}<small>${hora(j.inicio)}</small></td><td>${TIPOS[x.tipo]}</td>
+    ${hoje.slice(0, 150).map(({ j, x, y, lado, meus, alertas, conflito, m }) => `<tr${novaDesde(x) ? ' class="nova"' : ""}><td><b>${esc(x.k ? x.nome : x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}${novaDesde(x) ? ` <span class="tag-nova">nova · ${novaDesde(x)} min</span>` : ""}<small>${esc(x.k ? "mercado do jogo" : x.sigla)}</small></td>
+      <td>${esc(j.titulo)}<small>${quandoJogo(j)}</small></td><td>${x.k ? "Jogo" : TIPOS[x.tipo]}</td>
       <td class="n">${y.L0 != null && y.L0 !== y.L1 ? `${lin(y.L0)} → ` : ""}<b>${lin(y.L1)}</b></td><td class="n">${num(y.O1, 2)} / ${num(y.U1, 2)}</td>
       <td class="n">${num(y.proj30)}${y.proj12 != null && y.proj30 != null && Math.abs(y.proj30 - y.proj12) >= 0.5 ? `<small>12 h: ${num(y.proj12)}</small>` : ""}</td>
-      <td class="n">${m == null ? "–" : `${m >= 0 ? "+" : "−"}${num(Math.abs(100 * m))} pp`}<small>${m == null || Math.abs(m) < ANDOU ? "parada" : m > 0 ? "p/ Over" : "p/ Under"}</small></td>
-      <td class="n"><b>${lado === "O" ? "Over" : "Under"} ${lin(y.L1)}</b> @ ${num(lado === "O" ? y.O1 : y.U1, 2)}${conflito ? `<small>sinais nos dois lados</small>` : ""}</td>
+      <td class="n">${m == null ? "–" : `${m >= 0 ? "+" : "−"}${num(Math.abs(100 * m))} pp`}<small>${m == null || Math.abs(m) < ANDOU ? "parada" : `p/ ${esc(m > 0 ? x.rotA : x.rotB)}`}</small></td>
+      <td class="n"><b>${esc(lado === "O" ? x.rotA : x.rotB)}${x.k === "ml" ? "" : ` ${x.k === "spread" && lado === "U" ? lin(-y.L1) : lin(y.L1)}`}</b> @ ${num(lado === "O" ? y.O1 : y.U1, 2)}${conflito ? `<small>sinais nos dois lados</small>` : ""}</td>
       <td class="chips">${meus.slice(0, 4).map(chip).join(" ")}${meus.length > 4 ? ` <span class="muted">+${meus.length - 4}</span>` : ""}${alertas.length ? `<br>${alertas.slice(0, 2).map(chip).join(" ")}` : ""}</td></tr>`).join("")}
     </tbody></table></div>${hoje.length > 150 ? `<p class="muted">Mostrando as 150 primeiras de ${hoje.length}.</p>` : ""}`
     : `<div class="vazio"><b>Nenhuma prop de hoje (antes do jogo) aciona um filtro com ROI ≥ ${pc(minRoi, 0)} e ≥ ${minN} apostas na temporada.</b></div>`;

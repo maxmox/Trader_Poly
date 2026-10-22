@@ -11,11 +11,17 @@
 //      estratégia; mov = movimento equivalente desde a abertura): ver ESTRATEGIAS abaixo.
 //   2) RESULTADO: jogo encerrado (ESPN) → box score → green / red / devolvida (linha inteira, empate) / anulada
 //      (não jogou; a casa devolve). Jogo adiado ou cancelado → anulada.
+// Desde 22/10 também roubos, tocos, P+A, P+R, R+A, roubos + tocos e os MERCADOS DO JOGO: total, handicap e vencedor
+// com a projeção de jogo do Edgely (core: projecaoJogoEdgely; atleta = "jogo", tipo = "jogo-<k>", lado "O" = Over ou
+// visitante); 1º tempo e quartos entram nas estratégias de linha e no arquivo (sem projeção).
 // Arquivos: data/apostas_edgely/indice.json { meses, registrados: [dias], em } e data/apostas_edgely/AAAA-MM.json
 //   { campos, jogos: {idEspn: {dia, titulo, inicio, fim}}, nomes: {idAtleta: nome}, apostas: [[...campos]] }
 // Local: node scripts/apostas_edgely.mjs   (REGISTRAR=1 registra fora do horário; SAIDA=<pasta> grava em outro lugar)
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { buscarDk, edgeProp, nomeChave, estatisticaBox, movimentoProp, nomeAtletaEspn } from "../js/core.js";
+import {
+  buscarDk, edgeProp, nomeChave, estatisticaBox, nomeAtletaEspn, ORDEM_PROJ, edgeJogo, projDoMercado, ladoDaProjecao, ladoDaMudanca,
+  movimentoMercado, resultadoA, realDoJogo, chanceOver,
+} from "../js/core.js";
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 const raiz = new URL("../", import.meta.url);
@@ -55,9 +61,12 @@ async function lerJogo(ev, M) {
 }
 async function registrarJogo(ev, M, projs, edgely, momento) {
   const { dk, nomes } = await lerJogo(ev, M);
-  // retrato das projeções do jogo neste momento (para o arquivo do mercado): nome -> [pts, reb, ast, 3PM, PRA, min]
-  M.jogos[ev.id][momento === "12h" ? "p12" : "p30"] = Object.fromEntries((edgely.jogadores || []).filter((p) => p.ev === ev.id)
-    .map((p) => [nomeChave(p.nome), ["points", "rebounds", "assists", "threes", "pra", "min"].map((k) => p.proj?.[k] ?? null)]));
+  // retrato das projeções do jogo neste momento (para o arquivo do mercado): nome -> valores na ordem ORDEM_PROJ;
+  // pj12/pj30 = projeção do jogo {casa, fora, total, margem}
+  const sufixo = momento === "12h" ? "12" : "30";
+  M.jogos[ev.id][`p${sufixo}`] = Object.fromEntries((edgely.jogadores || []).filter((p) => p.ev === ev.id)
+    .map((p) => [nomeChave(p.nome), ORDEM_PROJ.map((k) => p.proj?.[k] ?? null)]));
+  M.jogos[ev.id][`pj${sufixo}`] = edgely.jogos?.[ev.id]?.proj || null;
   let novas = 0;
   for (const p of Object.values(dk.props)) {
     const nome = nomes[p.atleta];
@@ -69,7 +78,17 @@ async function registrarJogo(ev, M, projs, edgely, momento) {
     M.nomes[p.atleta] = nome;
     M.apostas.push([ev.id, p.atleta, p.tipo, p.linha, p.over, p.under, e.lado === "Over" ? "O" : "U", proj, pe.proj?.min ?? null,
       Math.round(e.ev * 1000) / 1000, edgely.final ? 1 : 0, Math.floor(agora / 1000), null, null, momento,
-      arred(movimentoProp(p.tipo, p.linhaAb, p.linha, p.pAb, p.p))]);
+      arred(movimentoMercado(p.tipo, p.linhaAb, p.linha, p.pAb, p.p))]);
+    novas++;
+  }
+  // mercados do jogo com projeção do Edgely (total, handicap, vencedor)
+  const pj = edgely.jogos?.[ev.id]?.proj;
+  for (const k of ["total", "spread", "ml"]) {
+    const m = dk.jogo[`jogo|${k}`], proj = projDoMercado(k, pj);
+    const e = m && edgeJogo(k, proj, m.linha, m.a, m.b);
+    if (!e || !(e.ev > 0)) continue;
+    M.apostas.push([ev.id, "jogo", `jogo-${k}`, m.linha, m.a, m.b, e.lado, proj, null, Math.round(e.ev * 1000) / 1000, 1, Math.floor(agora / 1000), null, null, momento,
+      arred(movimentoMercado(`jogo-${k}`, m.linhaAb, m.linha, m.pAb, m.p))]);
     novas++;
   }
   return novas;
@@ -131,40 +150,60 @@ export const ESTRATEGIAS = {
   mudou: "Projeção mudou e a linha acompanhou",  // projeção mudou ≥ 0,5 desde as 12 h e a linha andou no mesmo sentido
   under: "Controle: Under em tudo",              // régua: separa o efeito da estratégia de uma noite de Under
 };
-const ANDOU = 0.03, IDX_P = { points: 0, rebounds: 1, assists: 2, threes: 3, pra: 4 };
+const ANDOU = 0.03;
+// cada mercado do jogo vira um item com a mesma forma das props (lado A = "O")
+function itensDoJogo(ev, dk, nomes, projs, j, edgely) {
+  const out = [];
+  for (const p of Object.values(dk.props)) {
+    const nome = nomes[p.atleta], chave = nome && nomeChave(nome);
+    const pe = chave && projs.get(`${ev.id}|${chave}`);
+    if (pe?.lesao === "Out") continue;
+    const i = ORDEM_PROJ.indexOf(p.tipo);
+    out.push({ atleta: p.atleta, nome, tipo: p.tipo, linha: p.linha, linhaAb: p.linhaAb, a: p.over, b: p.under, p: p.p, pAb: p.pAb,
+      proj: pe?.proj?.[p.tipo] ?? null, proj12: j.p12?.[chave]?.[i] ?? null, min: pe?.proj?.min ?? null });
+  }
+  const pj = edgely?.jogos?.[ev.id]?.proj;
+  for (const m of Object.values(dk.jogo)) {
+    out.push({ atleta: "jogo", tipo: `jogo-${m.k}`, linha: m.linha, linhaAb: m.linhaAb, a: m.a, b: m.b, p: m.p, pAb: m.pAb,
+      proj: projDoMercado(m.k, pj), proj12: projDoMercado(m.k, j.pj12), min: null });
+  }
+  return out;
+}
+// chance do lado A pela projeção (valor esperado informativo nas estratégias)
+function chanceA(x) {
+  if (x.proj == null) return null;
+  if (x.tipo.startsWith("jogo-")) { const e = edgeJogo(x.tipo.slice(5), x.proj, x.linha, x.a, x.b); return e ? (e.lado === "O" ? e.chance : 1 - e.chance) : null; }
+  return chanceOver(x.tipo, x.proj, x.linha);
+}
 {
   const janela = +(process.env.JANELA_EST_MIN || 15) * 60e3;
   const edgely = await lerJson(new URL("data/edgely.json", raiz), null);
   const evs = ((await getJson(`${ESPN}/scoreboard?dates=${hojeEt.replaceAll("-", "")}`).catch(() => ({}))).events || [])
     .filter((e) => e.status?.type?.state === "pre" && Date.parse(e.date) > agora && Date.parse(e.date) - agora <= janela);
-  const M = await mes(hojeEt.slice(0, 7)), projs = projecoesDe(edgely?.data === hojeEt ? edgely : null);
+  const ed = edgely?.data === hojeEt ? edgely : null;
+  const M = await mes(hojeEt.slice(0, 7)), projs = projecoesDe(ed);
   for (const ev of evs) {
     if (M.jogos[ev.id]?.regE) continue;
     try {
       const { dk, nomes } = await lerJogo(ev, M);
       const j = M.jogos[ev.id], conta = {};
-      for (const p of Object.values(dk.props)) {
-        const nome = nomes[p.atleta], chave = nome && nomeChave(nome);
-        const pe = chave && projs.get(`${ev.id}|${chave}`);
-        if (pe?.lesao === "Out" || !p.over || !p.under) continue;
-        const mov = movimentoProp(p.tipo, p.linhaAb, p.linha, p.pAb, p.p);
+      for (const x of itensDoJogo(ev, dk, nomes, projs, j, ed)) {
+        if (!x.a || !x.b) continue;
+        const mov = movimentoMercado(x.tipo, x.linhaAb, x.linha, x.pAb, x.p);
         const ladoMov = mov == null ? null : mov >= ANDOU ? "O" : mov <= -ANDOU ? "U" : null;
-        const proj = pe?.proj?.[p.tipo] ?? null, proj12 = j.p12?.[chave]?.[IDX_P[p.tipo]] ?? null;
-        const dirProj = proj == null || p.linhaAb == null || proj === p.linhaAb ? null : proj > p.linhaAb ? "O" : "U";
-        // valor esperado do lado escolhido pela projeção (só informativo; null sem projeção)
-        const e = proj == null ? null : edgeProp(p.tipo, proj, p.linha, p.over, p.under);
-        const pOver = e ? (e.lado === "Over" ? e.chance : 1 - e.chance) : null;
+        const dirProj = ladoDaProjecao(x.tipo, x.proj, x.linhaAb ?? x.linha);
+        const pa = chanceA(x);
         const reg = (est, lado) => {
-          M.nomes[p.atleta] = nome || M.nomes[p.atleta] || null;
-          M.apostas.push([ev.id, p.atleta, p.tipo, p.linha, p.over, p.under, lado, proj, pe?.proj?.min ?? null,
-            pOver == null ? null : arred(lado === "O" ? pOver * p.over - 1 : (1 - pOver) * p.under - 1),
-            1, Math.floor(agora / 1000), null, null, est, arred(mov)]);
+          if (x.atleta !== "jogo") M.nomes[x.atleta] = x.nome || M.nomes[x.atleta] || null;
+          M.apostas.push([ev.id, x.atleta, x.tipo, x.linha, x.a, x.b, lado, x.proj, x.min,
+            pa == null ? null : arred(lado === "O" ? pa * x.a - 1 : (1 - pa) * x.b - 1), 1, Math.floor(agora / 1000), null, null, est, arred(mov)]);
           conta[est] = (conta[est] || 0) + 1;
         };
         if (ladoMov) reg("mov", ladoMov);
         if (ladoMov && dirProj) reg(ladoMov === dirProj ? "conf" : "contra", ladoMov);
-        if (ladoMov && proj != null && proj12 != null && Math.abs(proj - proj12) >= 0.5 && (proj > proj12 ? "O" : "U") === ladoMov) reg("mudou", ladoMov);
-        reg("under", "U");
+        const lm = x.proj != null && x.proj12 != null && Math.abs(x.proj - x.proj12) >= 0.5 ? ladoDaMudanca(x.tipo, x.proj12, x.proj) : null;
+        if (ladoMov && lm === ladoMov) reg("mudou", ladoMov);
+        if (x.tipo !== "jogo-spread" && x.tipo !== "jogo-ml") reg("under", "U"); // controle: só onde existe Under
       }
       j.regE = Math.floor(agora / 1000);
       mudou.add(hojeEt.slice(0, 7));
@@ -178,14 +217,13 @@ const ANDOU = 0.03, IDX_P = { points: 0, rebounds: 1, assists: 2, threes: 3, pra
 // abertura (L0/O0/U0) e fechamento (último ponto gravado antes do início: L1/O1/U1) vêm de data/linhas_dk.json, que o
 // site apaga 30 h depois do jogo; projeções do Edgely no registro das 12 h e no de 30 min antes; resultado do box score.
 export const CAMPOS_MERCADO = ["jogo", "atleta", "tipo", "L0", "O0", "U0", "L1", "O1", "U1", "proj12", "proj30", "real"];
-const IDX = { points: 0, rebounds: 1, assists: 2, threes: 3, pra: 4 };
 const linhasDk = await lerJson(new URL("data/linhas_dk.json", raiz), null);
 const mercados = new Map();
 const mercado = async (m) => {
   if (!mercados.has(m)) mercados.set(m, await lerJson(new URL(`mercado-${m}.json`, DIR), { campos: CAMPOS_MERCADO, jogos: {}, nomes: {}, props: [] }));
   return mercados.get(m);
 };
-async function arquivarMercado(id, j, box, cancelado) {
+async function arquivarMercado(id, j, box, cancelado, placar) {
   const H = linhasDk?.jogos?.[id]?.h;
   if (!H || cancelado) return 0;
   const MM = await mercado(j.dia.slice(0, 7));
@@ -193,7 +231,12 @@ async function arquivarMercado(id, j, box, cancelado) {
   MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio };
   let n = 0;
   for (const [k, serie] of Object.entries(H)) {
-    if (k.startsWith("jogo|")) continue;
+    if (k.startsWith("jogo|")) { // mercado do jogo: real pelos placares por quarto (handicap/vencedor = visitante − mandante)
+      const mk = k.slice(5), ab = serie.find((h) => h[0] == null) || serie[0], fe = serie.filter((h) => h[0] != null && h[0] * 1000 < j.inicio).pop() || ab;
+      MM.props.push([id, "jogo", `jogo-${mk}`, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], projDoMercado(mk, j.pj12), projDoMercado(mk, j.pj30), realDoJogo(mk, placar.casa, placar.fora)]);
+      n++;
+      continue;
+    }
     const [atleta, tipo] = k.split("|");
     const ab = serie.find((h) => h[0] == null) || serie[0];
     const fe = serie.filter((h) => h[0] != null && h[0] * 1000 < j.inicio).pop() || ab;
@@ -201,7 +244,8 @@ async function arquivarMercado(id, j, box, cancelado) {
     const nome = b?.nome || MM.nomes[atleta] || (await nomeAtletaEspn(getJson, atleta)), chave = nome && nomeChave(nome);
     const real = b?.jogou ? estatisticaBox(b.keys, b.stats, tipo) : null;
     if (nome) MM.nomes[atleta] = nome;
-    MM.props.push([id, atleta, tipo, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], j.p12?.[chave]?.[IDX[tipo]] ?? null, j.p30?.[chave]?.[IDX[tipo]] ?? null, real]);
+    const i = ORDEM_PROJ.indexOf(tipo);
+    MM.props.push([id, atleta, tipo, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], j.p12?.[chave]?.[i] ?? null, j.p30?.[chave]?.[i] ?? null, real]);
     n++;
   }
   return n;
@@ -224,19 +268,23 @@ for (const m of [mesAnterior, hojeEt.slice(0, 7)].filter((m) => indice.meses.inc
       const est = t.statistics?.[0];
       for (const a of est?.athletes || []) box.set(String(a.athlete?.id), { nome: a.athlete?.displayName, keys: est.keys || [], stats: a.stats || [], jogou: !a.didNotPlay && (a.stats || []).length > 0 && a.stats[0] !== "0" });
     }
+    // placar por quarto (mercados do jogo): [q1, q2, q3, q4, prorrogações]
+    const placar = { casa: [], fora: [] };
+    for (const c of s.header?.competitions?.[0]?.competitors || []) placar[c.homeAway === "home" ? "casa" : "fora"] = (c.linescores || []).map((l) => +l.displayValue || 0);
     for (const a of M.apostas) {
       if (a[C.jogo] !== id || a[C.res]) continue;
-      const b = box.get(String(a[C.atleta]));
-      const real = !cancelado && b?.jogou ? estatisticaBox(b.keys, b.stats, a[C.tipo]) : null;
+      let real = null;
+      if (cancelado) real = null;
+      else if (a[C.atleta] === "jogo") real = realDoJogo(a[C.tipo].slice(5), placar.casa, placar.fora);
+      else { const b = box.get(String(a[C.atleta])); real = b?.jogou ? estatisticaBox(b.keys, b.stats, a[C.tipo]) : null; }
       a[C.real] = real;
-      if (real == null) a[C.res] = "A";
-      else if (real === a[C.linha]) a[C.res] = "P";
-      else a[C.res] = (real > a[C.linha]) === (a[C.lado] === "O") ? "G" : "R";
+      const r = resultadoA(a[C.tipo], real, a[C.linha]);
+      a[C.res] = r == null ? "A" : r === 0 ? "P" : (r > 0) === (a[C.lado] === "O") ? "G" : "R";
       resolvidos++;
     }
     j.fim = true;
     mudou.add(m);
-    const arq = await arquivarMercado(id, j, box, cancelado);
+    const arq = await arquivarMercado(id, j, box, cancelado, placar);
     if (arq) console.log(`Mercado: ${j.titulo} ${arq} props arquivadas`);
   }
 }
