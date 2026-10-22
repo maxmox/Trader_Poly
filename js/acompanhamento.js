@@ -84,8 +84,9 @@ function linhaGrupo(rot, L) {
     <td class="n">${s.oddMedia == null ? "–" : num(s.oddMedia, 2)}</td><td class="n">${s.n ? sinal(s.lucro) : "–"}</td>
     <td class="n"><b>${roiTxt(s)}</b>${ic ? `<small>${sinal(100 * ic[0], 0)}% a ${sinal(100 * ic[1], 0)}%</small>` : ""}</td></tr>`;
 }
-function tabelaGrupos(titulo, grupos) {
-  const linhas = grupos.filter(([, L]) => L.length).map(([rot, L]) => linhaGrupo(rot, L)).join("");
+function tabelaGrupos(titulo, grupos, vazios = false) {
+  const linhas = grupos.filter(([, L]) => vazios || L.length)
+    .map(([rot, L]) => (L.length ? linhaGrupo(rot, L) : `<tr><td>${rot}</td><td class="n" colspan="6"><span class="muted">aguardando o 1º registro (~10 min antes de cada jogo)</span></td></tr>`)).join("");
   return linhas ? `<div class="tbl-wrap"><table class="props-tab acomp-grupos"><thead><tr><th>${titulo}</th><th class="n">Apostas</th><th class="n">Green–Red</th><th class="n">Acerto</th><th class="n">Odd média</th><th class="n">Lucro (u)</th><th class="n">ROI <small>(95%)</small></th></tr></thead><tbody>${linhas}</tbody></table></div>` : "";
 }
 
@@ -96,7 +97,7 @@ export function renderAcomp(el, f) {
   const L0 = dados.apostas.filter((a) => (!f.tipo || a.tipo === f.tipo) && (!busca || nomeChave(a.nome).includes(busca)) && (f.ev === "" || (a.valor != null && a.valor >= min)));
   const L = L0.filter((a) => !f.mom || a.momento === f.mom);
   // placar de todas as estratégias e registros lado a lado (ignora o filtro "Registro")
-  const placar = `<section class="panel"><h2>Placar das estratégias</h2>${tabelaGrupos("Estratégia / registro", Object.entries(MOMENTOS).map(([k, [r]]) => [r, L0.filter((a) => a.momento === k)]))}
+  const placar = `<section class="panel"><h2>Placar das estratégias</h2>${tabelaGrupos("Estratégia / registro", Object.entries(MOMENTOS).map(([k, [r]]) => [r, L0.filter((a) => a.momento === k)]), true)}
     <p class="muted">Estratégias registradas ~10 min antes de cada jogo, com as odds daquele momento: hipóteses da 1ª noite (21/10), acompanhadas para confirmar ou descartar. "Andou" = a linha mudou o equivalente a ≥ 3 pp de chance desde a abertura (linha + odd). O controle (Under em tudo) mostra se a noite favoreceu o Under. Escolha uma no filtro "Registro" para ver os recortes dela.</p></section>`;
   if (!L.length) {
     el.innerHTML = placar + `<div class="vazio"><b>${dados.apostas.length ? "Nenhuma aposta com esses filtros." : "Ainda não há apostas registradas: o 1º registro é hoje às 12 h de Brasília (jogos que ainda não começaram)."}</b></div>`;

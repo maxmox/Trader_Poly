@@ -52,6 +52,14 @@ jobs:
       - name: Desempenho dos últimos 30 dias (placar)
         run: node scripts/desempenho.mjs
         continue-on-error: true
+      # o GitHub Pages manda o navegador guardar cada arquivo por 10 min; os módulos JS se importam em cadeia e o
+      # navegador misturava arquivo novo com velho (página quebrada ou antiga). Cada publicação marca os .js com o
+      # commit (?v=), só no que vai para o site (os scripts da Action já rodaram acima)
+      - name: Marcar os arquivos JS com a versão (cache do navegador)
+        run: |
+          v="${GITHUB_SHA::7}"
+          sed -i -E "s#(src=\"js/[a-z0-9_]+\.js)\"#\1?v=$v\"#g" *.html
+          sed -i -E "s#(from \"\./[a-z0-9_]+\.js)\"#\1?v=$v\"#g; s#(import\(\"\./[a-z0-9_]+\.js)\"#\1?v=$v\"#g" js/*.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
