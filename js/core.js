@@ -693,9 +693,21 @@ export function edgeProp(tipo, proj, linha, over, under) {
 // quanto 1 ponto de linha muda a chance do Over perto do meio (normal com o desvio típico de cada estatística:
 // pontos ~6, rebotes ~2,8, assistências ~2,3, cestas de 3 ~1,5, PRA ~8). Serve para comparar a chance em linhas diferentes.
 export const POR_LINHA_PROPS = { points: 0.065, rebounds: 0.14, assists: 0.17, threes: 0.25, pra: 0.05 };
-// movimento EQUIVALENTE de uma prop desde a abertura, em chance do Over na linha de abertura (mudança de linha + de odd)
-export const movimentoProp = (tipo, linhaAb, linha, pAb, p) =>
-  linhaAb == null || linha == null || p == null || pAb == null ? null : (linha - linhaAb) * POR_LINHA_PROPS[tipo] + (p - pAb);
+// movimento EQUIVALENTE de uma prop desde a abertura, em chance do Over na linha de ABERTURA: acha a média que o mercado
+// precifica agora (linha + chance sem margem, pela mesma distribuição de chanceOver) e calcula a chance do Over na linha
+// de abertura com ela. (Até 22/10 era linear: Δlinha × POR_LINHA + Δchance, que erra em saltos de linha baixa, ex.:
+// cestas de 3 de 0,5 para 1,5.)
+const mediaImplicita = (tipo, linha, p) => {
+  let lo = 0.02, hi = 150;
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (chanceOver(tipo, m, linha) < p) lo = m; else hi = m; }
+  return (lo + hi) / 2;
+};
+export function movimentoProp(tipo, linhaAb, linha, pAb, p) {
+  if (linhaAb == null || linha == null || p == null || pAb == null) return null;
+  if (linha === linhaAb) return p - pAb;
+  const q = chanceOver(tipo, mediaImplicita(tipo, linha, p), linhaAb);
+  return q == null ? null : q - pAb;
+}
 // nome para casar jogadores entre fontes (sem acento, sufixo nem pontuação)
 export const nomeChave = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z]/g, "");
 // valor da estatística no box score da ESPN (summary → boxscore.players[].statistics[0]: keys + athletes[].stats)

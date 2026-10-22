@@ -308,3 +308,14 @@ table.estreita { min-width: 0; max-width: 560px; }
 .res.green { background: var(--good-bg); color: var(--good); }
 .res.red { background: var(--bad-bg); color: var(--bad); }
 .res.push, .res.anulada { background: var(--accent-soft); color: var(--ink-2); }
+/* aba Filtros */
+.filtros-temp { min-width: 760px; }
+.filtros-temp tr.grupo th { background: var(--accent-soft); color: var(--ink); text-transform: none; font-size: 13px; }
+.sit { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 4px; white-space: nowrap; background: var(--accent-soft); color: var(--ink-2); }
+.sit.forte { background: var(--good); color: var(--panel); }
+.sit.bom { background: var(--good-bg); color: var(--good); }
+.sit.ruim { background: var(--bad-bg); color: var(--bad); }
+.filtros-hoje { min-width: 1000px; }
+.filtros-hoje td.chips { display: table-cell; }
+.filtros-hoje .chip { display: inline-block; margin: 1px 0; }
+.chip.ruim { background: var(--bad-bg); color: var(--bad); }

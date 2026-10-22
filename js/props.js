@@ -7,6 +7,7 @@
 import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
+import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
 
 const TIPOS = { points: "Pontos", rebounds: "Rebotes", assists: "Assistências", threes: "Cestas de 3", pra: "PRA (pts+reb+ast)" };
 const POR_LINHA = POR_LINHA_PROPS; // core.js: quanto 1 ponto de linha vale em chance do Over
@@ -22,11 +23,11 @@ let edgely = null, pedidoMsg = ""; // data/edgely.json e a resposta do último "
 const abertos = new Set(); // linhas com o gráfico aberto
 
 // ---------- filtros (salvos só neste navegador) ----------
-const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", mom: "", busca: "" };
+const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", mom: "", amostra: "30", roimin: "0.05", busca: "" };
 let f = (() => { try { return { ...PADRAO_F, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO_F }; } })();
-{ const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "acomp"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
+{ const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "filtros", "acomp"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
 const salvarF = () => { try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ } };
-for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["mom", "#f-mom"], ["busca", "#f-busca"]]) {
+for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["mom", "#f-mom"], ["amostra", "#f-amostra"], ["roimin", "#f-roimin"], ["busca", "#f-busca"]]) {
   const el = $(sel);
   el.value = f[k];
   el.addEventListener(k === "busca" ? "input" : "change", () => {
@@ -395,6 +396,11 @@ function tabelaEdge(L, titulo, nota = "") {
 }
 
 function render() {
+  if (f.aba === "filtros") { // temporada: arquivo do mercado (relido a cada 10 min); hoje: os jogos já carregados
+    if (filtrosVelho()) carregarFiltros().then(() => f.aba === "filtros" && renderFiltros($("#jogos"), f, jogos));
+    renderFiltros($("#jogos"), f, jogos);
+    return;
+  }
   if (f.aba === "acomp") { // não depende dos jogos de hoje: lê data/apostas_edgely (relido a cada 5 min)
     if (acompVelho()) carregarAcomp().then(() => f.aba === "acomp" && renderAcomp($("#jogos"), f));
     renderAcomp($("#jogos"), f);
