@@ -46,6 +46,9 @@ async function registrarJogo(ev, M, projs, edgely, momento) {
   const nomes = Object.fromEntries(elencos.flatMap((r) => (r?.athletes || []).map((a) => [a.id, a.displayName])));
   const fora = c.competitors.find((t) => t.homeAway === "away")?.team, casa = c.competitors.find((t) => t.homeAway === "home")?.team;
   M.jogos[ev.id] ||= { dia: hojeEt, titulo: `${fora?.abbreviation} @ ${casa?.abbreviation}`, inicio: Date.parse(ev.date), fim: false };
+  // retrato das projeções do jogo neste momento (para o arquivo do mercado): nome -> [pts, reb, ast, 3PM, PRA, min]
+  M.jogos[ev.id][momento === "12h" ? "p12" : "p30"] = Object.fromEntries((edgely.jogadores || []).filter((p) => p.ev === ev.id)
+    .map((p) => [nomeChave(p.nome), ["points", "rebounds", "assists", "threes", "pra", "min"].map((k) => p.proj?.[k] ?? null)]));
   let novas = 0;
   for (const p of Object.values(dk.props)) {
     const nome = nomes[p.atleta];
@@ -106,6 +109,40 @@ if ((horaUtc >= 15 || process.env.REGISTRAR === "1") && !indice.registrados.incl
   }
 }
 
+// ---------- arquivo do MERCADO: todas as props de cada jogo encerrado, não só as apostas ----------
+// data/apostas_edgely/mercado-AAAA-MM.json: { campos, jogos: {id: {dia, titulo, inicio}}, nomes, props: [[...]] }
+// abertura (L0/O0/U0) e fechamento (último ponto gravado antes do início: L1/O1/U1) vêm de data/linhas_dk.json, que o
+// site apaga 30 h depois do jogo; projeções do Edgely no registro das 12 h e no de 30 min antes; resultado do box score.
+export const CAMPOS_MERCADO = ["jogo", "atleta", "tipo", "L0", "O0", "U0", "L1", "O1", "U1", "proj12", "proj30", "real"];
+const IDX = { points: 0, rebounds: 1, assists: 2, threes: 3, pra: 4 };
+const linhasDk = await lerJson(new URL("data/linhas_dk.json", raiz), null);
+const mercados = new Map();
+const mercado = async (m) => {
+  if (!mercados.has(m)) mercados.set(m, await lerJson(new URL(`mercado-${m}.json`, DIR), { campos: CAMPOS_MERCADO, jogos: {}, nomes: {}, props: [] }));
+  return mercados.get(m);
+};
+async function arquivarMercado(id, j, box, cancelado) {
+  const H = linhasDk?.jogos?.[id]?.h;
+  if (!H || cancelado) return 0;
+  const MM = await mercado(j.dia.slice(0, 7));
+  if (MM.jogos[id]) return 0;
+  MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio };
+  let n = 0;
+  for (const [k, serie] of Object.entries(H)) {
+    if (k.startsWith("jogo|")) continue;
+    const [atleta, tipo] = k.split("|");
+    const ab = serie.find((h) => h[0] == null) || serie[0];
+    const fe = serie.filter((h) => h[0] != null && h[0] * 1000 < j.inicio).pop() || ab;
+    const b = box.get(atleta);
+    const nome = b?.nome || null, chave = nome && nomeChave(nome);
+    const real = b?.jogou ? estatisticaBox(b.keys, b.stats, tipo) : null;
+    if (nome) MM.nomes[atleta] = nome;
+    MM.props.push([id, atleta, tipo, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], j.p12?.[chave]?.[IDX[tipo]] ?? null, j.p30?.[chave]?.[IDX[tipo]] ?? null, real]);
+    n++;
+  }
+  return n;
+}
+
 // ---------- 2) resultados (mês atual e anterior) ----------
 const mesAnterior = new Date(Date.parse(`${hojeEt.slice(0, 7)}-15`) - 30 * 864e5).toISOString().slice(0, 7);
 let resolvidos = 0;
@@ -121,7 +158,7 @@ for (const m of [mesAnterior, hojeEt.slice(0, 7)].filter((m) => indice.meses.inc
     const box = new Map(); // idAtleta -> { keys, stats, jogou }
     for (const t of s.boxscore?.players || []) {
       const est = t.statistics?.[0];
-      for (const a of est?.athletes || []) box.set(String(a.athlete?.id), { keys: est.keys || [], stats: a.stats || [], jogou: !a.didNotPlay && (a.stats || []).length > 0 && a.stats[0] !== "0" });
+      for (const a of est?.athletes || []) box.set(String(a.athlete?.id), { nome: a.athlete?.displayName, keys: est.keys || [], stats: a.stats || [], jogou: !a.didNotPlay && (a.stats || []).length > 0 && a.stats[0] !== "0" });
     }
     for (const a of M.apostas) {
       if (a[C.jogo] !== id || a[C.res]) continue;
@@ -135,6 +172,8 @@ for (const m of [mesAnterior, hojeEt.slice(0, 7)].filter((m) => indice.meses.inc
     }
     j.fim = true;
     mudou.add(m);
+    const arq = await arquivarMercado(id, j, box, cancelado);
+    if (arq) console.log(`Mercado: ${j.titulo} ${arq} props arquivadas`);
   }
 }
 
@@ -144,6 +183,10 @@ for (const m of mudou) {
   const txt = `{"campos":${JSON.stringify(CAMPOS)},\n"jogos":${JSON.stringify(M.jogos)},\n"nomes":${JSON.stringify(M.nomes)},\n"apostas":[\n${M.apostas.map((a) => JSON.stringify(a)).join(",\n")}\n]}\n`;
   await writeFile(new URL(`${m}.json`, DIR), txt);
   if (!indice.meses.includes(m)) indice.meses.push(m);
+}
+for (const [m, MM] of mercados) {
+  if (!MM.props.length) continue;
+  await writeFile(new URL(`mercado-${m}.json`, DIR), `{"campos":${JSON.stringify(CAMPOS_MERCADO)},\n"jogos":${JSON.stringify(MM.jogos)},\n"nomes":${JSON.stringify(MM.nomes)},\n"props":[\n${MM.props.map((a) => JSON.stringify(a)).join(",\n")}\n]}\n`);
 }
 if (mudou.size) {
   indice.meses.sort();
