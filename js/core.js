@@ -663,6 +663,10 @@ export async function buscarDk(getJson, idEspn) {
   return { props: lerPropsDk(itens), jogo: lerJogoDk(odd, itens) };
 }
 
+// nome de um atleta pelo id (quando ele não está no elenco do time: troca recente, contrato de duas vias, ou o
+// elenco não carregou); a API "core" da ESPN responde ao navegador e à Action
+export const nomeAtletaEspn = (getJson, id) => getJson(`${ESPN_CORE}/athletes/${id}?lang=en&region=us`).then((a) => a?.displayName || null).catch(() => null);
+
 // PROJEÇÃO × LINHA (aba Edge e acompanhamento das apostas do Edgely, 21/10/2026)
 // chance do Over pela projeção (aproximação ainda não calibrada com resultados): pontos e PRA ~ normal com desvio
 // 1,4·√projeção (25 pts → ~7, 10 → ~4,4); rebotes, assistências e cestas de 3 ~ binomial negativa com variância

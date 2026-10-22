@@ -4,7 +4,7 @@
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
 // Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
-import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS } from "./core.js";
+import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
@@ -81,13 +81,24 @@ async function emLotes(itens, n, fn) {
 const elencos = new Map();
 async function elenco(idTime) {
   if (elencos.has(idTime)) return elencos.get(idTime);
-  const ck = `nba-elenco-${idTime}`;
-  try { const c = JSON.parse(localStorage.getItem(ck) || "null"); if (c && Date.now() - c.em < 12 * 3600e3) { elencos.set(idTime, c.m); return c.m; } } catch { /* sem cache */ }
+  const ck = `nba-elenco2-${idTime}`; // "2": a versão antiga guardava elenco vazio por 12 h quando a busca falhava
+  try { const c = JSON.parse(localStorage.getItem(ck) || "null"); if (c && Object.keys(c.m).length && Date.now() - c.em < 12 * 3600e3) { elencos.set(idTime, c.m); return c.m; } } catch { /* sem cache */ }
   const r = await getJson(`${SITE}/teams/${idTime}/roster`).catch(() => null);
   const m = Object.fromEntries((r?.athletes || []).map((a) => [a.id, a.displayName]));
+  if (!Object.keys(m).length) return m; // falhou: não guarda (tenta de novo na próxima atualização)
   elencos.set(idTime, m);
   try { localStorage.setItem(ck, JSON.stringify({ em: Date.now(), m })); } catch { /* sem cache */ }
   return m;
+}
+// quem não está no elenco: nome pelo id do atleta (guardado neste navegador por 30 dias)
+async function nomesFaltando(ids, nomes) {
+  const falta = ids.filter((id) => !nomes[id]);
+  await emLotes(falta, 4, async (id) => {
+    const ck = `nba-atleta-${id}`;
+    try { const c = localStorage.getItem(ck); if (c) { nomes[id] = c; return; } } catch { /* sem cache */ }
+    const n = await nomeAtletaEspn(getJson, id);
+    if (n) { nomes[id] = n; try { localStorage.setItem(ck, n); } catch { /* sem cache */ } }
+  });
 }
 
 // movimento desde a referência escolhida: linha, chance sem margem e o movimento EQUIVALENTE, isto é, quanto
@@ -128,6 +139,7 @@ async function carregarJogo(ev, historico, projs) {
   const nomes = { ...e1, ...e2 }, siglaDe = {};
   for (const id of Object.keys(e1)) siglaDe[id] = times[0].sigla;
   for (const id of Object.keys(e2)) siglaDe[id] = times[1].sigla;
+  await nomesFaltando([...new Set(Object.values(dk.props).map((p) => p.atleta))], nomes);
   const lesoes = {};
   for (const t of resumo?.injuries || []) for (const i of t.injuries || []) lesoes[normal(i.athlete?.displayName)] = { status: i.status, motivo: i.details?.type || "", sigla: t.team?.abbreviation, nome: i.athlete?.displayName };
   const fora = times.find((t) => !t.casa), casa = times.find((t) => t.casa);

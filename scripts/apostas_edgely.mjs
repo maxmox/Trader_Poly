@@ -15,7 +15,7 @@
 //   { campos, jogos: {idEspn: {dia, titulo, inicio, fim}}, nomes: {idAtleta: nome}, apostas: [[...campos]] }
 // Local: node scripts/apostas_edgely.mjs   (REGISTRAR=1 registra fora do horário; SAIDA=<pasta> grava em outro lugar)
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { buscarDk, edgeProp, nomeChave, estatisticaBox, movimentoProp } from "../js/core.js";
+import { buscarDk, edgeProp, nomeChave, estatisticaBox, movimentoProp, nomeAtletaEspn } from "../js/core.js";
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 const raiz = new URL("../", import.meta.url);
@@ -47,6 +47,8 @@ async function lerJogo(ev, M) {
   const times = c.competitors.map((t) => t.team);
   const [dk, ...elencos] = await Promise.all([buscarDk(getJson, ev.id), ...times.map((t) => getJson(`${ESPN}/teams/${t.id}/roster`).catch(() => null))]);
   const nomes = Object.fromEntries(elencos.flatMap((r) => (r?.athletes || []).map((a) => [a.id, a.displayName])));
+  // quem não está no elenco (troca recente, duas vias): nome pelo id do atleta
+  for (const id of new Set(Object.values(dk.props).map((p) => p.atleta))) if (!nomes[id]) nomes[id] = await nomeAtletaEspn(getJson, id);
   const fora = c.competitors.find((t) => t.homeAway === "away")?.team, casa = c.competitors.find((t) => t.homeAway === "home")?.team;
   M.jogos[ev.id] ||= { dia: hojeEt, titulo: `${fora?.abbreviation} @ ${casa?.abbreviation}`, inicio: Date.parse(ev.date), fim: false };
   return { dk, nomes };
@@ -196,7 +198,7 @@ async function arquivarMercado(id, j, box, cancelado) {
     const ab = serie.find((h) => h[0] == null) || serie[0];
     const fe = serie.filter((h) => h[0] != null && h[0] * 1000 < j.inicio).pop() || ab;
     const b = box.get(atleta);
-    const nome = b?.nome || null, chave = nome && nomeChave(nome);
+    const nome = b?.nome || MM.nomes[atleta] || (await nomeAtletaEspn(getJson, atleta)), chave = nome && nomeChave(nome);
     const real = b?.jogou ? estatisticaBox(b.keys, b.stats, tipo) : null;
     if (nome) MM.nomes[atleta] = nome;
     MM.props.push([id, atleta, tipo, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], j.p12?.[chave]?.[IDX[tipo]] ?? null, j.p30?.[chave]?.[IDX[tipo]] ?? null, real]);
