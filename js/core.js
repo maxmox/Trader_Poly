@@ -585,8 +585,17 @@ export function lerPropsDk(itens) {
     (grupos.get(k) || grupos.set(k, []).get(k)).push(x);
   }
   const out = {};
-  for (const [k, L] of grupos) {
-    if (L.length !== 2) continue; // Over e Under na mesma linha
+  for (const [k, G] of grupos) {
+    // Over e Under na mesma linha (1º = Over). Com mais de 2 itens (a linha mudou enquanto as páginas eram baixadas),
+    // usa o par mais recente que está na mesma linha, em vez de perder o jogador
+    let L = G;
+    if (G.length > 2) {
+      const porLinha = new Map();
+      for (const x of G) { const t = String(x.current?.target?.value); (porLinha.get(t) || porLinha.set(t, []).get(t)).push(x); }
+      const pares = [...porLinha.values()].filter((P) => P.length === 2);
+      L = pares.sort((a, b) => Math.max(...b.map((x) => Date.parse(x.lastUpdated) || 0)) - Math.max(...a.map((x) => Date.parse(x.lastUpdated) || 0)))[0] || [];
+    }
+    if (L.length !== 2) continue;
     const [o, u] = L;
     const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
     const r = {
@@ -655,10 +664,17 @@ export function lerJogoDk(odd, itens) {
 // tudo da DraftKings de um jogo: props dos jogadores + mercados do jogo (1 consulta a .../odds + páginas do propBets)
 export async function buscarDk(getJson, idEspn) {
   const comp = `${ESPN_CORE}/events/${idEspn}/competitions/${idEspn}`;
-  const base = `${comp}/odds/100/propBets?lang=en&region=us&limit=1000`;
+  // páginas de 500: com limit=1000 a ESPN devolve a página 2 VAZIA (count 99) e os últimos ~20% dos itens do jogo
+  // se perdiam (22/10/2026). As páginas podem repetir um item na emenda: tira os repetidos (senão o jogador ficaria
+  // com 3 itens e lerPropsDk o descartaria).
+  const base = `${comp}/odds/100/propBets?lang=en&region=us&limit=500`;
   const [p1, odds] = await Promise.all([getJson(`${base}&page=1`), getJson(`${comp}/odds`).catch(() => null)]);
-  const itens = [...(p1?.items || [])];
-  for (let pg = 2; pg <= Math.min(p1?.pageCount || 1, 4); pg++) itens.push(...((await getJson(`${base}&page=${pg}`))?.items || []));
+  const brutos = [...(p1?.items || [])];
+  const resto = await Promise.all(Array.from({ length: Math.min(p1?.pageCount || 1, 8) - 1 }, (_, i) => getJson(`${base}&page=${i + 2}`).catch(() => null)));
+  for (const r of resto) brutos.push(...(r?.items || []));
+  const vistos = new Set();
+  // repetido = item idêntico por inteiro (Over e Under podem ter a mesma linha e a mesma odd atual e só diferir na abertura)
+  const itens = brutos.filter((x) => { const k = JSON.stringify(x); return vistos.has(k) ? false : vistos.add(k); });
   const odd = (odds?.items || []).find((o) => String(o.provider?.id) === "100") || null;
   return { props: lerPropsDk(itens), jogo: lerJogoDk(odd, itens) };
 }
