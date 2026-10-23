@@ -17,12 +17,25 @@ const getJson = async (u) => {
   return r.json();
 };
 
-const antes = await getJson(`${SITE}/data/linhas_dk.json?t=${Date.now()}`).catch(() => null);
+// histórico publicado: SEM ele não grava. Em 23/10/2026 uma leitura falhou (site sendo republicado) e o script começou
+// do zero e publicou o vazio por cima: perdeu o dia. Agora tenta 4 vezes e, se não conseguir, sai com erro, e a
+// Action não publica nesta rodada (o publicado fica intacto; a próxima rodada, 10 min depois, segue normal).
+// INICIAR=1 começa um histórico novo de propósito.
+let antes = null;
+for (let i = 0; i < 4 && !antes; i++) {
+  if (i) await new Promise((ok) => setTimeout(ok, 5000 * i));
+  antes = await getJson(`${SITE}/data/linhas_dk.json?t=${Date.now()}`).then((d) => (d?.jogos ? d : null)).catch((e) => { console.error(`histórico publicado (tentativa ${i + 1}): ${e.message}`); return null; });
+}
+if (!antes && process.env.INICIAR !== "1") {
+  console.error("Histórico publicado inacessível: não gravo nem publico nesta rodada (evita apagar o histórico).");
+  process.exit(1);
+}
 const saida = { em: null, jogos: antes?.jogos || {} };
 const agora = Math.floor(Date.now() / 1000);
 
 const eventos = [];
-for (const d of datasNba()) eventos.push(...((await getJson(`${ESPN}/scoreboard?dates=${d}`)).events || []));
+// ESPN fora do ar não trava a publicação: sem jogos lidos, o histórico é regravado como estava
+for (const d of datasNba()) eventos.push(...((await getJson(`${ESPN}/scoreboard?dates=${d}`).catch((e) => { console.error(`scoreboard ${d}: ${e.message}`); return null; }))?.events || []));
 let gravadas = 0, falhas = 0;
 for (const ev of eventos) {
   if (ev.status?.type?.state === "post") continue; // encerrado: o histórico fica até sair pela idade
@@ -43,4 +56,4 @@ for (const [id, j] of Object.entries(saida.jogos)) if (Date.now() - j.inicio > 3
 saida.em = agora;
 await writeFile(new URL("data/linhas_dk.json", raiz), JSON.stringify(saida));
 console.log(`${Object.keys(saida.jogos).length} jogos no histórico · ${gravadas} pontos novos · ${falhas} falhas`);
-if (falhas && falhas === eventos.length) process.exit(1);
+if (falhas && falhas === eventos.length) console.error("nenhum jogo lido da DraftKings nesta rodada (histórico regravado como estava)");

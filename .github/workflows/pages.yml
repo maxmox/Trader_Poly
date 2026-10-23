@@ -31,9 +31,10 @@ jobs:
           node-version: 22
       - name: Buscar posições abertas
         run: node scripts/snapshot.mjs
+      # sem continue-on-error: se o histórico publicado não puder ser lido, a rodada para aqui e NÃO publica (senão o
+      # site receberia um histórico vazio; aconteceu em 23/10/2026). A próxima rodada, 10 min depois, segue normal.
       - name: Linhas da NBA na DraftKings (histórico da página props.html)
         run: node scripts/linhas_dk.mjs
-        continue-on-error: true
       - name: Projeções do Edgely (aba Edge; consulta 1x por dia ou quando pedida na página)
         run: node scripts/edgely.mjs
         continue-on-error: true
