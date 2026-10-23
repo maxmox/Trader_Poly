@@ -1010,8 +1010,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 // 1) RELAY: GET /data/..., /gamma/..., /clob/... repassam a API pública do Polymarket com CORS.
 // 2) ALERTAS (Cron Trigger "* * * * *"), a cada minuto, nesta ordem:
 //    - entradas AO VIVO novas dos traders de data/traders_live.json (+ alerta SAIR de quem vende)
-//    - FUTEBOL UNDER AO VIVO (observação): 0x0 aos 28-33' -> Under 0,5 do 1º tempo
-//    - BASQUETE AO VIVO, SEGUIR (observação): fora da NBA/WNBA, aos 20 e 30 min
+//    (futebol Under e basquete seguir RETIRADOS em 24/10/2026: sinais reais −11,8% e −9,1%; voltam pelo git)
 //    - PRÉ-JOGO: os traders de data/traders.json, metade por minuto (+ alerta SAIR)
 //    Plano pago (Workers Paid, desde 18/10/2026). Com PLANO=gratis volta ao rodízio de um trader de
 //    pré-jogo por minuto e ao limite de 50 consultas. O contador corta o trabalho antes do limite.
@@ -1027,7 +1026,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //               10 min o Worker confere o resultado de até 8 sinais cujo jogo já acabou.
 //   v: / p:     sinal ao vivo / pré-jogo já enviado
 //   s: / x:     sinal lembrado para o alerta SAIR / saída já avisada
-//   us:         Under enviado (us:<regra>:<mercado>) · bk20: / bk30: / bks: basquete avaliado / enviado
+//   us: / bk20: / bk30: / bks:  das estratégias retiradas (futebol Under, basquete seguir): expiram sozinhas
 //   status:     log das execuções
 //   edgely:pedido  hora do último pedido de "Buscar projeções" (props.html; /edgely-atualizar, /edgely-pedido)
 //
@@ -1037,7 +1036,7 @@ export { liberado, tipoMercado as tipoDoMercado, inicioDoJogo as inicioDoMercado
 //   BANCA, PCT       (opcional) para sugerir o valor da aposta (ex.: 1000 e 1.5)
 //   SITE_URL         (opcional) padrão https://maxmox.github.io/Trader_Poly
 //   GH_TOKEN         (secret, opcional) dispara a publicação do site a cada 10 min (ver dispararPublicacao)
-//   PLANO=gratis, UNDER=0, BKT=0 (opcional) plano grátis / desligar uma regra
+//   PLANO=gratis     (opcional) plano grátis
 // KV: crie um namespace e ligue com o nome ENVIADOS (Settings → Bindings → KV).
 
 const CORS = {
@@ -1253,109 +1252,6 @@ async function registrar(env, item, persistir) {
 const ORCAMENTO = { pago: 800, gratis: 40 };
 const gratis = (env) => env.PLANO === "gratis";
 
-// ---------- FUTEBOL UNDER (observação; regra em core.js: UNDER_FUT / buscarUnderFut) ----------
-// A cada minuto: 0x0 entre 28' e 33' (placar da ESPN, 1 consulta) -> Under 0,5 do 1º tempo (o pré-jogo saiu em
-// 19/10/2026; os sinais antigos têm a regra "pre"). Cada mercado tem o livro
-// consultado no máximo a cada 4 min por regra (memória da instância, para não gastar gravações do KV) e manda um
-// alerta só por regra (KV "us:<regra>:<mercado>"; antes a chave era só o mercado e um alerta pré-jogo bloqueava o
-// ao vivo do mesmo mercado). Sinais vão para o registro como "Futebol: Under", com a regra ("pre"/"vivo") no lugar da nota.
-const UNDER_TRADER = { carteira: "under-fut", nome: "Futebol: Under", nivel: "observar" };
-const checadoUnder = new Map(); // "regra:conditionId" -> último livro consultado (ms)
-function msgUnder(env, x) {
-  return `⚽ <b>AO VIVO · FUTEBOL UNDER</b> · ${h(x.liga)} · em observação
-${h(x.tituloEvento)} · <b>0x0 aos ~${x.minuto} min</b>
-Entrar: <b>${h(x.aposta)}</b>
-Mercado: ${h(x.pergunta)} · lado <b>Under</b>
-Odd agora ${odd(x.ask)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}
-⚠️ Mercado raso: ordem limitada no preço da tela (cada 1¢ pesa) · segure até o fim${aposta(env, x.teto)}
-Histórico (60 dias, placar real, preço real): 0x0 aos 30' → Under 0,5 do 1º tempo +16% (385 jogos).
-${linkMercado(x)}`;
-}
-
-async function verificarUnderFut(env, api, resumo, maxLivros = 40) {
-  const agora = Date.now();
-  for (const [k, t] of checadoUnder) if (agora - t > 3 * 3600e3) checadoUnder.delete(k);
-  const checar = async (m, regra) => {
-    const k = `${regra}:${m.conditionId}`;
-    if (agora - (checadoUnder.get(k) || 0) < 4 * 60e3) return false;
-    if (await jaEnviado(env, `us:${k}`)) return false;
-    checadoUnder.set(k, agora);
-    return true;
-  };
-  const sinais = await buscarUnderFut(api, agora, { maxLivros, checar });
-  resumo.under = { sinais: 0, achados: sinais.length };
-  for (const x of sinais) {
-    const chave = `us:${x.regra}:${x.cond}`;
-    if (await jaEnviado(env, chave)) continue;
-    const r = await telegram(env, msgUnder(env, x));
-    if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
-    await marcar(env, chave, 6 * 3600);
-    resumo.enviados++; resumo.under.sinais++;
-    x.nota = { nota: null, rotulo: x.regra };
-    await registrarSinal(env, UNDER_TRADER, x, "u");
-  }
-}
-
-// ---------- BASQUETE AO VIVO, SEGUIR QUEM DISPAROU (observação) ----------
-// A cada minuto: jogos de basquete fora da NBA/WNBA que começaram há 20-22 ou 30-32 min; histórico do mercado
-// de vencedor (1 consulta) e, se bater a regra, o livro (1 consulta). Cada jogo é avaliado uma vez por
-// checagem (KV "bk20:"/"bk30:") e manda no máximo um alerta (KV "bks:"). No máximo 3 jogos por execução.
-const BKT_TRADER = { carteira: "seguir-bkt", nome: "Basquete ao vivo: seguir", nivel: "observar" };
-function msgBkt(x) {
-  const ic = x.forca === "forte" ? "🟢" : "🟡";
-  return `${ic} 🏀 <b>AO VIVO · BASQUETE, SEGUIR ${x.forca === "forte" ? "(forte)" : "(moderado)"}</b> · ${h(x.liga)} · em observação
-${h(x.tituloEvento)} · ~${x.minuto} min de jogo
-${h(x.time)} disparou: odd de ${odd(x.p0)} no início para ${odd(x.precoDele)} agora (−${Math.abs(100 * x.var).toFixed(0)}%)
-Entrar: <b>${h(x.aposta)}</b>
-Odd agora ${x.ask != null ? odd(x.ask) : odd(x.precoDele)} · <b>mínima ${odd(x.teto)}</b> · livre até a mínima ~${usd(x.liquidez || 0)}${x.ask != null && x.ask > x.teto ? "\n⚠️ A melhor oferta já está abaixo da odd mínima: deixe ordem limitada na mínima e não persiga." : ""}
-⚠️ Mercado raso: ordem limitada e valor pequeno · segure até o fim
-${x.forca === "forte" ? "Histórico (90 dias, fora da NBA/WNBA, preço real): +16% a +46%." : "Regra moderada: histórico +13% a +19%."}
-${linkMercado(x)}`;
-}
-
-async function verificarSeguirBkt(env, api, resumo, maxJogos = 3) {
-  const agora = Date.now();
-  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
-  resumo.bkt = { jogos: 0, sinais: 0 };
-  let n = 0;
-  for (const E of SEGUIR_BKT.checagens) {
-    const evs = ((await api.get("gamma", `/events?tag_slug=basketball&closed=false&active=true&start_time_min=${iso(agora - (E + SEGUIR_BKT.janelaMin) * 60e3)}&start_time_max=${iso(agora - E * 60e3)}&limit=50`).catch(() => null)) || [])
-      .filter((e) => !SEGUIR_BKT.fora.includes((e.slug || "").split("-")[0])).sort((a, b) => +(b.volume || 0) - +(a.volume || 0));
-    resumo.bkt.jogos += evs.length;
-    for (const ev of evs) {
-      if (n >= maxJogos) return;
-      const m = (ev.markets || []).find((x) => x.sportsMarketType === "moneyline" && x.clobTokenIds && JSON.parse(x.outcomes || "[]").length === 2);
-      if (!m) continue;
-      const chave = `bk${E}:${ev.slug}`;
-      if (await jaEnviado(env, chave) || await jaEnviado(env, `bks:${ev.slug}`)) continue;
-      n++;
-      await marcar(env, chave, 3 * 3600);
-      const ini = Date.parse(m.gameStartTime || ev.startTime) / 1000;
-      const tok = JSON.parse(m.clobTokenIds);
-      const hp = await api.get("clob", `/prices-history?market=${tok[0]}&startTs=${Math.floor(ini - 900)}&endTs=${Math.floor(agora / 1000)}&fidelity=1`).catch(() => null);
-      const sig = avaliarSeguirBkt((hp?.history || []).sort((a, b) => a.t - b.t), ini, Math.floor(agora / 1000));
-      if (!sig) continue;
-      const outcomes = JSON.parse(m.outcomes);
-      const book = await api.get("clob", `/book?token_id=${tok[sig.lado]}`).catch(() => null);
-      const asks = (book?.asks || []).map((a) => ({ p: +a.price, q: +a.size })).sort((a, b) => a.p - b.p);
-      const teto = Math.min(sig.preco + 0.015, 0.97);
-      const x = {
-        ...sig, asset: tok[sig.lado], cond: m.conditionId, oi: sig.lado, slug: m.slug, eventSlug: ev.slug, tituloEvento: ev.title,
-        pergunta: m.question, lado: outcomes[sig.lado], time: outcomes[sig.lado], aposta: descreverAposta(m.question, outcomes[sig.lado]),
-        esporte: "Basquete", liga: ev.slug.split("-")[0].replace(/^bk/, "").toUpperCase(), minuto: Math.round((agora / 1000 - ini) / 60),
-        inicio: ini * 1000, entrouEm: agora, precoDele: sig.preco, teto, ask: asks[0]?.p ?? null,
-        liquidez: asks.filter((a) => a.p <= teto).reduce((s, a) => s + a.p * a.q, 0), tipo: "moneyline",
-      };
-      const r = await telegram(env, msgBkt(x));
-      if (!r.ok) { resumo.erros.push(`telegram: ${r.erro}`); continue; }
-      await marcar(env, `bks:${ev.slug}`, 6 * 3600);
-      resumo.enviados++; resumo.bkt.sinais++;
-      x.nota = { nota: null, rotulo: x.forca };
-      await registrarSinal(env, BKT_TRADER, x, "b");
-    }
-  }
-}
-
 // ---------- PUBLICAÇÃO DO SITE ----------
 // O agendamento do GitHub Actions ("a cada 10 min") atrasa horas na prática. Com o secret GH_TOKEN (token
 // fine-grained só do repositório, permissão Actions: read and write), o Worker dispara a Action a cada 10 min:
@@ -1407,16 +1303,6 @@ async function verificar(env, { minuto = new Date().getUTCMinutes(), preTrader =
       if (r.ok) { resumo.enviados++; await marcar(env, chave, 6 * 3600); await lembrarSinal(env, t, s, await registrarSinal(env, t, s, "v")); } else resumo.erros.push(`telegram: ${r.erro}`);
     }
     if (t.nivel !== "teste") await avisarSaidas(env, t, d.vendas, resumo);
-  }
-
-  // futebol Under ao vivo (0x0 aos 28-33')
-  if (env.UNDER !== "0") {
-    try { await verificarUnderFut(env, api, resumo, gratis(env) ? 6 : 40); } catch (e) { resumo.erros.push(`under: ${e.message || e}`); }
-  }
-
-  // basquete ao vivo, seguir quem disparou (fora da NBA/WNBA, aos 20 e 30 min)
-  if (env.BKT !== "0") {
-    try { await verificarSeguirBkt(env, api, resumo, gratis(env) ? 3 : 10); } catch (e) { resumo.erros.push(`bkt: ${e.message || e}`); }
   }
 
   // pré-jogo: plano pago = metade dos traders em cada minuto (cada um visto a cada 2 min: com todos a cada

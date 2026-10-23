@@ -2,33 +2,6 @@
  "gerado_em": "2026-10-15",
  "traders": [
   {
-   "carteira": "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28",
-   "nome": "BoggsFromShawshank",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol Americano",
-     "tipo": "spreads",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho Futebol Americano · handicap · pré-jogo. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 12,9% em 67 entradas (sem as 3 melhores 5,0%; metades 0,1% / 29,1%).",
-   "stats": {
-    "lucro": 34221,
-    "lucro_sem_top5": -1279843,
-    "meses": 12,
-    "meses_positivos": 7,
-    "apostas": 67,
-    "n": 67,
-    "roi_copia_5min": 12.2,
-    "roi_dele": 1.71,
-    "roi_copia_60s": 12.88,
-    "preenche_60s_pct": 64.2,
-    "vol_mercado_med": 103545
-   }
-  },
-  {
    "carteira": "0x51c7d30511ed096b39a9392bad97e0dc76c298aa",
    "nome": "0x51c7d305",
    "nivel": "copiar",
@@ -77,47 +50,6 @@
     "aposta_tipica": 1964.08875,
     "chance_sorte": 0.0
    }
-  },
-  {
-   "carteira": "0xe5241830e8876c115d7dc8311ad9f43d85fdd34f",
-   "nome": "GamblingOdyssey",
-   "nivel": "observar",
-   "esportes": [
-    "Futebol",
-    "Tenis"
-   ],
-   "nota": "O mais consistente: 11 de 13 meses positivos, lucro espalhado. Entra ~1 h antes do jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 32,1% em 25 entradas (sem as 3 melhores 7,5%; metades 15,0% / 49,1%).",
-   "stats": {
-    "lucro": 724874,
-    "lucro_sem_top5": 372857,
-    "meses": 13,
-    "meses_positivos": 11,
-    "apostas": 1879,
-    "roi_copia_5min": 12.28,
-    "roi_dele": 16.53,
-    "antecedencia_h": 1.2,
-    "por_esporte": {
-     "Tenis": {
-      "n": 310,
-      "roi_pct": 10.59,
-      "meses": 10,
-      "meses_pos_pct": 70.0
-     },
-     "Futebol": {
-      "n": 1101,
-      "roi_pct": 12.6,
-      "meses": 12,
-      "meses_pos_pct": 83.3
-     }
-    }
-   },
-   "nichosFortes": [
-    {
-     "area": "Futebol",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ]
   },
   {
    "carteira": "0x54ce7dd357766fc3255645e55ef41edd51cc9f80",
@@ -191,74 +123,6 @@
      "momento": "pré-jogo"
     }
    ]
-  },
-  {
-   "carteira": "0x5966db1fe50763c9e3c014d756369bad07e1f804",
-   "nome": "0x5966…F804",
-   "nivel": "observar",
-   "esportes": [
-    "Futebol",
-    "CS2",
-    "Beisebol"
-   ],
-   "nota": "ROI alto (21–42%) mas só 4,5 meses e 38 posições simuladas. Estava parado desde 16/09.",
-   "stats": {
-    "lucro": 2560167,
-    "lucro_sem_top5": 1047718,
-    "meses": 4,
-    "meses_positivos": 4,
-    "apostas": 187,
-    "roi_copia_5min": 36.97,
-    "roi_dele": 39.79,
-    "antecedencia_h": 0.2,
-    "por_esporte": {
-     "Futebol": {
-      "n": 81,
-      "roi_pct": 20.94,
-      "meses": 4,
-      "meses_pos_pct": 100.0
-     },
-     "Beisebol": {
-      "n": 35,
-      "roi_pct": 36.97,
-      "meses": 3,
-      "meses_pos_pct": 66.7
-     },
-     "CS2": {
-      "n": 41,
-      "roi_pct": 42.46,
-      "meses": 2,
-      "meses_pos_pct": 100.0
-     }
-    }
-   }
-  },
-  {
-   "carteira": "0x0b0e1eb890038cc0f98d26d34842bbe4d1434826",
-   "nome": "beautifulobsession",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 18,1% em 69 entradas (sem as 3 melhores 13,3%; metades 3,3% / 32,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
-   "stats": {
-    "lucro": 60926,
-    "lucro_sem_top5": 12219,
-    "meses": 2,
-    "meses_positivos": 2,
-    "apostas": 69,
-    "n": 69,
-    "roi_copia_5min": 16.97,
-    "roi_dele": 18.18,
-    "roi_copia_60s": 18.06,
-    "preenche_60s_pct": 100.0,
-    "vol_mercado_med": 658516
-   }
   },
   {
    "carteira": "0x46c5aa9e0e3afea63874dd609414250eb3c73188",

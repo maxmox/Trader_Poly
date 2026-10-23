@@ -1,7 +1,7 @@
 // Quadro "Entradas recentes", em ordem cronológica, boas ou ruins:
 //  - traders: todas as entradas no nicho deles (data/desempenho.json, "ultimas" de cada trader, gerado pela Action)
-//  - estratégias (Futebol Under, Basquete seguir): os sinais reais enviados ao Telegram (GET /registro no Worker),
-//    que o site relê a cada 5 min, então aparecem logo depois do alerta
+//  - estratégias: nenhuma ativa (futebol Under e basquete seguir retirados em 24/10/2026); o código fica para quando
+//    uma voltar (sinais reais do GET /registro no Worker, relidos a cada 5 min)
 import { rotuloTipo, linkMercado, odd, taxa } from "./core.js";
 import { esc, usd, ha, dataHora, hora, pct as pctCasas } from "./formato.js";
 
@@ -9,8 +9,8 @@ const CHAVE = "entradas-filtros";
 const PASSO = 100;
 const pct = (v) => pctCasas(v, 0);
 const FILTROS = { origem: "", momento: "", nivel: "", situacao: "", trader: "" };
-// estratégias que entram no quadro (as descartadas, como steam e contra o movimento, ficam de fora)
-const ESTRATEGIAS = { "under-fut": "Futebol: Under", "seguir-bkt": "Basquete: seguir" };
+// estratégias que entram no quadro (as retiradas — steam, contra o movimento, futebol Under, basquete seguir — ficam de fora)
+const ESTRATEGIAS = {};
 
 function lerFiltros() {
   try { return { ...FILTROS, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; }

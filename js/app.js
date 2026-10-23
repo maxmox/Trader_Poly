@@ -1,10 +1,8 @@
-// Página principal: quadro "Sinais agora" (pré-jogo + ao vivo + regras em observação), fichas dos
+// Página principal: quadro "Sinais agora" (pré-jogo + ao vivo), fichas dos
 // traders, entradas recentes e placar. A regra de cada veredito fica em core.js.
 import { criarApi, carregarTodos, cents, odd, rotuloEsporte, rotuloTipo, rotuloNicho, vigentes, notaEntrada, linkMercado, custoCopia, FORA, PADRAO, historicoNoMercado, momentoDaEntrada, liberado } from "./core.js";
 import { $, esc, usd, ha, dataHora, stakeDe } from "./formato.js";
 import { iniciarAoVivo } from "./aovivo.js";
-import { iniciarUnderFut } from "./under.js";
-import { iniciarSeguirBkt } from "./bkt.js";
 import { blocoNota, pilulaNota, tamanhoTxt, blocoSaida, seloMercado } from "./nota.js";
 import { linhaPlacar, secaoPlacar } from "./placar.js";
 import { iniciarEntradas } from "./entradas.js";
@@ -133,7 +131,7 @@ function quando(h) {
 }
 // ---------- quadro único (pré-jogo + ao vivo) ----------
 // cada bloco informa quantos cards tem (n) e quantos são recomendação de entrada (copiar)
-const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 }, under: { n: 0, copiar: 0 }, bkt: { n: 0, copiar: 0 } };
+const quadro = { pre: { n: 0, copiar: 0 }, vivo: { n: 0, copiar: 0 } };
 function atualizarQuadro() {
   const blocos = Object.values(quadro);
   const copiar = blocos.reduce((s, b) => s + b.copiar, 0);
@@ -279,15 +277,6 @@ function avisar(lista) {
   } catch (e) {
     $("#vivo-traders").innerHTML = `<p class="erro">Lista de traders ao vivo indisponível: ${esc(e.message)}</p>`;
   }
-  // regras em observação: futebol Under e basquete seguir (mesmas regras do Worker)
-  try {
-    iniciarUnderFut({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg,
-      aoRenderizar: (c) => { quadro.under = c; atualizarQuadro(); } });
-  } catch (e) { console.error("under", e); }
-  try {
-    iniciarSeguirBkt({ api: () => criarApi({ relay: relay() }), getCfg: () => cfg,
-      aoRenderizar: (c) => { quadro.bkt = c; atualizarQuadro(); } });
-  } catch (e) { console.error("bkt", e); }
   carregarPlacar().then(render);
   setInterval(() => { if (!document.hidden) carregarPlacar().then(render); }, 5 * 60_000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) atualizar(); });

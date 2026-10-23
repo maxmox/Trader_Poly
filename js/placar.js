@@ -57,21 +57,11 @@ export function secaoPlacar({ desempenho, registro, traders }) {
       <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
   }).join("");
 
-  // futebol Under (observação): sinais reais por regra
-  const under = ["pre", "vivo"].map((f) => {
-    const r = resumoRegistro((porW["under-fut"] || []).filter((x) => x.rt === f));
-    return `<tr><td>Futebol: Under ${f === "pre" ? "(pré-jogo, retirado em 19/10)" : "(0x0 aos 30')"}</td><td>${f === "pre" ? "pré-jogo" : "ao vivo"} · futebol</td><td>${f === "pre" ? "retirado" : "observar"}</td><td class="n">–</td><td class="n">–</td><td class="n">–</td>
-      <td class="n">${f === "pre" ? "+11% a +13%*" : "+16%*"}</td><td class="n">–</td>
-      <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
-  }).join("");
-
-  // basquete ao vivo, seguir quem disparou (observação): sinais reais por força
-  const bkt = ["forte", "moderado"].map((f) => {
-    const r = resumoRegistro((porW["seguir-bkt"] || []).filter((x) => x.rt === f));
-    return `<tr><td>Basquete: seguir ${f === "forte" ? "🟢 forte (≥ 10%)" : "🟡 moderado (5–10%)"}</td><td>ao vivo · basquete fora da NBA</td><td>observar</td><td class="n">–</td><td class="n">–</td><td class="n">–</td>
-      <td class="n">${f === "forte" ? "+16% a +46%*" : "+13% a +19%*"}</td><td class="n">–</td>
-      <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
-  }).join("");
+  // estratégias retiradas em 24/10/2026 (resultado final dos sinais reais, para o histórico)
+  const retiradas = [["under-fut", "Futebol: Under"], ["seguir-bkt", "Basquete: seguir"]].map(([w, nome]) => {
+    const r = resumoRegistro(porW[w] || []);
+    return r.enviados ? `${nome}: ${r.acertos}/${r.resolvidos} acertos, ROI ${pct(r.roi)}` : "";
+  }).filter(Boolean).join(" · ");
 
   // conferência da nota: 30 dias simulados (todos os traders) + sinais reais
   const agg = {};
@@ -92,8 +82,8 @@ export function secaoPlacar({ desempenho, registro, traders }) {
   const quando = dataHora(desempenho?.geradoEm);
   return `<div class="sec-head"><h2>Placar</h2><span class="muted">últimos 30 dias atualizados em ${quando} · sinais reais desde o início do registro</span></div>
     <p class="muted lede"><b>30 dias</b>: entradas do trader na especialidade/nicho dele, como se tivessem virado sinal; "cópia" = comprar 1 min depois, na odd negociada, só se ainda estava acima da odd mínima. <b>Sinais reais</b>: o que o Telegram mandou, com o resultado conferido depois do jogo (ROI na odd disponível no envio).</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}${under}${bkt}</tbody></table></div>
-    <p class="muted">* Futebol, Under: Under 0,5 do 1º tempo com 0x0 aos 30 min (placar da ESPN). O Under pré-jogo (1º tempo e Under 1,5 a 0,25–0,40, 10–30 min antes) foi retirado em 19/10 depois de dar prejuízo nos sinais reais; a linha fica para o histórico; backtest de 60 dias com preço real, positivo nos dois períodos de 30 dias. Basquete, seguir: comprar o time cuja odd caiu ≥ 5% até os 20–30 min, só fora da NBA/WNBA; backtest de 90 dias com preço real, mercados rasos. Os sinais reais mostram se isso se mantém.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}</tbody></table></div>
+    <p class="muted">Estratégias de futebol e basquete retiradas dos sinais em 24/10/2026 (sinais reais negativos)${retiradas ? `: ${retiradas}` : ""}.</p>
     <h3>A nota está acertando?</h3>
     <div class="tbl-wrap"><table class="estreita"><thead><tr><th>Nota</th><th class="n">Acertos 30d</th><th class="n">ROI cópia 30d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${notas}</tbody></table></div>`;
 }
