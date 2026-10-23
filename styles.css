@@ -323,3 +323,14 @@ table.estreita { min-width: 0; max-width: 560px; }
 .props-tab tr.nova td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .props-tab tr.nova td { background: var(--warn-bg); }
 .tag-nova { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--warn); color: var(--panel); white-space: nowrap; }
+/* aba Filtros: matriz filtro × mercado */
+.filtros-matriz { min-width: 1100px; font-size: 12.5px; }
+.filtros-matriz th small { display: block; font-weight: 400; color: var(--ink-3); text-transform: none; }
+.filtros-matriz td.cel small { display: block; color: var(--ink-3); font-size: 11px; }
+.filtros-matriz td.cel.sit-forte { background: var(--good); color: var(--panel); }
+.filtros-matriz td.cel.sit-forte small { color: var(--panel); }
+.filtros-matriz td.cel.sit-bom { background: var(--good-bg); color: var(--good); }
+.filtros-matriz td.cel.sit-ruim { background: var(--bad-bg); color: var(--bad); }
+.filtros-matriz td.cel.sit-pouco { color: var(--ink-3); }
+.filtros-matriz tr.controle td, .filtros-temp tr.controle td { color: var(--ink-3); font-style: italic; }
+.chip.geral { opacity: .8; border: 1px dashed currentColor; }

@@ -149,6 +149,10 @@ export const ESTRATEGIAS = {
   contra: "Linha contra a projeção: lado da linha", // projeção apontava um lado e a linha andou para o outro → lado da linha
   mudou: "Projeção mudou e a linha acompanhou",  // projeção mudou ≥ 0,5 desde as 12 h e a linha andou no mesmo sentido
   under: "Controle: Under em tudo",              // régua: separa o efeito da estratégia de uma noite de Under
+  // 23/10, da análise segmentada (13 jogos, as duas noites no mesmo sentido):
+  "mov-under": "Linha andou p/ Under → Under",   // o lado Under do "mov" (o Over que sobe ficou ~0: dinheiro de loteria?)
+  "linha-volta": "Linha andou e a odd voltou → lado da linha", // a casa mexe a linha e devolve parte na odd
+  "contra-mudou": "Projeção mudou sozinha → contra ela", // projeção mudou ≥ 0,5 desde as 12 h e a linha NÃO acompanhou
 };
 const ANDOU = 0.03;
 // cada mercado do jogo vira um item com a mesma forma das props (lado A = "O")
@@ -204,6 +208,13 @@ function chanceA(x) {
         const lm = x.proj != null && x.proj12 != null && Math.abs(x.proj - x.proj12) >= 0.5 ? ladoDaMudanca(x.tipo, x.proj12, x.proj) : null;
         if (ladoMov && lm === ladoMov) reg("mudou", ladoMov);
         if (x.tipo !== "jogo-spread" && x.tipo !== "jogo-ml") reg("under", "U"); // controle: só onde existe Under
+        if (ladoMov === "U") reg("mov-under", "U");
+        // linha andou (props/totais: subiu → Over; handicap: linha do visitante caiu → visitante) e a odd voltou (≥ 1 pp)
+        const ladoLinha = x.linha == null || x.linhaAb == null || x.linha === x.linhaAb ? null
+          : x.tipo === "jogo-spread" ? (x.linha < x.linhaAb ? "O" : "U") : (x.linha > x.linhaAb ? "O" : "U");
+        const ladoOdd = x.p == null || x.pAb == null || Math.abs(x.p - x.pAb) < 0.01 ? null : x.p > x.pAb ? "O" : "U";
+        if (ladoLinha && ladoOdd && ladoOdd !== ladoLinha) reg("linha-volta", ladoLinha);
+        if (lm && ladoMov !== lm) reg("contra-mudou", lm === "O" ? "U" : "O");
       }
       j.regE = Math.floor(agora / 1000);
       mudou.add(hojeEt.slice(0, 7));
