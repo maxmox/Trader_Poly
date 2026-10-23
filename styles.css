@@ -339,3 +339,14 @@ table.estreita { min-width: 0; max-width: 560px; }
 .classe.cA { background: var(--good); color: var(--panel); }
 .classe.cB { background: var(--good-bg); color: var(--good); }
 .classe.cC { background: var(--accent-soft); color: var(--ink-3); }
+/* aba Acompanhamento: separada por mercado, comportamento das linhas, jogo a jogo */
+.acomp-comport { min-width: 900px; margin-top: 10px; }
+.acomp-comport th small, .acomp-tab th small { display: block; font-weight: 400; color: var(--ink-3); text-transform: none; }
+.acomp-grupos tr.sit-forte td:last-child b, .acomp-tab small.pos { color: var(--good); }
+.acomp-grupos tr.sit-ruim td:last-child b, .acomp-tab small.neg { color: var(--bad); }
+.acomp-insights { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.acomp-insights li.pos::marker { color: var(--good); }
+.acomp-insights li.neg::marker { color: var(--bad); }
+.acomp-jogo { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: var(--panel); }
+.acomp-jogo summary { cursor: pointer; font-size: 14px; }
+.acomp-jogo h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }

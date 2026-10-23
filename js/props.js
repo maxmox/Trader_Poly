@@ -24,11 +24,11 @@ let edgely = null, pedidoMsg = ""; // data/edgely.json e a resposta do último "
 const abertos = new Set(); // linhas com o gráfico aberto
 
 // ---------- filtros (salvos só neste navegador) ----------
-const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", mom: "", amostra: "30", roimin: "0.05", cls: "", busca: "" };
+const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", mom: "", merc: "", amostra: "30", roimin: "0.05", cls: "", busca: "" };
 let f = (() => { try { return { ...PADRAO_F, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO_F }; } })();
 { const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "filtros", "acomp"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
 const salvarF = () => { try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ } };
-for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["mom", "#f-mom"], ["amostra", "#f-amostra"], ["roimin", "#f-roimin"], ["cls", "#f-cls"], ["busca", "#f-busca"]]) {
+for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["mom", "#f-mom"], ["merc", "#f-merc"], ["amostra", "#f-amostra"], ["roimin", "#f-roimin"], ["cls", "#f-cls"], ["busca", "#f-busca"]]) {
   const el = $(sel);
   el.value = f[k];
   el.addEventListener(k === "busca" ? "input" : "change", () => {
