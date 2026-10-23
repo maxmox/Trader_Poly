@@ -334,3 +334,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .filtros-matriz td.cel.sit-pouco { color: var(--ink-3); }
 .filtros-matriz tr.controle td, .filtros-temp tr.controle td { color: var(--ink-3); font-style: italic; }
 .chip.geral { opacity: .8; border: 1px dashed currentColor; }
+/* classe das entradas (aba Filtros) */
+.classe { display: inline-block; min-width: 22px; text-align: center; font-weight: 800; border-radius: 4px; padding: 1px 6px; }
+.classe.cA { background: var(--good); color: var(--panel); }
+.classe.cB { background: var(--good-bg); color: var(--good); }
+.classe.cC { background: var(--accent-soft); color: var(--ink-3); }
