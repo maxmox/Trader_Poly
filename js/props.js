@@ -308,9 +308,10 @@ document.addEventListener("pointermove", (e) => {
   dica.style.top = `${top}px`;
 });
 
-// chance do lado A sem margem de um ponto do histórico CONVERTIDA PARA A LINHA DE REFERÊNCIA (a atual): quando a casa
-// mexe a linha, comparar a odd de 24,5 com a de 22,5 não faz sentido (24/10, pedido do usuário). Mesma conta do
-// movimento (core.movimentoMercado: props pela média implícita da linha, mercados do jogo pelo porLinha)
+// chance do lado A sem margem de um ponto do histórico CONVERTIDA PARA A LINHA DE ABERTURA: quando a casa mexe a linha,
+// comparar a odd de 24,5 com a de 22,5 não faz sentido, e a ABERTURA é a referência inicial do movimento (24/10, pedidos
+// do usuário). Mesma conta do "≈ X pp" da tabela (core.movimentoMercado: props pela média implícita da linha, mercados
+// do jogo pelo porLinha); sem abertura conhecida, a linha atual.
 function chanceNaLinha(x, h, ref) {
   const p = semMargem(h[2], h[3]);
   if (p == null) return null;
@@ -318,25 +319,33 @@ function chanceNaLinha(x, h, ref) {
   const q = movimentoMercado(x.tipo, ref, h[1], 0, p);
   return q == null ? null : Math.min(0.99, Math.max(0.01, q));
 }
-const linhaRef = (x) => x.dk.linha ?? x.hist.filter((h) => h[1] != null).pop()?.[1] ?? null;
-// minigráfico: a chance do lado A na linha atual, ponto a ponto
+const linhaRef = (x) => x.dk.linhaAb ?? x.dk.linha ?? x.hist.filter((h) => h[1] != null).pop()?.[1] ?? null;
+// a abertura como 1º ponto da série (o histórico guarda a abertura sem hora: t = null): 15 min antes do 1º registro
+function comAbertura(x) {
+  const timed = x.hist.filter((h) => h[0] != null);
+  const ab = x.dk.overAb != null || x.dk.linhaAb != null ? [null, x.dk.linhaAb ?? null, x.dk.overAb ?? null, x.dk.underAb ?? null] : x.hist.find((h) => h[0] == null);
+  if (!ab || !timed.length) return timed.map((h) => ({ h, ab: false }));
+  return [{ h: [timed[0][0] - 900, ab[1], ab[2], ab[3]], ab: true }, ...timed.map((h) => ({ h, ab: false }))];
+}
+// minigráfico: a chance do lado A na linha de abertura, da abertura até agora
 function serieAjustada(x) {
   const ref = linhaRef(x);
-  return x.hist.filter((h) => h[0] != null).map((h) => chanceNaLinha(x, h, ref)).filter((v) => v != null);
+  return comAbertura(x).map(({ h }) => chanceNaLinha(x, h, ref)).filter((v) => v != null);
 }
 
 function detalhe(j, x) {
-  const timed = x.hist.filter((h) => h[0] != null);
+  const serie = comAbertura(x);
   const refs = [{ t: j.inicio / 1000, rot: "início" }];
-  if (timed.length >= 2) {
-    const ref = linhaRef(x);
-    const ptsP = timed.map((h) => { const c = chanceNaLinha(x, h, ref); return [h[0], c, `${x.rotA} ${prob(c)}${x.temLinha ? ` na linha ${lin(ref)}` : ""}${x.temLinha && h[1] !== ref ? ` · na hora a linha era ${lin(h[1])}: ${x.rotA} ${prob(semMargem(h[2], h[3]))}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]; }).filter((p) => p[1] != null);
-    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado a cada ~10 min`;
-    const mudouLinha = x.temLinha && timed.some((h) => h[1] !== ref);
-    const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem${mudouLinha ? `, sempre na linha atual (${lin(ref)})` : ""} (DraftKings)`, pontos: ptsP, eixo: "pct", refs,
-      rodape: rodape + (mudouLinha ? " · nos pontos em que a linha era outra, a chance foi convertida para a linha atual (mesma conta do movimento)" : "") });
+  if (serie.length >= 2) {
+    const ref = linhaRef(x), t0 = serie[0].ab ? serie[0].h[0] : null;
+    if (t0 != null) refs.push({ t: t0 + 1, rot: "abertura" });
+    const ptsP = serie.map(({ h, ab }) => { const c = chanceNaLinha(x, h, ref); return [h[0], c, `${ab ? "ABERTURA · " : ""}${x.rotA} ${prob(c)}${x.temLinha ? ` na linha de abertura ${lin(ref)}` : ""}${x.temLinha && h[1] !== ref ? ` · na hora a linha era ${lin(h[1])}: ${x.rotA} ${prob(semMargem(h[2], h[3]))}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]; }).filter((p) => p[1] != null);
+    const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} (1º ponto, sem hora: a casa não informa quando abriu) · depois, gravado a cada ~10 min`;
+    const mudouLinha = x.temLinha && serie.some(({ h }) => h[1] !== ref);
+    const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem${x.temLinha ? `, na linha de abertura (${lin(ref)})` : ""} (DraftKings)`, pontos: ptsP, eixo: "pct", refs,
+      rodape: rodape + (mudouLinha ? " · nos pontos em que a linha já era outra, a chance foi convertida para a linha de abertura (mesma conta do movimento da tabela)" : "") });
     if (!x.temLinha) return chance;
-    const ptsLinha = timed.map((h) => [h[0], h[1], `linha ${lin(h[1])} · ${x.rotA} ${dec(h[2])} / ${x.rotB} ${dec(h[3])}`]);
+    const ptsLinha = serie.map(({ h, ab }) => [h[0], h[1], `${ab ? "ABERTURA · " : ""}linha ${lin(h[1])} · ${x.rotA} ${dec(h[2])} / ${x.rotB} ${dec(h[3])}`]).filter((p) => p[1] != null);
     return `<div class="graf-duo">${grafico({ titulo: `Linha da DraftKings${x.k === "spread" ? ` (${x.rotA})` : ""}`, pontos: ptsLinha, eixo: "linha", degrau: true, refs })}${chance}</div>`;
   }
   return `<p class="muted">Ainda sem histórico da DraftKings para ${x.k ? "este mercado" : "esta linha"}: ele é gravado a cada ~10 min.</p>`;
