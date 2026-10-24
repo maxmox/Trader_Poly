@@ -376,3 +376,6 @@ table.estreita { min-width: 0; max-width: 560px; }
 .avancado > summary { cursor: pointer; }
 .sig.acima { border-width: 2px; font-weight: 600; }
 .sig.base { background: var(--accent-soft); }
+.sig.fraco { --f: 0.18 !important; }
+.sig.pouco { border-style: dashed; }
+.sig > small:last-child:not(:first-child) { display: block; font-size: 10.5px; color: var(--ink-3); }

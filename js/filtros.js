@@ -306,14 +306,14 @@ export function decidir(ev) {
     favor: a.E.filter((e) => e.exc > 0).sort((p, q) => q.media - p.media || q.exc - p.exc), alertas: a.E.filter((e) => e.id !== "base" && e.peso > 0 && e.media < 0), conflito: false };
 }
 
-// ---------- LEITURA DA LINHA EM 4 PERGUNTAS (24/10/2026, pedido do usuário: "de que lado está o dinheiro") ----------
-// Para cada linha, 4 perguntas independentes, cada uma respondida pela temporada NO MESMO MERCADO (no fechamento, os dois
-// lados): nas linhas que estavam como esta, quem ganhou mais, Over ou Under (visitante ou mandante)? Não diz se a
-// pergunta "é estratégia": só o que aconteceu, com a amostra e a força estatística.
+// ---------- LEITURA DA LINHA (24/10/2026, pedido do usuário: "de que lado está o dinheiro") ----------
+// Para cada linha, perguntas respondidas pela temporada SÓ NO MESMO MERCADO (pontos ≠ rebotes ≠ assistências; misturar
+// mercados puxava tudo para o Under, que domina assistências e cestas de 3), no fechamento, nos dois lados: nas linhas
+// que estavam como esta, que lado GANHOU MAIS OU PERDEU MENOS (Over ou Under; visitante ou mandante)? Não diz se a
+// pergunta "é estratégia": só o que aconteceu, com a amostra e a força estatística. (As perguntas de odd de abertura e
+// odd atual saíram a pedido do usuário, 24/10.)
 //   mov   = movimento da linha (abertura → agora; no histórico, → fechamento), em pp de chance na linha de abertura
 //   proj  = projeção do Edgely × linha, em desvios (z): 17,5 com projeção 19 em pontos ≈ +0,25 desvio ("acima")
-//   abre  = chance do Over sem margem NA ABERTURA (a projeção da própria casa)
-//   agora = chance do Over sem margem AGORA (no histórico, no fechamento): a casa está calibrada nessa faixa?
 const NORMAIS_P = new Set(["points", "pra", "pa", "pr"]);
 function zProj(x) { // > 0 = a projeção favorece o lado A (Over ou visitante)
   const p = x.proj30 ?? x.proj12, L = x.L1;
@@ -330,11 +330,8 @@ const faixa = (v, cortes) => (v == null || !Number.isFinite(v) ? null : cortes.f
 export const DIMS = [
   ["mov", "Movimento da linha", "abertura → agora", (x) => faixa(mov(x), [-0.06, -0.03, 0.03, 0.06]), ["▼ Under ≥ 6 pp", "▼ Under 3–6 pp", "parada", "▲ Over 3–6 pp", "▲ Over ≥ 6 pp"]],
   ["proj", "Projeção × linha", "Edgely, em desvios", (x) => faixa(zProj(x), [-0.4, -0.15, 0.15, 0.4]), ["bem abaixo (Under)", "abaixo (Under)", "na linha", "acima (Over)", "bem acima (Over)"]],
-  ["abre", "Odd de abertura", "chance do Over sem margem", (x) => faixa(semMargem(x.O0, x.U0), [0.42, 0.48, 0.52, 0.58]), ["Over < 42%", "Over 42–48%", "Over 48–52%", "Over 52–58%", "Over ≥ 58%"]],
-  ["agora", "Odd atual", "chance do Over sem margem", (x) => faixa(semMargem(x.O1, x.U1), [0.42, 0.48, 0.52, 0.58]), ["Over < 42%", "Over 42–48%", "Over 48–52%", "Over 52–58%", "Over ≥ 58%"]],
 ];
-const grupoDe = (tipo) => (tipo.startsWith("jogo-") ? "jogo" : "props"); // recuo quando o mercado tem pouca amostra
-// temporada: dims["<dim>|<mercado ou props/jogo>|<faixa>|<O/U>"] = [n, vitórias, ROI, erro-padrão por jogo, noites, noites com lucro]
+// temporada: dims["<dim>|<mercado>|<faixa>|<O/U>"] = [n, vitórias, ROI, erro-padrão por jogo, noites, noites com lucro]
 export function montarDims(props) {
   const acc = new Map();
   for (const x of props) {
@@ -346,7 +343,7 @@ export function montarDims(props) {
       for (const l of ["O", "U"]) {
         const v = lucro(x, l);
         if (v == null) continue;
-        for (const k of [`${id}|${m}|${b}|${l}`, `${id}|${grupoDe(x.tipo)}|${b}|${l}`]) {
+        for (const k of [`${id}|${m}|${b}|${l}`]) {
           const q = acc.get(k) || acc.set(k, { n: 0, w: 0, l: 0, J: new Map(), D: new Map() }).get(k);
           q.n++; q.l += v; if (v > 0) q.w++;
           const j = q.J.get(x.jogo) || q.J.set(x.jogo, { l: 0, n: 0 }).get(x.jogo); j.l += v; j.n++;
@@ -365,18 +362,17 @@ export function montarDims(props) {
   }
   return out;
 }
-// resposta de uma pergunta para uma linha: o lado que mais ganhou na faixa dela (mesmo mercado; recuo props/jogo)
+// resposta de uma pergunta para uma linha: o lado que ganhou mais (ou perdeu menos) na faixa dela, só no mesmo mercado.
+// Força = quão certa é a DIFERENÇA entre os dois lados (os dois são as mesmas linhas, então a diferença tem ~2× o erro
+// de um lado): 100 × (2·Φ(diferença / (2·erro)) − 1). pouco = menos que a amostra mínima (aparece cinza, sem cor).
 function resposta(dims, id, tipo, b, minN) {
   if (b == null) return null;
-  const m = mercadoDe(tipo);
-  const pega = (g) => { const O = dims[`${id}|${g}|${b}|O`], U = dims[`${id}|${g}|${b}|U`]; return (O?.[0] || 0) >= minN || (U?.[0] || 0) >= minN ? { O, U } : null; };
-  let r = pega(m), geral = false;
-  if (!r) { r = pega(grupoDe(tipo)); geral = true; }
-  if (!r) return { b, pouco: true };
-  const ab = (a) => (a ? { n: a[0], w: a[1], roi: a[2], ep: a[3], noites: a[4], noitesPos: a[5] } : null);
-  const O = ab(r.O), U = ab(r.U), lado = (O?.roi ?? -9) >= (U?.roi ?? -9) ? "O" : "U", s = lado === "O" ? O : U;
-  const forca = s.roi > 0 ? Math.round(100 * (2 * fi(s.roi / s.ep) - 1)) : 0;
-  return { b, lado, s, O, U, forca, geral };
+  const m = mercadoDe(tipo), ab = (a) => (a ? { n: a[0], w: a[1], roi: a[2], ep: a[3], noites: a[4], noitesPos: a[5] } : null);
+  const O = ab(dims[`${id}|${m}|${b}|O`]), U = ab(dims[`${id}|${m}|${b}|U`]);
+  if (!O && !U) return { b, vazio: true };
+  const lado = (O?.roi ?? -9) >= (U?.roi ?? -9) ? "O" : "U", s = lado === "O" ? O : U, o = lado === "O" ? U : O;
+  const dif = o ? s.roi - o.roi : s.roi, forca = Math.max(0, Math.round(100 * (2 * fi(dif / (2 * s.ep)) - 1)));
+  return { b, lado, s, o, O, U, forca, pouco: s.n < minN };
 }
 const rotuloFaixa = (dim, b, m) => { const t = DIMS.find((d) => d[0] === dim)[4][b]; return ehTime(m) ? t.replaceAll("Over", "visitante").replaceAll("Under", "mandante") : t; };
 // normal do mercado (a margem): ROI de Over e Under (visitante e mandante) em tudo, no mesmo mercado
@@ -386,15 +382,14 @@ function baseDe(m) {
 }
 // etiqueta colorida: azul = Over (ou visitante), laranja = Under (ou mandante); intensidade = força; contorno grosso =
 // esta faixa ganhou ≥ 5 pp acima do normal do mercado para esse lado (fora do padrão)
-function sinal(r, dim, m, nomes, minF, base = null) {
+function sinal(r, dim, m, nomes, minF, base = null, rotulo = null) {
   if (!r) return `<td class="n"><span class="muted">–</span></td>`;
-  const rot = rotuloFaixa(dim, r.b, m);
-  if (r.pouco) return `<td><span class="sig N"><small>${esc(rot)}</small>amostra pequena</span></td>`;
-  const forte = r.forca >= minF, nome = r.lado === "O" ? nomes[0] : nomes[1], s = r.s;
-  const outro = r.lado === "O" ? r.U : r.O;
+  const rot = rotulo ?? rotuloFaixa(dim, r.b, m);
+  if (r.vazio) return `<td><span class="sig N"><small>${esc(rot)}</small>sem linhas na temporada</span></td>`;
+  const forte = !r.pouco && r.forca >= minF, nome = r.lado === "O" ? nomes[0] : nomes[1], outroNome = r.lado === "O" ? nomes[1] : nomes[0], s = r.s;
   const exc = base && base[r.lado] != null ? s.roi - base[r.lado] : null;
-  const tit = `${rot}${r.geral ? " (pouca amostra neste mercado: todos os " + (m.startsWith("jogo-") ? "mercados do jogo" : "mercados de jogador") + ")" : ""}: ${nomes[0]} ganhou ${r.O ? `${r.O.w} de ${r.O.n} (ROI ${pc(r.O.roi)})` : "–"} · ${nomes[1]} ganhou ${r.U ? `${r.U.w} de ${r.U.n} (ROI ${pc(r.U.roi)})` : "–"} · lucro em ${s.noitesPos} de ${s.noites} noite(s) · força ${r.forca}${exc != null ? ` · normal do mercado para ${nome}: ${pc(base[r.lado])} (esta faixa ${exc >= 0 ? "+" : "−"}${num(Math.abs(100 * exc), 0)} pp)` : ""}`;
-  return `<td><span class="sig ${forte ? r.lado : "N"}${r.geral ? " geral" : ""}${forte && exc >= 0.05 ? " acima" : ""}" style="--f:${(Math.max(r.forca, 15) / 100).toFixed(2)}" title="${esc(tit)}"><small>${esc(rot)}</small><b>${s.roi > 0 ? esc(nome) : `os dois perdem`}</b> ${Math.round((100 * s.w) / s.n)}% · ${pc(s.roi, 0)}${s.roi > 0 ? "" : ` <small>(${esc(nome)} perde menos; ${esc(r.lado === "O" ? nomes[1] : nomes[0])} ${pc(outro?.roi, 0)})</small>`}</span></td>`;
+  const tit = `${rot}: ${nomes[0]} ganhou ${r.O ? `${r.O.w} de ${r.O.n} (ROI ${pc(r.O.roi)})` : "–"} · ${nomes[1]} ganhou ${r.U ? `${r.U.w} de ${r.U.n} (ROI ${pc(r.U.roi)})` : "–"} · ${nome} teve lucro em ${s.noitesPos} de ${s.noites} noite(s) · força ${r.forca}${r.pouco ? " · amostra abaixo do mínimo: sem cor" : ""}${exc != null ? ` · normal do mercado para ${nome}: ${pc(base[r.lado])} (esta faixa ${exc >= 0 ? "+" : "−"}${num(Math.abs(100 * exc), 0)} pp)` : ""}`;
+  return `<td><span class="sig ${forte ? r.lado : r.pouco ? "N pouco" : `${r.lado} fraco`}${forte && exc >= 0.05 ? " acima" : ""}" style="--f:${(Math.max(r.forca, 15) / 100).toFixed(2)}" title="${esc(tit)}"><small>${esc(rot)}${r.pouco && rotulo == null ? ` · só ${s.n}` : ""}</small><b>${esc(nome)}</b> ${s.roi > 0 ? "ganha mais" : "perde menos"} · ${Math.round((100 * s.w) / s.n)}% · ${pc(s.roi, 0)}<small>${esc(outroNome)} ${r.o ? pc(r.o.roi, 0) : "–"}</small></span></td>`;
 }
 
 export function renderFiltros(el, f, jogos) {
@@ -427,7 +422,7 @@ export function renderFiltros(el, f, jogos) {
   const leitura = (h) => {
     if (h.nO && h.nU) return `<span class="leit div">dividido<small>${h.x.rotA} ${h.nO} · ${h.x.rotB} ${h.nU}</small></span>`;
     if (!h.conc) return `<span class="muted">sem sinal forte</span>`;
-    return `<span class="leit ${h.lado}">${esc(h.lado === "O" ? h.x.rotA : h.x.rotB)}<small>${h.conc} de 4 sinais</small></span>`;
+    return `<span class="leit ${h.lado}">${esc(h.lado === "O" ? h.x.rotA : h.x.rotB)}<small>${h.conc} de ${DIMS.length} sinais</small></span>`;
   };
   const tabHoje = hoje.length ? `<div class="tbl-wrap"><table class="props-tab filtros-hoje filtros-sinais"><thead><tr><th>Jogador</th><th>Mercado</th><th class="n">Linha<small>abertura → agora</small></th><th class="n">Odds O / U<small>abertura → agora</small></th><th class="n">Projeção</th><th>Normal do mercado<small>Over / Under em tudo</small></th>${DIMS.map(([, nome, sub]) => `<th>${esc(nome)}<small>${esc(sub)}</small></th>`).join("")}<th>Leitura</th></tr></thead><tbody>
     ${hoje.slice(0, MAX).map((h) => { const { j, x, y, R, base } = h, m = mercadoDe(x.tipo), nomes = [x.rotA, x.rotB]; return `<tr${novaDesde(x) ? ' class="nova"' : ""}><td><b>${esc(x.k ? x.nome : x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}${novaDesde(x) ? ` <span class="tag-nova">nova · ${novaDesde(x)} min</span>` : ""}<small>${esc(j.titulo)} · ${quandoJogo(j)}</small></td>
@@ -444,7 +439,7 @@ export function renderFiltros(el, f, jogos) {
   // temporada: como cada pergunta respondeu, faixa × mercado
   const mercs = Object.keys(MERCADOS).filter((m) => arquivo.porMercado[m] && (!f.tipo || (f.tipo === "jogo" ? m.startsWith("jogo-") : m === f.tipo)));
   const mapa = ([id, nome, sub, , rotulos]) => `<h3>${esc(nome)} <small class="muted">${esc(sub)}</small></h3><div class="tbl-wrap"><table class="props-tab filtros-mapa"><thead><tr><th>Faixa</th>${mercs.map((m) => `<th>${esc(MERCADOS[m])}</th>`).join("")}</tr></thead><tbody>
-    ${rotulos.map((_, b) => `<tr><td>${esc(rotulos[b])}</td>${mercs.map((m) => { const r = dims[`${id}|${m}|${b}|O`] || dims[`${id}|${m}|${b}|U`] ? resposta(dims, id, m === "jogo-parcial" ? "jogo-h1" : m, b, 1) : null; return r && !r.geral && (r.s?.n ?? 0) >= 5 ? sinal(r, id, m, ehTime(m) ? ["visitante", "mandante"] : ["Over", "Under"], minF).replace(`<small>${esc(rotuloFaixa(id, b, m))}</small>`, `<small>${r.s.n} linhas</small>`) : `<td class="n"><span class="muted">–</span></td>`; }).join("")}</tr>`).join("")}
+    ${rotulos.map((_, b) => `<tr><td>${esc(ehTime(mercs[0] || "") ? rotuloFaixa(id, b, mercs[0]) : rotulos[b])}</td>${mercs.map((m) => { const r = resposta(dims, id, m === "jogo-parcial" ? "jogo-h1" : m, b, minN); return r && !r.vazio ? sinal(r, id, m, ehTime(m) ? ["visitante", "mandante"] : ["Over", "Under"], minF, baseDe(m), `${r.s.n} linhas`) : `<td class="n"><span class="muted">–</span></td>`; }).join("")}</tr>`).join("")}
     </tbody></table></div>`;
 
   // avançado: catálogo de filtros, persistência e margem (versões anteriores da aba)
@@ -456,10 +451,10 @@ export function renderFiltros(el, f, jogos) {
   const umMercado = f.tipo && f.tipo !== "jogo" && arquivo.porMercado[mercadoDe(f.tipo)];
 
   el.innerHTML = `<section class="panel"><h2>Linhas de hoje: de que lado está o dinheiro</h2>
-      <p class="muted">Cada linha dos jogos que não começaram, com 4 perguntas respondidas pela <b>temporada, no mesmo mercado</b>: nas linhas que estavam como esta, <b>quem ganhou mais</b> (no fechamento, ~10 min antes do jogo)? <b>Movimento</b> = quanto a chance do Over mudou desde a abertura. <b>Projeção × linha</b> = onde a projeção do Edgely está em relação à linha atual (em desvios: em pontos, 17,5 com projeção 19 ≈ "acima"). <b>Odd de abertura</b> = a chance que a casa deu ao Over ao abrir. <b>Odd atual</b> = a chance agora (a casa acerta nessa faixa?). Cada etiqueta: o lado que mais ganhou, % de acerto e ROI dele. Cor: <span class="sig O" style="--f:.8">azul = Over (ou visitante)</span> <span class="sig U" style="--f:.8">laranja = Under (ou mandante)</span> — mais forte quanto mais certo (força = chance de esse lado ter ROI positivo, de 0 a 100); cinza = abaixo da força mínima ou os dois lados perdem. Pontilhada = pouca amostra no mercado (usa todos os mercados de jogador). Passe o mouse para os dois lados, a amostra e as noites. <b>Normal do mercado</b> = o que deu apostar em tudo naquele mercado (a margem da casa): a régua. Contorno grosso = a faixa ganhou 5 pp ou mais <b>acima</b> desse normal — é o que foge do padrão. <b>Leitura</b> = quantas perguntas apontam o mesmo lado com força. As perguntas não são independentes (a odd atual já carrega o movimento): use para escolher onde pôr a lupa — a decisão é sua.</p>
+      <p class="muted">Cada linha dos jogos que não começaram, com as perguntas respondidas pela <b>temporada, só no mesmo mercado</b> (pontos com pontos, rebotes com rebotes): nas linhas que estavam como esta, <b>que lado ganhou mais ou perdeu menos</b> (no fechamento, ~10 min antes do jogo)? <b>Movimento</b> = quanto a chance do Over mudou desde a abertura. <b>Projeção × linha</b> = onde a projeção do Edgely está em relação à linha atual (em desvios: em pontos, 17,5 com projeção 19 ≈ "acima"). Cada etiqueta: o lado melhor, o % de acerto e o ROI dele, e embaixo o ROI do outro lado. Cor: <span class="sig O" style="--f:.8">azul = Over (ou visitante)</span> <span class="sig U" style="--f:.8">laranja = Under (ou mandante)</span>, mais forte quanto mais certa a diferença entre os dois lados (força de 0 a 100); clara = diferença fraca; cinza = amostra abaixo do mínimo (os números aparecem, sem cor). <b>Normal do mercado</b> = o que deu apostar em tudo naquele mercado (a margem da casa): a régua. Contorno grosso = a faixa ganhou 5 pp ou mais <b>acima</b> desse normal. Passe o mouse para os dois lados, a amostra e as noites. <b>Leitura</b> = quantas perguntas apontam o mesmo lado com força. Use para escolher onde pôr a lupa — a decisão é sua.</p>
       ${tabHoje}</section>
     <section class="panel"><h2>Como cada pergunta respondeu na temporada</h2>
-      <p class="muted">${arquivo.nProps} linhas de ${arquivo.jogos} jogos em ${arquivo.dias} noite(s), no fechamento. Cada célula: o lado que mais ganhou naquela faixa e mercado, % de acerto, ROI e quantas linhas. É o mapa por trás das etiquetas de cima.</p>
+      <p class="muted">${arquivo.nProps} linhas de ${arquivo.jogos} jogos em ${arquivo.dias} noite(s), no fechamento. Cada célula, só daquele mercado: o lado que ganhou mais ou perdeu menos naquela faixa, % de acerto, ROI, e embaixo o ROI do outro lado. É o mapa por trás das etiquetas de cima.</p>
       ${DIMS.map(mapa).join("")}</section>
     <details class="panel avancado"><summary><b>Avançado:</b> catálogo de filtros, o que se repete entre noites</summary>
       <h3>O que se repete de uma noite para outra</h3>
