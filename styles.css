@@ -357,3 +357,22 @@ table.estreita { min-width: 0; max-width: 560px; }
 .conf.alta { color: var(--good); } .conf.media { color: var(--warn); } .conf.baixa { color: var(--ink-3); }
 .chip.base { background: var(--accent-soft); color: var(--ink-2); }
 .chip.nulo { background: transparent; color: var(--ink-3); border: 1px dashed var(--line); }
+/* aba Filtros: 4 perguntas por linha (azul = Over/visitante, laranja = Under/mandante; intensidade = força) */
+:root { --sig-o: #2f6fd6; --sig-u: #d9822b; }
+.sig { display: inline-block; min-width: 108px; padding: 3px 7px; border-radius: 6px; font-size: 12px; line-height: 1.3; border: 1px solid var(--line); background: var(--panel); color: var(--ink); white-space: nowrap; }
+.sig > small:first-child { display: block; font-size: 10.5px; color: var(--ink-3); }
+.sig b { font-weight: 800; }
+.sig.O { background: color-mix(in srgb, var(--sig-o) calc(var(--f) * 45%), var(--panel)); border-color: color-mix(in srgb, var(--sig-o) calc(var(--f) * 90%), var(--line)); }
+.sig.U { background: color-mix(in srgb, var(--sig-u) calc(var(--f) * 45%), var(--panel)); border-color: color-mix(in srgb, var(--sig-u) calc(var(--f) * 90%), var(--line)); }
+.sig.N { color: var(--ink-3); }
+.sig.geral { border-style: dashed; }
+.filtros-sinais td { vertical-align: middle; }
+.filtros-sinais td small, .filtros-sinais th small { display: block; }
+.leit { display: inline-block; font-weight: 800; padding: 3px 9px; border-radius: 6px; }
+.leit small { display: block; font-weight: 400; font-size: 11px; }
+.leit.O { background: var(--sig-o); color: #fff; } .leit.U { background: var(--sig-u); color: #fff; }
+.leit.div { background: var(--accent-soft); color: var(--ink-2); }
+.filtros-mapa td { padding: 3px 4px; }
+.avancado > summary { cursor: pointer; }
+.sig.acima { border-width: 2px; font-weight: 600; }
+.sig.base { background: var(--accent-soft); }
