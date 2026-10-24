@@ -120,29 +120,39 @@ export function simular(props, sorteios = 600) {
 
 // ---------- dados ----------
 let arquivo = null, p12 = {}, pj12 = {}, lidoEm = 0, erro = null;
+// linhas do arquivo do mercado (mercado-AAAA-MM.json) → objetos dos filtros
+export function propsDoArquivo(Ms) {
+  const props = [];
+  for (const M of Ms.filter(Boolean)) {
+    const C = Object.fromEntries(M.campos.map((k, i) => [k, i]));
+    for (const a of M.props) {
+      const j = M.jogos[a[C.jogo]] || {};
+      props.push({ jogo: a[C.jogo], dia: j.dia, tipo: a[C.tipo], L0: a[C.L0], O0: a[C.O0], U0: a[C.U0], L1: a[C.L1], O1: a[C.O1], U1: a[C.U1], proj12: a[C.proj12], proj30: a[C.proj30], real: a[C.real], L12: a[C.L12] ?? null, O12: a[C.O12] ?? null, U12: a[C.U12] ?? null });
+    }
+  }
+  return props;
+}
+// resumo da temporada para a página (data/resumo/filtros.json, gravado pela Action em scripts/resumo.mjs): simulação,
+// persistência e os retratos das 12 h dos jogos que ainda vão começar (A = arquivos de apostas dos meses recentes)
+export function montarFiltros(props, A, agora = Date.now()) {
+  const p12 = {}, pj12 = {};
+  for (const M of A.filter(Boolean)) for (const [id, j] of Object.entries(M.jogos || {})) {
+    if (j.inicio && j.inicio < agora - 12 * 3600e3) continue;
+    if (j.p12) p12[id] = j.p12;
+    if (j.pj12) pj12[id] = j.pj12;
+  }
+  const porMercado = {};
+  for (const x of props) if (x.real != null) porMercado[mercadoDe(x.tipo)] = (porMercado[mercadoDe(x.tipo)] || 0) + 1;
+  return { em: agora, sim: simular(props), pers: persistencia(props), porMercado, nProps: props.length, dias: new Set(props.map((x) => x.dia)).size, jogos: new Set(props.map((x) => x.jogo)).size, p12, pj12 };
+}
+// LEVE (24/10): a página lê o resumo pronto (antes baixava a temporada inteira e simulava no navegador)
 export async function carregarFiltros() {
   lidoEm = Date.now();
   try {
-    const t = Date.now();
-    const ler = (n) => fetch(`data/apostas_edgely/${n}?t=${t}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    const ind = await ler("indice.json");
-    const meses = ind?.meses || [];
-    const [merc, apos] = await Promise.all([Promise.all(meses.map((m) => ler(`mercado-${m}.json`))), Promise.all(meses.slice(-1).map((m) => ler(`${m}.json`)))]);
-    const props = [];
-    for (const M of merc.filter(Boolean)) {
-      const C = Object.fromEntries(M.campos.map((k, i) => [k, i]));
-      for (const a of M.props) {
-        const j = M.jogos[a[C.jogo]] || {};
-        props.push({ jogo: a[C.jogo], dia: j.dia, tipo: a[C.tipo], L0: a[C.L0], O0: a[C.O0], U0: a[C.U0], L1: a[C.L1], O1: a[C.O1], U1: a[C.U1], proj12: a[C.proj12], proj30: a[C.proj30], real: a[C.real], L12: a[C.L12] ?? null, O12: a[C.O12] ?? null, U12: a[C.U12] ?? null });
-      }
-    }
-    // retrato das 12 h de hoje (para "projeção mudou"): jogos[id].p12 (jogadores, ordem ORDEM_PROJ) e pj12 (jogo)
-    p12 = {}; pj12 = {};
-    for (const A of apos.filter(Boolean)) for (const [id, j] of Object.entries(A.jogos || {})) { if (j.p12) p12[id] = j.p12; if (j.pj12) pj12[id] = j.pj12; }
-    const comResultado = props.filter((x) => x.real != null);
-    const porMercado = {};
-    for (const x of comResultado) porMercado[mercadoDe(x.tipo)] = (porMercado[mercadoDe(x.tipo)] || 0) + 1;
-    arquivo = { props, sim: simular(props), pers: persistencia(props), porMercado, dias: new Set(props.map((x) => x.dia)).size, jogos: new Set(props.map((x) => x.jogo)).size };
+    const r = await fetch(`data/resumo/filtros.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`resumo indisponível (${r.status})`);
+    arquivo = await r.json();
+    p12 = arquivo.p12 || {}; pj12 = arquivo.pj12 || {};
     erro = null;
   } catch (e) { erro = e; }
   lidoEm = Date.now();
@@ -378,6 +388,6 @@ export function renderFiltros(el, f, jogos) {
       <p class="muted">Onde a casa põe a margem: Over (ou visitante) e Under (ou mandante) em tudo no fechamento, nas ${arquivo.dias} noites. É a base de toda linha do mercado; sozinha não é "fora do padrão".</p>
       ${tabMargem}</section>
     <section class="panel"><h2>Filtros na temporada (simulado)${umMercado ? ` · ${esc(MERCADOS[mercadoDe(f.tipo)])}` : ""}</h2>
-      <p class="muted">${arquivo.props.length} linhas de ${arquivo.jogos} jogos em ${arquivo.dias} dia(s), entrando no <b>fechamento</b> (~10 min antes do jogo). ${umMercado ? `Só ${esc(MERCADOS[mercadoDe(f.tipo)].toLowerCase())}; "lado oposto" = entrar do outro lado nas mesmas linhas.` : `Cada célula: ROI e nº de apostas do filtro naquele mercado; escolha uma estatística acima para o detalhe (intervalo, dias com lucro, lado oposto).`} Cor: <span class="sit forte">forte</span> ROI ≥ 10% com o intervalo de 95% acima de zero · <span class="sit bom">promissor</span> ROI ≥ 5% · <span class="sit ruim">evitar</span> ROI ≤ −10% · cinza = menos de ${minN} apostas. Com poucos dias tudo é hipótese.</p>
+      <p class="muted">${arquivo.nProps} linhas de ${arquivo.jogos} jogos em ${arquivo.dias} dia(s), entrando no <b>fechamento</b> (~10 min antes do jogo). ${umMercado ? `Só ${esc(MERCADOS[mercadoDe(f.tipo)].toLowerCase())}; "lado oposto" = entrar do outro lado nas mesmas linhas.` : `Cada célula: ROI e nº de apostas do filtro naquele mercado; escolha uma estatística acima para o detalhe (intervalo, dias com lucro, lado oposto).`} Cor: <span class="sit forte">forte</span> ROI ≥ 10% com o intervalo de 95% acima de zero · <span class="sit bom">promissor</span> ROI ≥ 5% · <span class="sit ruim">evitar</span> ROI ≤ −10% · cinza = menos de ${minN} apostas. Com poucos dias tudo é hipótese.</p>
       ${umMercado ? detalheMercado(minN, mercadoDe(f.tipo)) : matriz(minN, mercs)}</section>`;
 }

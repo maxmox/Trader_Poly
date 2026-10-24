@@ -50,6 +50,10 @@ jobs:
             git pull --rebase --autostash && git push
           fi
         continue-on-error: true
+      # resumos prontos das abas Acompanhamento e Filtros (a página não lê mais a temporada inteira): só no site, fora do git
+      - name: Resumos das abas Acompanhamento e Filtros (data/resumo)
+        run: node scripts/resumo.mjs
+        continue-on-error: true
       - name: Desempenho dos últimos 30 dias (placar)
         run: node scripts/desempenho.mjs
         continue-on-error: true
