@@ -20,7 +20,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import {
   buscarDk, edgeProp, nomeChave, estatisticaBox, nomeAtletaEspn, ORDEM_PROJ, edgeJogo, projDoMercado, ladoDaProjecao, ladoDaMudanca,
-  movimentoMercado, resultadoA, realDoJogo, chanceOver,
+  movimentoMercado, resultadoA, realDoJogo, chanceOver, semMargem,
 } from "../js/core.js";
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
@@ -153,8 +153,20 @@ export const ESTRATEGIAS = {
   "mov-under": "Linha andou p/ Under → Under",   // o lado Under do "mov" (o Over que sobe ficou ~0: dinheiro de loteria?)
   "linha-volta": "Linha andou e a odd voltou → lado da linha", // a casa mexe a linha e devolve parte na odd
   "contra-mudou": "Projeção mudou sozinha → contra ela", // projeção mudou ≥ 0,5 desde as 12 h e a linha NÃO acompanhou
+  // 24/10, da análise das 3 noites (25 jogos; em 23/10 o "mov" perdeu: o movimento da MANHÃ é ruído, o da TARDE informa):
+  "tarde-under": "Linha caiu à tarde → Under",   // desde as 12 h de Brasília andou ≥ 3 pp p/ Under e no total também
+  "estrela-under": "Linha alta (estrela) → Under", // linha no topo do mercado (ALTA): o público compra o Over da estrela
+  "parelho-under": "Jogo parelho, titular → Under", // |handicap| ≤ 4 e ≥ 30 min projetados (hipótese de 1 noite só)
 };
 const ANDOU = 0.03;
+// linha "alta" de cada mercado (estrela). Na análise de 24/10 só rebotes (≥ 8,5) e assistências (≥ 6,5) foram
+// consistentes nas duas noites grandes; os outros mercados entram para medir
+const ALTA = { points: 22.5, rebounds: 8.5, assists: 6.5, threes: 3.5, pra: 33.5, pa: 27.5, pr: 28.5, ra: 12.5 };
+// linha às 12 h de Brasília (15h10 UTC, logo depois do registro das 12 h) no histórico data/linhas_dk.json: último ponto
+// gravado até lá; null se a linha ainda não existia
+const chaveHist = (atleta, tipo) => (atleta === "jogo" ? `jogo|${tipo.slice(5)}` : `${atleta}|${tipo}`);
+const linha12 = (H, chave, dia) => { const c = Date.parse(`${dia}T15:10:00Z`); return (H?.[chave] || []).filter((h) => h[0] != null && h[0] * 1000 <= c).pop() || null; };
+const linhasDk = await lerJson(new URL("data/linhas_dk.json", raiz), null);
 // cada mercado do jogo vira um item com a mesma forma das props (lado A = "O")
 function itensDoJogo(ev, dk, nomes, projs, j, edgely) {
   const out = [];
@@ -190,8 +202,9 @@ function chanceA(x) {
     if (M.jogos[ev.id]?.regE) continue;
     try {
       const { dk, nomes } = await lerJogo(ev, M);
-      const j = M.jogos[ev.id], conta = {};
-      for (const x of itensDoJogo(ev, dk, nomes, projs, j, ed)) {
+      const j = M.jogos[ev.id], conta = {}, itens = itensDoJogo(ev, dk, nomes, projs, j, ed);
+      const H = linhasDk?.jogos?.[ev.id]?.h, handicap = itens.find((y) => y.tipo === "jogo-spread")?.linha;
+      for (const x of itens) {
         if (!x.a || !x.b) continue;
         const mov = movimentoMercado(x.tipo, x.linhaAb, x.linha, x.pAb, x.p);
         const ladoMov = mov == null ? null : mov >= ANDOU ? "O" : mov <= -ANDOU ? "U" : null;
@@ -215,6 +228,12 @@ function chanceA(x) {
         const ladoOdd = x.p == null || x.pAb == null || Math.abs(x.p - x.pAb) < 0.01 ? null : x.p > x.pAb ? "O" : "U";
         if (ladoLinha && ladoOdd && ladoOdd !== ladoLinha) reg("linha-volta", ladoLinha);
         if (lm && ladoMov !== lm) reg("contra-mudou", lm === "O" ? "U" : "O");
+        const temUnder = x.tipo !== "jogo-spread" && x.tipo !== "jogo-ml";
+        const s12 = linha12(H, chaveHist(x.atleta, x.tipo), hojeEt);
+        const tarde = s12 ? movimentoMercado(x.tipo, s12[1], x.linha, semMargem(s12[2], s12[3]), x.p) : null;
+        if (temUnder && tarde != null && tarde <= -ANDOU && ladoMov === "U") reg("tarde-under", "U");
+        if (ALTA[x.tipo] != null && x.linha >= ALTA[x.tipo]) reg("estrela-under", "U");
+        if (x.atleta !== "jogo" && x.min >= 30 && handicap != null && Math.abs(handicap) <= 4) reg("parelho-under", "U");
       }
       j.regE = Math.floor(agora / 1000);
       mudou.add(hojeEt.slice(0, 7));
@@ -227,8 +246,8 @@ function chanceA(x) {
 // data/apostas_edgely/mercado-AAAA-MM.json: { campos, jogos: {id: {dia, titulo, inicio}}, nomes, props: [[...]] }
 // abertura (L0/O0/U0) e fechamento (último ponto gravado antes do início: L1/O1/U1) vêm de data/linhas_dk.json, que o
 // site apaga 30 h depois do jogo; projeções do Edgely no registro das 12 h e no de 30 min antes; resultado do box score.
-export const CAMPOS_MERCADO = ["jogo", "atleta", "tipo", "L0", "O0", "U0", "L1", "O1", "U1", "proj12", "proj30", "real"];
-const linhasDk = await lerJson(new URL("data/linhas_dk.json", raiz), null);
+// L12/O12/U12 (24/10): a linha às 12 h de Brasília (movimento da manhã × da tarde); 21–23/10 preenchidos pelas apostas das 12 h.
+export const CAMPOS_MERCADO = ["jogo", "atleta", "tipo", "L0", "O0", "U0", "L1", "O1", "U1", "proj12", "proj30", "real", "L12", "O12", "U12"];
 const mercados = new Map();
 const mercado = async (m) => {
   if (!mercados.has(m)) mercados.set(m, await lerJson(new URL(`mercado-${m}.json`, DIR), { campos: CAMPOS_MERCADO, jogos: {}, nomes: {}, props: [] }));
@@ -242,9 +261,10 @@ async function arquivarMercado(id, j, box, cancelado, placar) {
   MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio };
   let n = 0;
   for (const [k, serie] of Object.entries(H)) {
+    const s12 = linha12(H, k, j.dia), l12 = [s12?.[1] ?? null, s12?.[2] ?? null, s12?.[3] ?? null];
     if (k.startsWith("jogo|")) { // mercado do jogo: real pelos placares por quarto (handicap/vencedor = visitante − mandante)
       const mk = k.slice(5), ab = serie.find((h) => h[0] == null) || serie[0], fe = serie.filter((h) => h[0] != null && h[0] * 1000 < j.inicio).pop() || ab;
-      MM.props.push([id, "jogo", `jogo-${mk}`, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], projDoMercado(mk, j.pj12), projDoMercado(mk, j.pj30), realDoJogo(mk, placar.casa, placar.fora)]);
+      MM.props.push([id, "jogo", `jogo-${mk}`, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], projDoMercado(mk, j.pj12), projDoMercado(mk, j.pj30), realDoJogo(mk, placar.casa, placar.fora), ...l12]);
       n++;
       continue;
     }
@@ -256,7 +276,7 @@ async function arquivarMercado(id, j, box, cancelado, placar) {
     const real = b?.jogou ? estatisticaBox(b.keys, b.stats, tipo) : null;
     if (nome) MM.nomes[atleta] = nome;
     const i = ORDEM_PROJ.indexOf(tipo);
-    MM.props.push([id, atleta, tipo, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], j.p12?.[chave]?.[i] ?? null, j.p30?.[chave]?.[i] ?? null, real]);
+    MM.props.push([id, atleta, tipo, ab[1], ab[2], ab[3], fe[1], fe[2], fe[3], j.p12?.[chave]?.[i] ?? null, j.p30?.[chave]?.[i] ?? null, real, ...l12]);
     n++;
   }
   return n;
