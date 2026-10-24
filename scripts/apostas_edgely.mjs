@@ -253,12 +253,26 @@ const mercado = async (m) => {
   if (!mercados.has(m)) mercados.set(m, await lerJson(new URL(`mercado-${m}.json`, DIR), { campos: CAMPOS_MERCADO, jogos: {}, nomes: {}, props: [] }));
   return mercados.get(m);
 };
+// TRAJETÓRIA (24/10): o histórico do dia inteiro de cada linha (data/linhas_dk.json, que o site apaga 30 h depois do jogo)
+// guardado para sempre em trajetoria-AAAA-MM.json { jogos: {id: {dia, titulo, inicio, h: {"<atleta>|<tipo>": [[t, linha, odd A, odd B]]}}} }
+// (1º ponto t = null = abertura), um jogo por linha. Não é lido pela página: é para as análises da temporada (quando a
+// linha andou, não só de onde para onde).
+const trajetorias = new Map();
+const trajetoria = async (m) => {
+  if (!trajetorias.has(m)) trajetorias.set(m, await lerJson(new URL(`trajetoria-${m}.json`, DIR), { jogos: {} }));
+  return trajetorias.get(m);
+};
+// minutos jogados por atleta (0 = no banco/não entrou): explica o resultado (blowout, falta, lesão no jogo)
+const minutosDoBox = (box) => Object.fromEntries([...box].map(([id, b]) => { const i = b.keys.indexOf("minutes"), v = i < 0 ? null : parseFloat(b.stats[i]); return [id, b.jogou && Number.isFinite(v) ? v : 0]; }));
 async function arquivarMercado(id, j, box, cancelado, placar) {
   const H = linhasDk?.jogos?.[id]?.h;
   if (!H || cancelado) return 0;
   const MM = await mercado(j.dia.slice(0, 7));
   if (MM.jogos[id]) return 0;
-  MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio };
+  // placar por quarto e minutos jogados (24/10) junto do jogo
+  MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio, placar, min: minutosDoBox(box) };
+  const T = await trajetoria(j.dia.slice(0, 7));
+  T.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio, h: H };
   let n = 0;
   for (const [k, serie] of Object.entries(H)) {
     const s12 = linha12(H, k, j.dia), l12 = [s12?.[1] ?? null, s12?.[2] ?? null, s12?.[3] ?? null];
@@ -330,6 +344,10 @@ for (const m of mudou) {
 for (const [m, MM] of mercados) {
   if (!MM.props.length) continue;
   await writeFile(new URL(`mercado-${m}.json`, DIR), `{"campos":${JSON.stringify(CAMPOS_MERCADO)},\n"jogos":${JSON.stringify(MM.jogos)},\n"nomes":${JSON.stringify(MM.nomes)},\n"props":[\n${MM.props.map((a) => JSON.stringify(a)).join(",\n")}\n]}\n`);
+}
+for (const [m, T] of trajetorias) {
+  const ids = Object.keys(T.jogos);
+  if (ids.length) await writeFile(new URL(`trajetoria-${m}.json`, DIR), `{"jogos":{\n${ids.map((id) => `${JSON.stringify(id)}:${JSON.stringify(T.jogos[id])}`).join(",\n")}\n}}\n`);
 }
 if (mudou.size) {
   indice.meses.sort();

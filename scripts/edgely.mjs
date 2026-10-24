@@ -10,9 +10,12 @@
 // histórico do dia ({em, mudaram}).
 // Nunca duas consultas com menos de 10 min. Uma consulta = /api/nba/players/tonight/full (todos os jogadores do dia).
 // Grava data/edgely.json: { data, buscadoEm, mudouEm, versoes, tentativa, final, erro, jogos: {idEspn: {fora, casa, inicio, proj}}, jogadores }.
+// VERSÕES (24/10): cada versão nova (dia novo ou projeção que mudou) é guardada para sempre em
+// data/apostas_edgely/edgely-AAAA-MM.json (o commit da Action leva junto): { campos, versoes: [{data, em, jogos, jogadores: [[...campos]]}] },
+// uma versão por linha. Não é lido pela página: é para medir, no fim da temporada, quanto a projeção mudou e se a última acerta mais.
 // Local: node scripts/edgely.mjs   (FORCAR=1 ignora as regras acima)
 import { readFile, writeFile } from "node:fs/promises";
-import { projecaoJogoEdgely } from "../js/core.js";
+import { projecaoJogoEdgely, ORDEM_PROJ } from "../js/core.js";
 
 const SITE = process.env.SITE_URL || "https://maxmox.github.io/Trader_Poly";
 const FONTE = "https://edgely.bet/api/nba/players/tonight/full";
@@ -89,3 +92,11 @@ if (buscar) {
   console.log(`Edgely: sem consulta (projeções de ${antes?.data || "–"}${pedidoNovo ? "; pedido aguardando o intervalo de 10 min" : ""})`);
 }
 await writeFile(arquivo, JSON.stringify(saida));
+if (saida.buscadoEm === agora && saida.mudouEm === agora && saida.data) {
+  const CAMPOS_V = ["time", "nome", "ev", "pos", "lesao", ...ORDEM_PROJ];
+  const arqV = new URL(`data/apostas_edgely/edgely-${saida.data.slice(0, 7)}.json`, raiz);
+  const V = await readFile(arqV, "utf8").then(JSON.parse).catch(() => ({ campos: CAMPOS_V, versoes: [] }));
+  V.versoes.push({ data: saida.data, em: agora, jogos: saida.jogos, jogadores: saida.jogadores.map((p) => [p.time, p.nome, p.ev, p.pos, p.lesao, ...ORDEM_PROJ.map((k) => p.proj[k] ?? null)]) });
+  await writeFile(arqV, `{"campos":${JSON.stringify(CAMPOS_V)},\n"versoes":[\n${V.versoes.map((v) => JSON.stringify(v)).join(",\n")}\n]}\n`);
+  console.log(`Edgely: versão guardada em edgely-${saida.data.slice(0, 7)}.json (${V.versoes.length} no mês)`);
+}
