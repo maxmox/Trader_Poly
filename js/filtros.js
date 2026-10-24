@@ -361,7 +361,7 @@ export function renderFiltros(el, f, jogos) {
         if (!e || !e.dp) return "";
         const c = Math.round(100 * (2 * fi(Math.abs(e.media / e.dp)) - 1)), nome = ehTime(m) ? (l === "O" ? "visitante" : "mandante") : l === "O" ? "Over" : "Under";
         return c < 20 ? "" : `<span class="conf ${confCls(c)}"><i><b style="width:${c}%"></b></i>${c}</span> ${e.media < 0 ? `${nome} caro: evitar` : `${nome} com vantagem`}`;
-      }).filter(Boolean).join("<br>") || `<span class="muted">${r("O") || r("U") ? "sem leitura forte" : `pouca amostra (< ${minN} apostas)`}</span>`;
+      }).filter(Boolean).join("<br>") || `<span class="muted">${r("O") || r("U") ? "sem leitura forte" : `pouca amostra (&lt; ${minN} apostas)`}</span>`;
       const cel = (l) => `${pc(r(l)?.s.roi)}<small>${r(l)?.s.n ?? 0} apostas</small>`;
       return `<tr><td>${esc(MERCADOS[m])}</td><td class="n">${cel("O")}</td><td class="n">${cel("U")}</td><td>${leitura}</td></tr>`;
     }).join("")}</tbody></table></div>`;
