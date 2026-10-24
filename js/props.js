@@ -4,7 +4,7 @@
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
 // Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
-import { buscarDk, datasNba, semMargem, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn, TIPOS_PROP, edgeJogo, projDoMercado } from "./core.js";
+import { buscarDk, datasNba, semMargem, movimentoMercado, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn, TIPOS_PROP, edgeJogo, projDoMercado } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
@@ -308,21 +308,33 @@ document.addEventListener("pointermove", (e) => {
   dica.style.top = `${top}px`;
 });
 
-// minigráfico: a linha somada ao efeito da chance (1 ponto de linha = porLinha de chance), no sentido do lado A
+// chance do lado A sem margem de um ponto do histórico CONVERTIDA PARA A LINHA DE REFERÊNCIA (a atual): quando a casa
+// mexe a linha, comparar a odd de 24,5 com a de 22,5 não faz sentido (24/10, pedido do usuário). Mesma conta do
+// movimento (core.movimentoMercado: props pela média implícita da linha, mercados do jogo pelo porLinha)
+function chanceNaLinha(x, h, ref) {
+  const p = semMargem(h[2], h[3]);
+  if (p == null) return null;
+  if (!x.temLinha || ref == null || h[1] == null || h[1] === ref) return p;
+  const q = movimentoMercado(x.tipo, ref, h[1], 0, p);
+  return q == null ? null : Math.min(0.99, Math.max(0.01, q));
+}
+const linhaRef = (x) => x.dk.linha ?? x.hist.filter((h) => h[1] != null).pop()?.[1] ?? null;
+// minigráfico: a chance do lado A na linha atual, ponto a ponto
 function serieAjustada(x) {
-  return x.hist.filter((h) => h[0] != null).map((h) => {
-    const p = semMargem(h[2], h[3]) ?? 0.5;
-    return x.temLinha && x.porLinha ? x.dirLinha * h[1] + (p - 0.5) / x.porLinha : p;
-  });
+  const ref = linhaRef(x);
+  return x.hist.filter((h) => h[0] != null).map((h) => chanceNaLinha(x, h, ref)).filter((v) => v != null);
 }
 
 function detalhe(j, x) {
   const timed = x.hist.filter((h) => h[0] != null);
   const refs = [{ t: j.inicio / 1000, rot: "início" }];
   if (timed.length >= 2) {
-    const ptsP = timed.map((h) => [h[0], semMargem(h[2], h[3]), `${x.rotA} ${prob(semMargem(h[2], h[3]))}${x.temLinha ? ` na linha ${lin(h[1])}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]).filter((p) => p[1] != null);
+    const ref = linhaRef(x);
+    const ptsP = timed.map((h) => { const c = chanceNaLinha(x, h, ref); return [h[0], c, `${x.rotA} ${prob(c)}${x.temLinha ? ` na linha ${lin(ref)}` : ""}${x.temLinha && h[1] !== ref ? ` · na hora a linha era ${lin(h[1])}: ${x.rotA} ${prob(semMargem(h[2], h[3]))}` : ""} (odd ${dec(h[2])} / ${x.rotB} ${dec(h[3])})`]; }).filter((p) => p[1] != null);
     const rodape = `Abertura: ${x.temLinha ? `linha ${lin(x.dk.linhaAb)}, ` : ""}${x.rotA} ${dec(x.dk.overAb)} / ${x.rotB} ${dec(x.dk.underAb)} · gravado a cada ~10 min`;
-    const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem (DraftKings)`, pontos: ptsP, eixo: "pct", refs, rodape });
+    const mudouLinha = x.temLinha && timed.some((h) => h[1] !== ref);
+    const chance = grafico({ titulo: `Chance de ${x.rotA} sem a margem${mudouLinha ? `, sempre na linha atual (${lin(ref)})` : ""} (DraftKings)`, pontos: ptsP, eixo: "pct", refs,
+      rodape: rodape + (mudouLinha ? " · nos pontos em que a linha era outra, a chance foi convertida para a linha atual (mesma conta do movimento)" : "") });
     if (!x.temLinha) return chance;
     const ptsLinha = timed.map((h) => [h[0], h[1], `linha ${lin(h[1])} · ${x.rotA} ${dec(h[2])} / ${x.rotB} ${dec(h[3])}`]);
     return `<div class="graf-duo">${grafico({ titulo: `Linha da DraftKings${x.k === "spread" ? ` (${x.rotA})` : ""}`, pontos: ptsLinha, eixo: "linha", degrau: true, refs })}${chance}</div>`;
