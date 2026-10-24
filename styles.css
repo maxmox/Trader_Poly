@@ -356,3 +356,4 @@ table.estreita { min-width: 0; max-width: 560px; }
 .conf i b { display: block; height: 100%; background: currentColor; }
 .conf.alta { color: var(--good); } .conf.media { color: var(--warn); } .conf.baixa { color: var(--ink-3); }
 .chip.base { background: var(--accent-soft); color: var(--ink-2); }
+.chip.nulo { background: transparent; color: var(--ink-3); border: 1px dashed var(--line); }
