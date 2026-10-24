@@ -90,17 +90,19 @@ function estat(v, sorteios = 600) { // v: [{jogo, dia, l}]
 export function simular(props, sorteios = 600) {
   const sim = {};
   for (const [id, , , regra] of FILTROS) {
-    const a = [], b = [], pa = {}, pb = {}, ld = {};
+    const a = [], b = [], pa = {}, pb = {}, ld = {}, lo = {};
     for (const x of props) {
       const l = regra(x);
       if (!l) continue;
       const la = lucro(x, l), lb = lucro(x, oposto(l)), m = mercadoDe(x.tipo);
       if (la != null) { const r = { jogo: x.jogo, dia: x.dia, l: la }; a.push(r); (pa[m] ||= []).push(r); (ld[l] ||= []).push(r); (ld[`${m}|${l}`] ||= []).push(r); }
-      if (lb != null) { const r = { jogo: x.jogo, dia: x.dia, l: lb }; b.push(r); (pb[m] ||= []).push(r); }
+      if (lb != null) { const r = { jogo: x.jogo, dia: x.dia, l: lb }; b.push(r); (pb[m] ||= []).push(r); (lo[oposto(l)] ||= []).push(r); (lo[`${m}|${oposto(l)}`] ||= []).push(r); }
     }
     sim[id] = { lado: estat(a, sorteios), oposto: estat(b, sorteios), por: Object.fromEntries(Object.keys(pa).map((m) => [m, { lado: estat(pa[m], sorteios), oposto: estat(pb[m] || [], sorteios) }])),
-      // porLado["O"|"U"] (todos os mercados) e porLado["<mercado>|O"|"<mercado>|U"]
-      porLado: Object.fromEntries(Object.entries(ld).map(([k, v]) => [k, estat(v, sorteios)])) };
+      // porLado["O"|"U"] (todos os mercados) e porLado["<mercado>|O"|"<mercado>|U"]: apostando no lado do filtro
+      porLado: Object.fromEntries(Object.entries(ld).map(([k, v]) => [k, estat(v, sorteios)])),
+      // porOp[...]: apostando CONTRA o filtro, chave = lado da aposta (ex.: filtro aponta Over → porOp["points|U"])
+      porOp: Object.fromEntries(Object.entries(lo).map(([k, v]) => [k, estat(v, sorteios)])) };
   }
   return sim;
 }
@@ -176,53 +178,69 @@ function detalheMercado(minN, m) {
     }).join("")).join("") + `</tbody></table></div>`;
 }
 
-// sinais de uma linha de hoje: filtros (sem os de controle) que ela aciona, com o resultado NO MESMO MERCADO quando
-// há amostra; senão o geral (marcado)
-// CONFIANÇA (23/10): cada sinal usa o resultado do filtro no MESMO MERCADO E LADO (o movimento é assimétrico: Under que
-// anda paga, Over que anda não), com recuo para "mesmo lado, todos os mercados"; nota = ROI encolhido pela amostra
-// (ROI × n / (n + K)). O CONTROLE do mesmo mercado e lado (Under/Over em tudo; visitante) é exigência: o sinal só conta
-// se o ROI encolhido dele passar o do controle (senão é só "noite de Under").
-const K_ENCOLHE = 150;
-const encolhe = (s) => (s ? (s.roi * s.n) / (s.n + K_ENCOLHE) : 0);
-function controleDe(m, lado, minN) {
-  const id = m === "jogo-spread" || m === "jogo-ml" ? (lado === "O" ? "visitante" : null) : lado === "O" ? "over" : "under";
-  if (!id) return null;
-  const seg = arquivo.sim[id]?.por[m]?.lado, ger = arquivo.sim[id]?.lado;
-  return seg && seg.n >= minN ? seg : ger;
+// ---------- LADO E CONFIANÇA (24/10/2026; substitui a classe A/B/C) ----------
+// Cada filtro que a linha aciona vira EVIDÊNCIA para os DOIS lados: apostar no lado do filtro (porLado) e contra ele
+// (porOp), sempre no MESMO MERCADO (recuo: mesmo lado em todos os mercados, marcado "geral"). A margem da casa no
+// mercado (controle: Over/Under em tudo, visitante/mandante) entra como a base de cada lado. Cada evidência é encolhida
+// por uma priori normal (vantagem verdadeira ~ N(0; 6%)): média = ROI × τ²/(τ² + ep²), ep = erro-padrão pelo intervalo
+// de 95% por jogo (nunca menor que 0,95/√n), e o z cai se o resultado não se repete nas noites. Por lado: z da melhor
+// evidência − GARIMPO (escolher a melhor de ~20 evidências infla o resultado; os filtros de "linha andou", "projeção
+// confirmada" e "odd voltou" disparam juntos pelo mesmo motivo) + 0,15 × z das melhores de outros grupos (só positivas,
+// sem a base, no máximo +0,4) − 0,5 × o z do outro lado (conflito, com o mesmo desconto).
+// Confiança = 100 × (2·Φ(z) − 1): 0 = moeda, 100 = certeza de que o lado tem ROI > 0.
+// ROI esperado = média encolhida da melhor evidência. Só entram linhas com ao menos um FILTRO a favor (a base sozinha
+// não é "fora do padrão").
+const TAU = 0.06, GARIMPO = 0.8;
+const fi = (z) => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp((-z * z) / 2), q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - q : q; };
+function posterior(s) {
+  const ep = Math.max(s.ic ? (s.ic[1] - s.ic[0]) / 3.92 : 0, 0.95 / Math.sqrt(s.n));
+  const media = (s.roi * TAU * TAU) / (TAU * TAU + ep * ep), dp = Math.sqrt(1 / (1 / (TAU * TAU) + 1 / (ep * ep)));
+  const cons = s.dias >= 2 ? 0.5 + (0.5 * (s.roi >= 0 ? s.diasPos : s.dias - s.diasPos)) / s.dias : 0.75; // repete nas noites?
+  return { media, z: (media / dp) * cons };
 }
-// classe da entrada: A (forte), B (boa), C (observar), pelos sinais do lado escolhido
-function classificar(meus, alertas, conflito) {
-  const pos = meus.filter((s) => s.passaControle && s.nota > 0).sort((a, b) => b.nota - a.nota);
-  if (!pos.length) return { classe: "C", score: 0, grupos: 0 };
-  const melhor = pos[0], outroGrupo = pos.find((s) => s.grupo !== melhor.grupo);
-  const grupos = new Set(pos.map((s) => s.grupo)).size;
-  const score = melhor.nota + (outroGrupo ? 0.5 * outroGrupo.nota : 0);
-  const icPos = pos.some((s) => s.s.ic && s.s.ic[0] > 0), icPosSeg = pos.some((s) => !s.geral && s.s.ic && s.s.ic[0] > 0);
-  let nivel = score >= 0.08 && grupos >= 2 && icPosSeg ? 0 : score >= 0.10 && (icPos || grupos >= 2) ? 1 : 2;
-  if (conflito || alertas.length) nivel = Math.min(2, nivel + 1); // sinais nos dois lados ou alerta: cai um nível
-  return { classe: "ABC"[nivel], score, grupos };
-}
-
-function sinaisDe(x, minN, minRoi) {
-  const out = [], m = mercadoDe(x.tipo);
+const ehTime = (m) => m === "jogo-spread" || m === "jogo-ml";
+export function evidencias(x, minN) {
+  const m = mercadoDe(x.tipo), out = [];
+  const add = (id, grupo, nome, lado, seg, ger, contra) => {
+    const s = seg && seg.n >= minN ? seg : ger && ger.n >= minN ? ger : null;
+    if (s) out.push({ id, grupo, nome, lado, s, contra, geral: s !== seg, ...posterior(s) });
+  };
   for (const [id, grupo, nome, regra] of FILTROS) {
     if (grupo === "Controle") continue;
     const l = regra(x);
     if (!l) continue;
-    const seg = arquivo.sim[id].porLado[`${m}|${l}`], ger = arquivo.sim[id].porLado[l];
-    const s = seg && seg.n >= minN ? seg : ger && ger.n >= minN ? ger : null;
-    if (!s) continue;
-    const ctl = controleDe(m, l, minN);
-    out.push({ id, grupo, nome, lado: l, s, geral: s === ger, bom: s.roi >= minRoi, ruim: s.roi <= -minRoi,
-      nota: encolhe(s), passaControle: encolhe(s) > encolhe(ctl), ctl });
+    const S = arquivo.sim[id];
+    add(id, grupo, nome, l, S.porLado[`${m}|${l}`], S.porLado[l], false);
+    add(id, grupo, nome, oposto(l), S.porOp?.[`${m}|${oposto(l)}`], S.porOp?.[oposto(l)], true);
+  }
+  for (const l of ["O", "U"]) { // base: a margem da casa neste mercado
+    const S = arquivo.sim[ehTime(m) ? "visitante" : l === "O" ? "over" : "under"];
+    if (!S) continue;
+    const pega = (q) => (ehTime(m) && l === "U" ? q?.oposto : q?.lado);
+    add("base", "Margem da casa", `Base do mercado: ${ehTime(m) ? (l === "O" ? "visitante" : "mandante") : l === "O" ? "Over" : "Under"} em tudo`, l, pega(S.por[m]), pega(S), false);
   }
   return out;
+}
+function forca(ev, l) {
+  const E = ev.filter((e) => e.lado === l).sort((a, b) => b.z - a.z);
+  const porGrupo = new Map();
+  for (const e of E) if (!porGrupo.has(e.grupo)) porGrupo.set(e.grupo, e);
+  const [melhor, ...outros] = porGrupo.values();
+  const bonus = Math.min(0.4, 0.15 * outros.filter((e) => e.id !== "base").reduce((t, e) => t + Math.max(0, e.z), 0));
+  return { z: melhor ? melhor.z - GARIMPO + bonus : null, melhor, E };
+}
+export function decidir(ev) {
+  const O = forca(ev, "O"), U = forca(ev, "U");
+  const [a, b, lado] = (O.z ?? -9) >= (U.z ?? -9) ? [O, U, "O"] : [U, O, "U"];
+  if (a.z == null) return null;
+  const z = a.z - 0.5 * Math.max(0, b.z ?? 0);
+  return { lado, conf: Math.max(0, Math.round(100 * (2 * fi(z) - 1))), esperado: a.melhor.media, favor: a.E.filter((e) => e.z > 0), alertas: a.E.filter((e) => e.z < 0 && e.s.roi <= -0.05), conflito: (b.z ?? 0) > 0.5 };
 }
 
 export function renderFiltros(el, f, jogos) {
   if (erro) { el.innerHTML = `<div class="banner"><b>Não consegui ler o arquivo do mercado.</b><span>${esc(erro.message || erro)}</span></div>`; return; }
   if (!arquivo) { el.innerHTML = `<p class="muted">Carregando a temporada…</p>`; return; }
-  const minN = +(f.amostra || 30), minRoi = +(f.roimin ?? 0.05), busca = nomeChave(f.busca);
+  const minN = +(f.amostra || 30), minConf = +(f.conf || 0), busca = nomeChave(f.busca);
 
   // HOJE: linhas com linha/odds agora + projeção mais recente + retrato das 12 h
   const hoje = [];
@@ -236,45 +254,37 @@ export function renderFiltros(el, f, jogos) {
       const p12v = x.k ? (x.k === "total" ? pj12[j.id]?.total : x.k === "spread" || x.k === "ml" ? pj12[j.id]?.margem : null) ?? null
         : p12[j.id]?.[nomeChave(x.jogador)]?.[ORDEM_PROJ.indexOf(x.tipo)] ?? null;
       const y = { tipo: x.tipo, L0: x.dk.linhaAb, O0: x.dk.overAb, U0: x.dk.underAb, L1: x.dk.linha, O1: x.dk.over, U1: x.dk.under, proj12: p12v, proj30: x.proj ?? null };
-      const sin = sinaisDe(y, minN, minRoi);
-      // lado sugerido = o com sinais bons de mais GRUPOS diferentes (filtros parecidos contam uma vez), depois o
-      // melhor ROI; conflito = também há sinal bom do outro lado; alerta = filtro que perde NESSE lado
-      const bons = sin.filter((s) => s.bom).sort((a, b) => (a.geral - b.geral) || b.s.roi - a.s.roi);
-      if (!bons.length) continue;
-      const nota = (l) => { const B = bons.filter((s) => s.lado === l); return [new Set(B.map((s) => s.grupo)).size, B[0]?.s.roi ?? -9]; };
-      const [gO, rO] = nota("O"), [gU, rU] = nota("U");
-      const lado = gO > gU || (gO === gU && rO > rU) ? "O" : "U";
-      const meus = bons.filter((s) => s.lado === lado);
-      const alertas = sin.filter((s) => s.ruim && s.lado === lado), conflito = bons.some((s) => s.lado !== lado);
-      const cl = classificar(meus, alertas, conflito);
-      if (f.cls && "ABC".indexOf(cl.classe) > "ABC".indexOf(f.cls)) continue;
-      hoje.push({ j, x, y, lado, meus, alertas, conflito, ...cl,
-        grupos: Math.max(gO, gU), segmentados: meus.filter((s) => !s.geral).length, melhor: Math.max(...meus.map((s) => s.s.roi)), m: mov(y) });
+      const d = decidir(evidencias(y, minN));
+      if (!d || !d.favor.some((e) => e.id !== "base") || d.conf < minConf) continue;
+      hoje.push({ j, x, y, ...d, m: mov(y) });
     }
   }
-  hoje.sort((a, b) => a.classe.localeCompare(b.classe) || b.score - a.score);
-  // uma linha por jogador (as linhas do mesmo jogador andam juntas): fica a melhor; as outras viram "+N linhas dele"
+  hoje.sort((a, b) => b.conf - a.conf || b.esperado - a.esperado);
+  // uma linha por jogador (as linhas do mesmo jogador andam juntas): fica a de maior confiança; as outras viram "+N linhas dele"
   const vistos = new Map();
   for (const h of hoje) { const k = h.x.k ? `${h.j.id}|${h.x.k}` : `${h.j.id}|${h.x.jogador}`; if (vistos.has(k)) { vistos.get(k).mais.push(h); h.repetida = true; } else { h.mais = []; vistos.set(k, h); } }
   const todas = hoje.length;
   hoje.splice(0, hoje.length, ...hoje.filter((h) => !h.repetida));
-  const chip = (s, x) => `<span class="chip ${s.bom ? "forte" : "ruim"}${s.geral ? " geral" : ""}" title="${esc(`${s.nome}: ${s.s.n} apostas ${s.geral ? "neste lado, em todos os mercados (pouca amostra neste mercado)" : `em ${MERCADOS[mercadoDe(x.tipo)].toLowerCase()}, neste lado`}, ROI ${pc(s.s.roi)}`)}">${esc(s.nome.replace(/ → .*/, ""))} ${pc(s.s.roi, 0)}${s.geral ? " · geral" : ""}</span>`;
-  const tabHoje = hoje.length ? `<div class="tbl-wrap"><table class="props-tab filtros-hoje"><thead><tr><th>Jogador</th><th>Jogo</th><th>Estatística</th><th class="n">Linha</th><th class="n">Odds O / U</th><th class="n">Projeção</th><th class="n">Linha andou</th><th class="n">Entrada</th><th class="n">Classe</th><th>Sinais a favor (ROI neste mercado)</th></tr></thead><tbody>
-    ${hoje.slice(0, 150).map(({ j, x, y, lado, meus, alertas, conflito, m, classe, score, grupos, mais }) => `<tr${novaDesde(x) ? ' class="nova"' : ""}><td><b>${esc(x.k ? x.nome : x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}${novaDesde(x) ? ` <span class="tag-nova">nova · ${novaDesde(x)} min</span>` : ""}<small>${esc(x.k ? "mercado do jogo" : x.sigla)}</small></td>
-      <td>${esc(j.titulo)}<small>${quandoJogo(j)}</small></td><td>${x.k ? "Jogo" : TIPOS[x.tipo]}${mais?.length ? `<small title="${esc(mais.map((h) => `${TIPOS[h.x.tipo]} ${h.lado === "O" ? "Over" : "Under"} ${lin(h.y.L1)} (${h.classe})`).join(" · "))}">+${mais.length} linha(s) dele</small>` : ""}</td>
+  const ladoTxt = (x, l) => (l === "O" ? x.rotA : x.rotB);
+  const chip = (e, x) => `<span class="chip ${e.id === "base" ? "base" : e.z > 0 ? "forte" : "ruim"}${e.geral ? " geral" : ""}" title="${esc(`${e.contra ? "CONTRA o filtro " : ""}${e.nome}: ${e.s.n} apostas ${e.geral ? "neste lado, em todos os mercados (pouca amostra neste mercado)" : `em ${MERCADOS[mercadoDe(x.tipo)].toLowerCase()}, neste lado`}, ROI ${pc(e.s.roi)}${e.s.ic ? ` (95%: ${pc(e.s.ic[0], 0)} a ${pc(e.s.ic[1], 0)})` : ""}, lucro em ${e.s.diasPos} de ${e.s.dias} noite(s); encolhido: ${pc(e.media)}`)}">${e.contra ? "contra: " : ""}${esc(e.nome.replace(/ → .*/, "").replace(/^Base do mercado: /, "base: "))} ${pc(e.s.roi, 0)}${e.geral ? " · geral" : ""}</span>`;
+  const confCls = (c) => (c >= 70 ? "alta" : c >= 40 ? "media" : "baixa");
+  const tabHoje = hoje.length ? `<div class="tbl-wrap"><table class="props-tab filtros-hoje"><thead><tr><th>Jogador</th><th>Jogo</th><th>Estatística</th><th class="n">Linha</th><th class="n">Odds O / U</th><th class="n">Projeção</th><th class="n">Linha andou</th><th class="n">Lado</th><th class="n">Confiança</th><th class="n">ROI esperado</th><th>Por quê (ROI na temporada, neste mercado e lado)</th></tr></thead><tbody>
+    ${hoje.slice(0, 150).map(({ j, x, y, lado, conf, esperado, favor, alertas, conflito, m, mais }) => `<tr${novaDesde(x) ? ' class="nova"' : ""}><td><b>${esc(x.k ? x.nome : x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}${novaDesde(x) ? ` <span class="tag-nova">nova · ${novaDesde(x)} min</span>` : ""}<small>${esc(x.k ? "mercado do jogo" : x.sigla)}</small></td>
+      <td>${esc(j.titulo)}<small>${quandoJogo(j)}</small></td><td>${x.k ? "Jogo" : TIPOS[x.tipo]}${mais?.length ? `<small title="${esc(mais.map((h) => `${TIPOS[h.x.tipo]} ${ladoTxt(h.x, h.lado)} ${lin(h.y.L1)} (confiança ${h.conf})`).join(" · "))}">+${mais.length} linha(s) dele</small>` : ""}</td>
       <td class="n">${y.L0 != null && y.L0 !== y.L1 ? `${lin(y.L0)} → ` : ""}<b>${lin(y.L1)}</b></td><td class="n">${num(y.O1, 2)} / ${num(y.U1, 2)}</td>
       <td class="n">${num(y.proj30)}${y.proj12 != null && y.proj30 != null && Math.abs(y.proj30 - y.proj12) >= 0.5 ? `<small>12 h: ${num(y.proj12)}</small>` : ""}</td>
       <td class="n">${m == null ? "–" : `${m >= 0 ? "+" : "−"}${num(Math.abs(100 * m))} pp`}<small>${m == null || Math.abs(m) < ANDOU ? "parada" : `p/ ${esc(m > 0 ? x.rotA : x.rotB)}`}</small></td>
-      <td class="n"><b>${esc(lado === "O" ? x.rotA : x.rotB)}${x.k === "ml" ? "" : ` ${x.k === "spread" && lado === "U" ? lin(-y.L1) : lin(y.L1)}`}</b> @ ${num(lado === "O" ? y.O1 : y.U1, 2)}${conflito ? `<small>sinais nos dois lados</small>` : ""}</td>
-      <td class="n"><span class="classe c${classe}" title="${esc(`nota (ROI encolhido pela amostra, mesmo mercado e lado): ${pc(score)} · ${grupos} grupo(s) de sinal`)}">${classe}</span><small>${pc(score, 0)}</small></td>
-      <td class="chips">${meus.slice(0, 4).map((s) => chip(s, x)).join(" ")}${meus.length > 4 ? ` <span class="muted">+${meus.length - 4}</span>` : ""}${alertas.length ? `<br>${alertas.slice(0, 2).map((s) => chip(s, x)).join(" ")}` : ""}</td></tr>`).join("")}
-    </tbody></table></div><p class="muted">${hoje.length} jogadores/mercados (${todas} linhas; mostra a melhor de cada jogador — passe o mouse em "+N linha(s) dele" para ver as outras)${hoje.length > 150 ? ` · mostrando os 150 primeiros` : ""}.</p>`
-    : `<div class="vazio"><b>Nenhuma linha de hoje (antes do jogo) aciona um filtro com ROI ≥ ${pc(minRoi, 0)} e ≥ ${minN} apostas na temporada.</b></div>`;
+      <td class="n"><b>${esc(ladoTxt(x, lado))}${x.k === "ml" ? "" : ` ${x.k === "spread" && lado === "U" ? lin(-y.L1) : lin(y.L1)}`}</b> @ ${num(lado === "O" ? y.O1 : y.U1, 2)}${conflito ? `<small>sinais nos dois lados</small>` : ""}</td>
+      <td class="n"><span class="conf ${confCls(conf)}" title="chance de este lado ter ROI positivo, em escala de 0 (moeda) a 100 (certeza)"><i><b style="width:${conf}%"></b></i>${conf}</span></td>
+      <td class="n">${pc(esperado)}</td>
+      <td class="chips">${favor.slice(0, 4).map((e) => chip(e, x)).join(" ")}${favor.length > 4 ? ` <span class="muted">+${favor.length - 4}</span>` : ""}${alertas.length ? `<br>${alertas.slice(0, 2).map((e) => chip(e, x)).join(" ")}` : ""}</td></tr>`).join("")}
+    </tbody></table></div><p class="muted">${hoje.length} jogadores/mercados (${todas} linhas; mostra a de maior confiança de cada jogador — passe o mouse em "+N linha(s) dele" para ver as outras)${hoje.length > 150 ? ` · mostrando os 150 primeiros` : ""}.</p>`
+    : `<div class="vazio"><b>Nenhuma linha de hoje (antes do jogo) com um filtro a favor e confiança ≥ ${minConf}.</b></div>`;
 
   const mercs = mercadosDaVisao(f.tipo);
   const umMercado = f.tipo && f.tipo !== "jogo" && arquivo.porMercado[mercadoDe(f.tipo)];
   el.innerHTML = `<section class="panel"><h2>Entradas de hoje pelos filtros</h2>
-      <p class="muted">Linhas de hoje (jogos que não começaram) que acionam ao menos um filtro com ROI ≥ ${pc(minRoi, 0)} e ≥ ${minN} apostas, com a linha e as odds da DraftKings <b>agora</b>. Cada sinal usa o resultado do filtro <b>no mesmo mercado</b>; com pouca amostra no mercado ele usa o geral e aparece marcado "geral". Filtros de controle (Under/Over em tudo) não entram como sinal. <b>Classe</b> (ordem da lista) usa a confiança dos dados: cada sinal usa o resultado do filtro <b>no mesmo mercado e no mesmo lado</b> (Over e Under separados), com o ROI encolhido pela amostra (ROI × n/(n+150)); só conta se passar o controle do mesmo mercado e lado (Under/Over em tudo), e sinais de grupos diferentes se somam. <b>A</b> = nota ≥ 8%, 2+ grupos e intervalo de 95% acima de zero no próprio mercado; <b>B</b> = nota ≥ 10% com intervalo positivo ou 2+ grupos; <b>C</b> = observar; cai um nível com sinais nos dois lados ou alerta vermelho. O número embaixo da classe é a nota. Verde = a favor; vermelho = filtro que perde nesse lado (cuidado). A linha ainda pode andar até o jogo.</p>
+      <p class="muted">Linhas de hoje (jogos que não começaram) com a linha e as odds da DraftKings <b>agora</b>. Para cada linha, cada filtro que ela aciona conta como evidência para os <b>dois lados</b> — apostar com o filtro e apostar contra ele — sempre <b>no mesmo mercado</b> (com pouca amostra, o mesmo lado em todos os mercados, marcado "geral"), e a <b>margem da casa</b> no mercado (Over/Under em tudo) entra como base de cada lado. <b>Lado</b> = o que tem mais evidência. <b>Confiança</b> (0 a 100) = quão certo é que esse lado tem ROI positivo: cada resultado é encolhido pela amostra (vantagem real em props raramente passa de ~6%), perde força se não se repete nas noites, leva um desconto de garimpo (o melhor de vários filtros parecidos sempre parece melhor do que é), ganha um pouco com sinais de grupos diferentes e cai com sinais do outro lado. ~0 = moeda; 40+ = vale olhar; 70+ = evidência forte. <b>ROI esperado</b> = o resultado da melhor evidência depois de encolhido. Verde = a favor; cinza = base do mercado; vermelho = filtro que perde nesse lado. Só aparecem linhas com ao menos um filtro a favor. A linha ainda pode andar até o jogo; a decisão é sua.</p>
       ${tabHoje}</section>
     <section class="panel"><h2>Filtros na temporada (simulado)${umMercado ? ` · ${esc(MERCADOS[mercadoDe(f.tipo)])}` : ""}</h2>
       <p class="muted">${arquivo.props.length} linhas de ${arquivo.jogos} jogos em ${arquivo.dias} dia(s), entrando no <b>fechamento</b> (~10 min antes do jogo). ${umMercado ? `Só ${esc(MERCADOS[mercadoDe(f.tipo)].toLowerCase())}; "lado oposto" = entrar do outro lado nas mesmas linhas.` : `Cada célula: ROI e nº de apostas do filtro naquele mercado; escolha uma estatística acima para o detalhe (intervalo, dias com lucro, lado oposto).`} Cor: <span class="sit forte">forte</span> ROI ≥ 10% com o intervalo de 95% acima de zero · <span class="sit bom">promissor</span> ROI ≥ 5% · <span class="sit ruim">evitar</span> ROI ≤ −10% · cinza = menos de ${minN} apostas. Com poucos dias tudo é hipótese.</p>

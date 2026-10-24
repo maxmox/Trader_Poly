@@ -350,3 +350,9 @@ table.estreita { min-width: 0; max-width: 560px; }
 .acomp-jogo { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: var(--panel); }
 .acomp-jogo summary { cursor: pointer; font-size: 14px; }
 .acomp-jogo h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+/* aba Filtros: confiança 0–100 do lado sugerido */
+.conf { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-weight: 800; }
+.conf i { display: block; width: 44px; height: 6px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; }
+.conf i b { display: block; height: 100%; background: currentColor; }
+.conf.alta { color: var(--good); } .conf.media { color: var(--warn); } .conf.baixa { color: var(--ink-3); }
+.chip.base { background: var(--accent-soft); color: var(--ink-2); }
