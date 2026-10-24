@@ -71,7 +71,20 @@ const dec = (v) => (v == null ? "–" : v.toFixed(2).replace(".", ","));
 const lin = (v) => (v == null ? "–" : String(v).replace(".", ","));
 const seta = (a, b, fmt) => (a == null || a === b ? fmt(b) : `${fmt(a)} → <b>${fmt(b)}</b>`);
 const normal = nomeChave;
-const getJson = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(`${new URL(u).host} respondeu ${r.status}`); return r.json(); };
+// A ESPN recusa (403) de vez em quando o servidor do Cloudflare que atende o relay (24/10: 1 em ~6 chamadas) e a página
+// inteira ficava "sem dados": pelo relay, 403/429/5xx tenta de novo até 2 vezes e depois vai direto na ESPN
+const ESPN_DIRETO = "https://site.api.espn.com";
+const getJson = async (u) => {
+  const viaRelay = RELAY && u.startsWith(`${RELAY}/espn/`);
+  let r = await fetch(u).catch(() => null);
+  for (let i = 1; viaRelay && i <= 2 && (!r || r.status === 403 || r.status === 429 || r.status >= 500); i++) {
+    await new Promise((ok) => setTimeout(ok, 400 * i));
+    r = await fetch(`${u}${u.includes("?") ? "&" : "?"}r=${i}`).catch(() => null);
+  }
+  if (viaRelay && !r?.ok) r = await fetch(u.replace(`${RELAY}/espn`, ESPN_DIRETO)).catch(() => r);
+  if (!r?.ok) throw new Error(`${new URL(u).host} respondeu ${r?.status ?? "sem resposta"}`);
+  return r.json();
+};
 
 async function emLotes(itens, n, fn) {
   let i = 0;
