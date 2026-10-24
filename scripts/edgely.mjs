@@ -1,11 +1,11 @@
 // Projeções dos jogadores da NBA no Edgely (edgely.bet/nba) para a aba Edge da página props.html.
 // Roda na Action (a cada ~10 min). O Edgely ATUALIZA a projeção em horários imprevisíveis durante o dia (21/10: 174 de
 // 311 jogadores mudaram à tarde; 22/10: atualização ~13h30 de Brasília) e a API não diz quando (sem data nem ETag;
-// o "Data loaded" da página deles é a hora do navegador). Então, do dia da NBA (9 h ET) até o último jogo começar:
+// o "Data loaded" da página deles é a hora do navegador). Então, das 5 h ET (6 h de Brasília; a preliminar sai cedo, 24/10 já estava lá antes das 6h30 ET) até o último jogo começar:
 //   - consulta a cada 30 min, e a cada 10 min quando falta ≤ 1 h para algum jogo (a resposta passa pelo cache deles,
 //     60 s; ~80–570 KB conforme o número de jogos; ~25–40 consultas por dia, como alguém recarregando a página);
 //   - quando alguém aperta "Buscar projeções" na página: o Worker guarda o pedido (/edgely-pedido) e dispara a Action;
-//   - dia novo ainda não publicado por eles: tenta de hora em hora.
+//   - dia novo ainda não publicado por eles: tenta a cada 30 min.
 // Cada consulta é comparada com a anterior: "mudouEm" = quando o Edgely mudou a projeção pela última vez e "versoes" =
 // histórico do dia ({em, mudaram}).
 // Nunca duas consultas com menos de 10 min. Uma consulta = /api/nba/players/tonight/full (todos os jogadores do dia).
@@ -41,10 +41,11 @@ const temHoje = antes?.data === hojeEt;
 let saida = antes || { data: null, buscadoEm: null, tentativa: null, final: true, jogos: {}, jogadores: [] };
 
 const inicios = Object.values(antes?.jogos || {}).map((j) => j.inicio).filter(Boolean);
-const emJanela = temHoje && horaEt >= 9 && inicios.some((t) => t > agora); // ainda há jogo de hoje por começar
+const INICIO_ET = 5; // a preliminar do Edgely sai de madrugada/cedo (antes era 9 h ET e perdia a manhã)
+const emJanela = temHoje && horaEt >= INICIO_ET && inicios.some((t) => t > agora); // ainda há jogo de hoje por começar
 const intervalo = inicios.some((t) => t > agora && t - agora <= 3600e3) ? 10 * 60e3 : 30 * 60e3;
 const buscar = process.env.FORCAR === "1" || (pedidoNovo && agora - tentativa > 10 * 60e3)
-  || (!temHoje && horaEt >= 9 && agora - tentativa > 3600e3)
+  || (!temHoje && horaEt >= INICIO_ET && agora - tentativa > 30 * 60e3)
   || (emJanela && agora - tentativa >= intervalo - 2 * 60e3); // folga: a Action roda a cada ~10 min
 
 if (buscar) {
