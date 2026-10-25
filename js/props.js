@@ -4,7 +4,7 @@
 // com as lesões do jogo (ESPN) e o histórico gravado pela Action a cada ~10 min (data/linhas_dk.json).
 // (O Polymarket saiu desta página em 21/10/2026: nas props ele quase não tem volume e não acrescentava nada.)
 // Aba Edge: projeções do Edgely (data/edgely.json, buscadas pela Action 1x por dia ou pelo botão) × DraftKings agora.
-import { buscarDk, datasNba, semMargem, movimentoMercado, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn, TIPOS_PROP, edgeJogo, projDoMercado } from "./core.js";
+import { buscarDk, datasNba, semMargem, movimentoMercado, MERCADOS_JOGO, edgeProp, nomeChave, POR_LINHA_PROPS, nomeAtletaEspn, TIPOS_PROP, edgeJogo, projDoMercado, formaDoJogo, leituraZ } from "./core.js";
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
@@ -20,7 +20,7 @@ const ESPN_NBA = "/apis/site/v2/sports/basketball/nba";
 let SITE = `https://site.api.espn.com${ESPN_NBA}`;
 
 let configurado = false, RELAY = "", jogos = [], erro = null, carregadoEm = null, rodando = false;
-let edgely = null, pedidoMsg = ""; // data/edgely.json e a resposta do último "Buscar projeções"
+let edgely = null, forma = null, pedidoMsg = ""; // forma = data/forma_times.json (últimos jogos de cada time) // data/edgely.json e a resposta do último "Buscar projeções"
 const abertos = new Set(); // linhas com o gráfico aberto
 
 // ---------- filtros (salvos só neste navegador) ----------
@@ -69,6 +69,7 @@ const pp = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(100 * 
 const prob = (p) => (p == null ? "–" : `${Math.round(100 * p)}%`);
 const dec = (v) => (v == null ? "–" : v.toFixed(2).replace(".", ","));
 const lin = (v) => (v == null ? "–" : String(v).replace(".", ","));
+const num = (v, c = 1) => (v == null || !Number.isFinite(v) ? "–" : v.toFixed(c).replace(".", ","));
 const seta = (a, b, fmt) => (a == null || a === b ? fmt(b) : `${fmt(a)} → <b>${fmt(b)}</b>`);
 const normal = nomeChave;
 // A ESPN recusa (403) de vez em quando o servidor do Cloudflare que atende o relay (24/10: 1 em ~6 chamadas) e a página
@@ -199,6 +200,7 @@ async function carregarJogo(ev, historico, projs) {
     id: ev.id, titulo: `${times.find((t) => !t.casa)?.nome} @ ${times.find((t) => t.casa)?.nome}`, inicio: Date.parse(ev.date),
     estado: ev.status?.type?.state, placar: ev.status?.type?.state === "in" ? `${c.competitors.map((t) => `${t.team.abbreviation} ${t.score}`).join(" · ")} · ${ev.status.type.shortDetail}` : "",
     lesoes: Object.values(lesoes), linhas, mercados, comHist: !!hist,
+    forma: formaDoJogo(forma, fora.sigla, casa.sigla), siglas: [fora.sigla, casa.sigla],
   };
 }
 
@@ -220,8 +222,8 @@ async function carregar() {
     const vivos = evs.filter((e) => e.status?.type?.state !== "post"); // jogo encerrado some da página
     // histórico gravado pela Action (mesmo site; a ESPN recusa o Worker)
     const lerData = (nome) => fetch(`data/${nome}?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    const [historico, ed] = await Promise.all([lerData("linhas_dk.json"), lerData("edgely.json")]);
-    edgely = ed;
+    const [historico, ed, fm] = await Promise.all([lerData("linhas_dk.json"), lerData("edgely.json"), lerData("forma_times.json")]);
+    edgely = ed; forma = fm;
     const projs = projecoes(edgely);
     const novos = [];
     let feitos = 0;
@@ -362,6 +364,25 @@ function detalhe(j, x) {
     return `<div class="graf-duo">${grafico({ titulo: `Linha da DraftKings${x.k === "spread" ? ` (${x.rotA})` : ""}`, pontos: ptsLinha, eixo: "linha", degrau: true, refs })}${chance}</div>`;
   }
   return `<p class="muted">Ainda sem histórico da DraftKings para ${x.k ? "este mercado" : "esta linha"}: ele é gravado a cada ~10 min.</p>`;
+}
+
+// ---------- forma recente dos times (core.formaDoJogo) × linhas da DraftKings ----------
+// projeção de pontos de cada time pelos últimos jogos e quantos desvios ela está da linha (total e pontos de cada time)
+function blocoForma(j) {
+  const fm = j.forma;
+  if (!fm) return "";
+  const tot = j.mercados.find((m) => m.k === "total")?.dk.linha, hc = j.mercados.find((m) => m.k === "spread")?.dk.linha;
+  const [sf, sc] = j.siglas, z = (p, L, dp) => (L == null || !dp ? null : (p - L) / dp);
+  const dkFora = tot != null && hc != null ? (tot - hc) / 2 : null, dkCasa = tot != null && hc != null ? (tot + hc) / 2 : null;
+  const cel = (rot, p, L, dp) => { const v = z(p, L, dp), l = leituraZ(v); return `<td class="n"><b>${num(p)}</b><small>± ${num(dp)}</small></td><td class="n">${L == null ? "–" : lin(L)}</td><td class="n">${v == null ? "–" : `<span class="zf ${l?.startsWith("Over") ? "O" : l?.startsWith("Under") ? "U" : ""}">${v >= 0 ? "+" : "−"}${num(Math.abs(v), 2)} σ</span><small>${esc(l)}</small>`}</td>`; };
+  const amostra = (t, s) => `${s} ${num(t.marca.m)} marcados / ${num(t.sofre.m)} sofridos (${t.n} jogos${t.nAtual < t.n ? `, ${t.nAtual} desta temporada` : ""})`;
+  return `<details class="forma-jogo"><summary><b>Forma recente:</b> total ${num(fm.total)} ± ${num(fm.dpTotal)}${tot != null ? ` × linha ${lin(tot)} → <b>${leituraZ(z(fm.total, tot, fm.dpTotal))}</b> (${num(z(fm.total, tot, fm.dpTotal), 2)} σ)` : ""}</summary>
+    <div class="tbl-wrap"><table class="props-tab forma-tab"><thead><tr><th></th><th class="n">Projeção<small>pelos últimos jogos ± desvio</small></th><th class="n">DraftKings</th><th class="n">Distância<small>em desvios</small></th></tr></thead><tbody>
+      <tr><td>Total do jogo</td>${cel("total", fm.total, tot, fm.dpTotal)}</tr>
+      <tr><td>Pontos ${esc(sf)}</td>${cel(sf, fm.fora, dkFora, fm.dpFora)}</tr>
+      <tr><td>Pontos ${esc(sc)}</td>${cel(sc, fm.casa, dkCasa, fm.dpCasa)}</tr>
+    </tbody></table></div>
+    <p class="muted">${esc(amostra(fm.a, sf))} · ${esc(amostra(fm.b, sc))}. Pontos de cada time = média do que ele marca e do que o adversário sofre; os da DraftKings saem do total e do handicap. σ = desvio-padrão da amostra: |z| &lt; 0,15 na linha, 0,15–0,4 leve, ≥ 0,4 forte. No começo da temporada a amostra completa com o fim da anterior (elencos mudaram): use com cuidado.</p></details>`;
 }
 
 // ---------- render ----------
@@ -512,6 +533,7 @@ function render() {
     return `<section class="panel jogo">
       <div class="jogo-top"><h2>${esc(j.titulo)}</h2><span class="muted">${quando(j)}</span></div>
       ${les}
+      ${blocoForma(j)}
       ${tabJogo}
       <h3 class="sub-jogo">Props dos jogadores</h3>
       ${top ? `<div class="chips"><span class="muted">Mais movimentadas:</span>${top}</div>` : `<p class="muted">Nenhuma linha andou o equivalente a 3 pp ou mais ${f.desde === "abertura" ? "desde a abertura" : `nas últimas ${f.desde}`}.</p>`}

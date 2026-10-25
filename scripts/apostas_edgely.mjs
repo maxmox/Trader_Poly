@@ -20,7 +20,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import {
   buscarDk, edgeProp, nomeChave, estatisticaBox, nomeAtletaEspn, ORDEM_PROJ, edgeJogo, projDoMercado,
-  movimentoMercado, resultadoA, realDoJogo, chanceOver, semMargem,
+  movimentoMercado, resultadoA, realDoJogo, chanceOver, semMargem, formaDoJogo,
 } from "../js/core.js";
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
@@ -67,6 +67,9 @@ async function registrarJogo(ev, M, projs, edgely, momento) {
   M.jogos[ev.id][`p${sufixo}`] = Object.fromEntries((edgely.jogadores || []).filter((p) => p.ev === ev.id)
     .map((p) => [nomeChave(p.nome), ORDEM_PROJ.map((k) => p.proj?.[k] ?? null)]));
   M.jogos[ev.id][`pj${sufixo}`] = edgely.jogos?.[ev.id]?.proj || null;
+  // pf12/pf30 (25/10) = projeção pela forma recente dos times {fora, casa, total, dpTotal, n desta temporada}
+  const [sf, sc] = (M.jogos[ev.id].titulo || "").split(" @ "), fm = formaDoJogo(forma, sf, sc);
+  M.jogos[ev.id][`pf${sufixo}`] = fm ? { fora: arred(fm.fora), casa: arred(fm.casa), total: arred(fm.total), dpTotal: arred(fm.dpTotal), dpFora: arred(fm.dpFora), dpCasa: arred(fm.dpCasa), nAtual: Math.min(fm.a.nAtual, fm.b.nAtual) } : null;
   let novas = 0;
   for (const p of Object.values(dk.props)) {
     const nome = nomes[p.atleta];
@@ -94,6 +97,7 @@ async function registrarJogo(ev, M, projs, edgely, momento) {
   return novas;
 }
 const arred = (v) => (v == null ? null : Math.round(v * 1000) / 1000);
+const forma = await lerJson(new URL("data/forma_times.json", raiz), null); // scripts/forma_times.mjs roda antes na Action
 const projecoesDe = (edgely) => new Map((edgely?.jogadores || []).filter((p) => p.ev).map((p) => [`${p.ev}|${nomeChave(p.nome)}`, p]));
 
 // ---------- 1) registro ----------
@@ -262,7 +266,7 @@ async function arquivarMercado(id, j, box, cancelado, placar) {
   const MM = await mercado(j.dia.slice(0, 7));
   if (MM.jogos[id]) return 0;
   // placar por quarto e minutos jogados (24/10) junto do jogo
-  MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio, placar, min: minutosDoBox(box) };
+  MM.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio, placar, min: minutosDoBox(box), pf12: j.pf12 ?? null, pf30: j.pf30 ?? null };
   const T = await trajetoria(j.dia.slice(0, 7));
   T.jogos[id] = { dia: j.dia, titulo: j.titulo, inicio: j.inicio, h: H };
   let n = 0;

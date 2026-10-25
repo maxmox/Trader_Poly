@@ -747,6 +747,25 @@ export function movimentoProp(tipo, linhaAb, linha, pAb, p) {
 // Projeção do Edgely (fórmula da página deles, nba.js _findBestOUPick): pontos do mandante = (ORtg mandante + DRtg
 // visitante) / 200 × ritmo médio; idem visitante. Guardamos {casa, fora, total, margem = mandante − visitante}.
 export const DP_JOGO = { total: 18, margem: 12.5 }; // desvio típico do total e da margem de um jogo da NBA
+// FORMA RECENTE DOS TIMES (25/10/2026): projeção de pontos de cada time pelos últimos N_FORMA jogos (data/forma_times.json,
+// gravado pela Action em scripts/forma_times.mjs; no começo da temporada completa com o fim da anterior).
+//   pontos do visitante = (média que ele marca + média que o mandante sofre) / 2; idem para o mandante; total = soma.
+//   desvio-padrão da amostra: total = dos totais dos jogos dos dois times; time = raiz da média das variâncias de quanto ele
+//   marca e quanto o adversário sofre. z = (projeção − linha da DraftKings) / desvio: |z| < 0,15 na linha, 0,15–0,4 leve,
+//   ≥ 0,4 forte. Pontos de cada time pela DraftKings: total ± handicap (visitante +L → mandante = (T + L)/2).
+export const N_FORMA = 10;
+export function formaDoJogo(forma, siglaFora, siglaCasa) {
+  const A = forma?.times?.[siglaFora]?.jogos, B = forma?.times?.[siglaCasa]?.jogos;
+  if (!A?.length || !B?.length) return null;
+  const est = (v) => { const m = v.reduce((a, b) => a + b, 0) / v.length; return { m, dp: v.length > 1 ? Math.sqrt(v.reduce((t, x) => t + (x - m) ** 2, 0) / (v.length - 1)) : null }; };
+  const time = (J) => ({ marca: est(J.map((j) => j[1])), sofre: est(J.map((j) => j[2])), n: J.length, nAtual: J.filter((j) => j[4] === forma.temporada).length });
+  const a = time(A), b = time(B), dpTime = (x, y) => (x != null && y != null ? Math.sqrt((x * x + y * y) / 2) : null);
+  const fora = (a.marca.m + b.sofre.m) / 2, casa = (b.marca.m + a.sofre.m) / 2;
+  return { fora, casa, total: fora + casa, a, b, dpTotal: est([...A, ...B].map((j) => j[1] + j[2])).dp, dpFora: dpTime(a.marca.dp, b.sofre.dp), dpCasa: dpTime(b.marca.dp, a.sofre.dp) };
+}
+// leitura de uma projeção × linha em desvios
+export const leituraZ = (z) => (z == null || !Number.isFinite(z) ? null : Math.abs(z) < 0.15 ? "na linha" : `${z > 0 ? "Over" : "Under"} ${Math.abs(z) < 0.4 ? "leve" : "forte"}`);
+
 export function projecaoJogoEdgely(advCasa, advFora) {
   if (!advCasa || !advFora) return null;
   const ritmo = ((advCasa.pace || 100) + (advFora.pace || 100)) / 2;

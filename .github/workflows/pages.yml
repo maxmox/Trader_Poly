@@ -38,6 +38,9 @@ jobs:
       - name: Projeções do Edgely (aba Edge; consulta 1x por dia ou quando pedida na página)
         run: node scripts/edgely.mjs
         continue-on-error: true
+      - name: Forma recente dos times (últimos 10 jogos; no máximo a cada 3 h)
+        run: node scripts/forma_times.mjs
+        continue-on-error: true
       - name: Apostas do Edgely (registro às 12 h de Brasília e resultados)
         run: node scripts/apostas_edgely.mjs
         continue-on-error: true

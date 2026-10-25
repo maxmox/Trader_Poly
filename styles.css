@@ -379,3 +379,9 @@ table.estreita { min-width: 0; max-width: 560px; }
 .sig.fraco { --f: 0.18 !important; }
 .sig.pouco { border-style: dashed; }
 .sig > small:last-child:not(:first-child) { display: block; font-size: 10.5px; color: var(--ink-3); }
+/* forma recente dos times (aba Movimento) */
+.forma-jogo { margin: 6px 0 10px; font-size: 14px; }
+.forma-jogo summary { cursor: pointer; }
+.forma-tab { min-width: 0; max-width: 560px; }
+.forma-tab small { display: block; }
+.zf { font-weight: 800; } .zf.O { color: var(--sig-o); } .zf.U { color: var(--sig-u); }
