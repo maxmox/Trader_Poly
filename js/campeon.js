@@ -130,19 +130,34 @@ async function colar() {
 const jogoDe = (ev, jogos) => { const n = nomeChave(ev.nome); return jogos.find((j) => j.mercados.length ? [j.mercados[0]?.rotA, j.mercados[0]?.rotB].every((t) => t && n.includes(nomeChave(t))) : false) || jogos.find((j) => { const [a, b] = j.titulo.split(" @ "); return n.includes(nomeChave(a)) && n.includes(nomeChave(b)); }); };
 // palavras do nome sem acento e sem Jr./II (a JogaBrasil escreve "Jackson Jaren": casa pelas palavras, em qualquer ordem)
 const palavras = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").split(" ").filter((w) => w && !/^(jr|sr|ii|iii|iv)$/.test(w));
+// "OG Anunoby" × "Anunoby Ogugua": cada palavra da DK igual a uma do mercado ou início dela
+const temNome = (ws, p) => p.length >= 2 && p.every((w) => [...ws].some((x) => x === w || x.startsWith(w)));
+const jogadoresDe = (j) => [...new Set(j.linhas.map((x) => x.jogador))].map((n) => [n, nomeChave(n), palavras(n)]).filter(([, k]) => k.length >= 6);
+const acharJogador = (jogadores, chave, ws) => jogadores.find(([, k]) => chave.includes(k)) || jogadores.find(([, , p]) => p.every((w) => ws.has(w)) && p.length >= 2) || jogadores.find(([, , p]) => temNome(ws, p));
+const textoDe = (m) => m.nome + " " + m.opcoes.map((o) => o.nome).join(" ");
+// sem nome de jogo reconhecível (JogaBrasil até v1.7 gravava "JogaBrasil"): o jogo da DK com mais jogadores nos mercados (≥ 3)
+function jogoPelosJogadores(ev, jogos) {
+  const textos = ev.mercados.map((m) => { const t = textoDe(m); return [nomeChave(t), new Set(palavras(t))]; });
+  let melhor = null, max = 2;
+  for (const j of jogos) {
+    const js = jogadoresDe(j), n = js.filter((x) => textos.some(([c, ws]) => acharJogador([x], c, ws))).length;
+    if (n > max) { max = n; melhor = j; }
+  }
+  return melhor;
+}
 function comparar(jogos) {
   const linhas = [], semPar = [];
   for (const [casa, coleta] of Object.entries(coletas)) for (const ev of coleta?.eventos || []) {
-    const j = jogoDe(ev, jogos);
+    const j = jogoDe(ev, jogos) || jogoPelosJogadores(ev, jogos);
     if (!j) { semPar.push(`${CASAS[casa]}, jogo: ${ev.nome}`); continue; }
-    const jogadores = [...new Set(j.linhas.map((x) => x.jogador))].map((n) => [n, nomeChave(n), palavras(n)]).filter(([, k]) => k.length >= 6);
+    const jogadores = jogadoresDe(j);
     const ml = j.mercados.find((m) => m.k === "ml"), tot = j.mercados.find((m) => m.k === "total");
     const n0 = linhas.length;
     for (const m of ev.mercados) {
-      const nm = m.nome.toLowerCase(), texto = m.nome + " " + m.opcoes.map((o) => o.nome).join(" "), chave = nomeChave(texto), ws = new Set(palavras(texto));
+      const nm = m.nome.toLowerCase(), texto = textoDe(m), chave = nomeChave(texto), ws = new Set(palavras(texto));
       if (PARCIAL.test(nm)) continue;
       if (OUTRO.test(nm)) { semPar.push(`${CASAS[casa]}: ${m.nome}`); continue; }
-      const jog = jogadores.find(([, k]) => chave.includes(k)) || jogadores.find(([, , p]) => p.length >= 2 && p.every((w) => ws.has(w)));
+      const jog = acharJogador(jogadores, chave, ws);
       if (jog) { // prop de jogador
         const tipo = STATS.find(([, ok]) => ok(nm))?.[0];
         const dk = tipo && j.linhas.find((x) => x.jogador === jog[0] && x.tipo === tipo);
@@ -162,7 +177,7 @@ function comparar(jogos) {
     }
     for (let i = n0; i < linhas.length; i++) if (linhas[i]) linhas[i].casa = casa;
   }
-  return { linhas: escada(linhas.filter(Boolean)), semPar };
+  return { linhas: escada(linhas.filter(Boolean)), semPar: [...new Set(semPar)] };
 }
 // casa com escada de linhas (JogaBrasil: 6,5 a 13,5 para o mesmo jogador): longe da linha da DK a conta do movimento não
 // vale, então fica, por casa × jogo × jogador × estatística, a de maior EV entre as linhas perto da DK (ou só a mais perto)
@@ -216,19 +231,27 @@ export function renderCampeon(el, f, jogos) {
   // uma linha de resumo por casa coletada
   const resumo = casas.map((c) => {
     const co = coletas[c], idade = Math.round((Date.now() - co.em) / 60e3), dela = L.filter((r) => r.casa === c);
-    return `<p class="${idade > 15 ? "banner" : "muted"}"><b>${CASAS[c]}</b>: coleta das ${hora(co.em)} (há ${idade} min) · ${co.eventos.length} jogos, ${co.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${co.erros ? `, ${co.erros} jogos com erro` : ""} · ${linhas.filter((r) => r.casa === c).length} linhas casadas com a DK · <b>${dela.filter(boa).length} defasadas</b>${dela.some((r) => r.suspeita) ? ` · ${dela.filter((r) => r.suspeita).length} suspeitas (linha longe da DK, no fim da tabela)` : ""}.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""}${brutos[c] ? ` <a href="#" class="baixar-bruto" data-casa="${c}">baixar os dados brutos</a>` : ""}</p>`;
+    return `<p class="${idade > 15 ? "banner" : "muted"}"><b>${CASAS[c]}</b>: coleta das ${hora(co.em)} (há ${idade} min) · ${co.eventos.length} jogos, ${co.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${co.erros ? `, ${co.erros} jogos com erro` : ""} · ${linhas.filter((r) => r.casa === c).length} linhas casadas com a DK · <b>${dela.filter(boa).length} defasadas</b>${dela.some((r) => r.suspeita) ? ` · ${dela.filter((r) => r.suspeita).length} suspeitas (linha longe da DK, no fim da tabela)` : ""}.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""}${brutos[c] ? ` <a href="#" class="baixar-bruto" data-casa="${c}">baixar os dados brutos</a>` : ""} · <a href="#" class="limpar-casa" data-casa="${c}">limpar</a></p>`;
   }).join("");
   el.innerHTML = `<section class="panel"><h2>Casas × DraftKings</h2>
       <p class="muted">CampeonBet e JogaBrasil costumam demorar a acompanhar os movimentos. Aqui cada linha delas é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) é levada para a linha da casa e vira o <b>valor esperado</b> de cada lado na odd da casa. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}%: a casa ainda paga como se a linha não tivesse andado. Na JogaBrasil, que mostra uma escada de linhas por jogador, fica a melhor entre as linhas perto da linha da DK. A coleta só acontece quando você clica no botão — nada consulta as casas sozinho.</p>
-      <div class="campeon-passos"><b>Como coletar (com a extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar"; já tinha? clique em "Atualizar" — versão 1.7, vale para as duas casas; o Tampermonkey avisa que ele pode rodar em todos os sites: é porque as apostas da JogaBrasil ficam num quadro de outro domínio, e fora das duas casas o coletor não faz nada) · 3) clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só o que já está na tela — e no fim em <b>"Abrir a comparação"</b>:
+      <div class="campeon-passos"><b>Como coletar (com a extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar"; já tinha? clique em "Atualizar" — versão 1.8, vale para as duas casas; o Tampermonkey avisa que ele pode rodar em todos os sites: é porque as apostas da JogaBrasil ficam num quadro de outro domínio, e fora das duas casas o coletor não faz nada) · 3) clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só o que já está na tela — e no fim em <b>"Abrir a comparação"</b>:
         <br>· <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">CampeonBet</a>: jogo › <b>"Especiais de Jogadores"</b>; capture cada time e cada aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos; nos Combos abra cada quadro) — as capturas se somam.
         <br>· <a href="https://jogabrasil.bet/sports/basketball/13589-nba" target="_blank" rel="noopener">JogaBrasil</a>: jogo › <b>"Mercado de Jogadores"</b>; se a lista carregar aos poucos, role até o fim e capture de novo.
         <br><small class="muted">Sem extensão: arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> (ou <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito, edite e cole no lugar do endereço) e clique nele na página da casa.</small></div>
-      ${casas.length ? `${resumo}<p class="muted"><a href="#" class="colar-dados">colar dados</a></p>` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}
+      ${casas.length ? `${resumo}<p class="muted"><a href="#" class="colar-dados">colar dados</a> · <button type="button" class="pill limpar-casa" data-casa="">Limpar todas as coletas</button></p>` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}
       ${tab}
       ${semPar.length ? `<details><summary class="muted">${semPar.length} mercados das casas sem par na DK (outro jogador, outra estatística ou mercado que a DK não tem)</summary><p class="muted">${semPar.slice(0, 120).map(esc).join(" · ")}</p></details>` : ""}
     </section>`;
   el.querySelectorAll(".colar-dados").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); colar().catch((err) => { e.target.textContent = `não consegui colar (${err.message || err})`; }); }));
+  // limpa a coleta de uma casa (ou todas) guardada neste navegador
+  el.querySelectorAll(".limpar-casa").forEach((b) => b.addEventListener("click", (e) => {
+    e.preventDefault();
+    const c = e.currentTarget.dataset.casa;
+    for (const k of c ? [c] : Object.keys(coletas)) { delete coletas[k]; delete brutos[k]; }
+    try { localStorage.setItem(CHAVE, JSON.stringify(coletas)); localStorage.removeItem("campeon-coleta"); } catch { /* sem armazenamento */ }
+    renderCampeon(el, f, jogos);
+  }));
   el.querySelectorAll(".baixar-bruto").forEach((b) => b.addEventListener("click", (e) => {
     e.preventDefault();
     const c = e.target.dataset.casa, a = document.createElement("a");

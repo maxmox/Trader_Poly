@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.7
+// @version      1.8
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet e na JogaBrasil: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -58,8 +58,11 @@
   const fora = (el) => el.closest?.("#trader-poly-caixa");
 
   // jogo: "Utah Jazz x LA Lakers" (CampeonBet) ou "Utah Jazz VS Los Angeles Lakers" (JogaBrasil); "" se não achar
+  // v1.8: no quadro da TurboSports o nome dos times não vem como texto; o endereço tem ".../new-york-knicks-vs-orlando-magic-41347459/bets"
   function nomeDoJogo(els, F) {
     for (const el of els) { const f = F(el); if (f.length === 3 && /^(x|vs\.?)$/i.test(f[1]) && NOME.test(f[0]) && NOME.test(f[2])) return `${f[0]} - ${f[2]}`; }
+    const u = decodeURIComponent(location.pathname).match(/\/([a-z0-9-]+?)-vs-([a-z0-9-]+?)-\d+(?:\/|$)/i);
+    if (u) return `${u[1].replaceAll("-", " ")} - ${u[2].replaceAll("-", " ")}`.replace(/\b\w/g, (c) => c.toUpperCase());
     return "";
   }
 
@@ -193,7 +196,7 @@
     });
     botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
     botao("Diagnóstico", async () => {
-      const dados = { casa: CASA, versao: "1.7", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
+      const dados = { casa: CASA, versao: "1.8", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 1)], { type: "application/json" }));
       a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
