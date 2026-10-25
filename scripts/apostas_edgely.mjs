@@ -19,7 +19,7 @@
 // Local: node scripts/apostas_edgely.mjs   (REGISTRAR=1 registra fora do horário; SAIDA=<pasta> grava em outro lugar)
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import {
-  buscarDk, edgeProp, nomeChave, estatisticaBox, nomeAtletaEspn, ORDEM_PROJ, edgeJogo, projDoMercado, ladoDaProjecao, ladoDaMudanca,
+  buscarDk, edgeProp, nomeChave, estatisticaBox, nomeAtletaEspn, ORDEM_PROJ, edgeJogo, projDoMercado,
   movimentoMercado, resultadoA, realDoJogo, chanceOver, semMargem,
 } from "../js/core.js";
 
@@ -143,6 +143,7 @@ if ((horaUtc >= 15 || process.env.REGISTRAR === "1") && !indice.registrados.incl
 // Hipóteses da 1ª análise (21/10, 1 noite: ver CLAUDE.md), registradas para acompanhar o resultado real. "Movimento" =
 // movimentoProp (mudança de linha + de odd desde a abertura, em chance do Over); "andou" = |movimento| ≥ 3 pp.
 // A projeção é a mais recente do Edgely (scripts/edgely.mjs rebusca antes dos jogos), comparada com a linha de ABERTURA.
+// as 7 primeiras não são mais registradas desde 25/10 (ficam aqui pelos registros antigos)
 export const ESTRATEGIAS = {
   mov: "Seguir o movimento da linha",            // andou → lado do movimento (sem projeção)
   conf: "Projeção confirmada pela linha",        // projeção apontava um lado e a linha andou para ele → esse lado
@@ -208,7 +209,6 @@ function chanceA(x) {
         if (!x.a || !x.b) continue;
         const mov = movimentoMercado(x.tipo, x.linhaAb, x.linha, x.pAb, x.p);
         const ladoMov = mov == null ? null : mov >= ANDOU ? "O" : mov <= -ANDOU ? "U" : null;
-        const dirProj = ladoDaProjecao(x.tipo, x.proj, x.linhaAb ?? x.linha);
         const pa = chanceA(x);
         const reg = (est, lado) => {
           if (x.atleta !== "jogo") M.nomes[x.atleta] = x.nome || M.nomes[x.atleta] || null;
@@ -216,18 +216,10 @@ function chanceA(x) {
             pa == null ? null : arred(lado === "O" ? pa * x.a - 1 : (1 - pa) * x.b - 1), 1, Math.floor(agora / 1000), null, null, est, arred(mov)]);
           conta[est] = (conta[est] || 0) + 1;
         };
-        if (ladoMov) reg("mov", ladoMov);
-        if (ladoMov && dirProj) reg(ladoMov === dirProj ? "conf" : "contra", ladoMov);
-        const lm = x.proj != null && x.proj12 != null && Math.abs(x.proj - x.proj12) >= 0.5 ? ladoDaMudanca(x.tipo, x.proj12, x.proj) : null;
-        if (ladoMov && lm === ladoMov) reg("mudou", ladoMov);
+        // 25/10: mov, conf, contra, mudou, mov-under, linha-volta e contra-mudou PARARAM de ser registradas (ruído nas 4
+        // noites; o arquivo do mercado permite simular qualquer uma delas no fechamento sem registrar). Ficam o controle
+        // e as hipóteses de 24/10, até o marco de ~150 jogos.
         if (x.tipo !== "jogo-spread" && x.tipo !== "jogo-ml") reg("under", "U"); // controle: só onde existe Under
-        if (ladoMov === "U") reg("mov-under", "U");
-        // linha andou (props/totais: subiu → Over; handicap: linha do visitante caiu → visitante) e a odd voltou (≥ 1 pp)
-        const ladoLinha = x.linha == null || x.linhaAb == null || x.linha === x.linhaAb ? null
-          : x.tipo === "jogo-spread" ? (x.linha < x.linhaAb ? "O" : "U") : (x.linha > x.linhaAb ? "O" : "U");
-        const ladoOdd = x.p == null || x.pAb == null || Math.abs(x.p - x.pAb) < 0.01 ? null : x.p > x.pAb ? "O" : "U";
-        if (ladoLinha && ladoOdd && ladoOdd !== ladoLinha) reg("linha-volta", ladoLinha);
-        if (lm && ladoMov !== lm) reg("contra-mudou", lm === "O" ? "U" : "O");
         const temUnder = x.tipo !== "jogo-spread" && x.tipo !== "jogo-ml";
         const s12 = linha12(H, chaveHist(x.atleta, x.tipo), hojeEt);
         const tarde = s12 ? movimentoMercado(x.tipo, s12[1], x.linha, semMargem(s12[2], s12[3]), x.p) : null;
