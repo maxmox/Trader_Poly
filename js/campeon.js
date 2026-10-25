@@ -17,21 +17,23 @@ const lin = (v) => (v == null ? "–" : String(v).replace(".", ","));
 const pc = (v) => (v == null || !Number.isFinite(v) ? "–" : `${v >= 0 ? "+" : "−"}${num(Math.abs(100 * v), 1)}%`);
 
 // ---------- leitura do formato da Altenar (defensiva: o formato não é documentado) ----------
+// nomes em inglês (API) ou português (tela da CampeonBet: pt-PT/pt-BR)
+const PTS = /\bpoints\b|\bpts\b|\bpontos\b/, REB = /rebounds|ressaltos|rebotes/, AST = /assists|assist[eê]ncias/;
 const STATS = [
-  ["pra", (n) => /points/.test(n) && /rebounds/.test(n) && /assists/.test(n)],
-  ["pa", (n) => /points/.test(n) && /assists/.test(n)],
-  ["pr", (n) => /points/.test(n) && /rebounds/.test(n)],
-  ["ra", (n) => /rebounds/.test(n) && /assists/.test(n)],
-  ["stocks", (n) => /steals/.test(n) && /blocks/.test(n)],
-  ["threes", (n) => /three|3-?point|3 ?pt|threes/.test(n)],
-  ["points", (n) => /\bpoints\b|\bpts\b/.test(n)],
-  ["rebounds", (n) => /rebounds/.test(n)],
-  ["assists", (n) => /assists/.test(n)],
-  ["steals", (n) => /steals/.test(n)],
-  ["blocks", (n) => /blocks/.test(n)],
+  ["pra", (n) => PTS.test(n) && REB.test(n) && AST.test(n)],
+  ["pa", (n) => PTS.test(n) && AST.test(n)],
+  ["pr", (n) => PTS.test(n) && REB.test(n)],
+  ["ra", (n) => REB.test(n) && AST.test(n)],
+  ["stocks", (n) => /steals|roubos|roubadas/.test(n) && /blocks|bloqueios|tocos|desarmes/.test(n)],
+  ["threes", (n) => /three|3-?point|3 ?pt|threes|triplos|cestas de 3|lan[cç]amentos de 3|de 3 pontos/.test(n)],
+  ["points", (n) => PTS.test(n)],
+  ["rebounds", (n) => REB.test(n)],
+  ["assists", (n) => AST.test(n)],
+  ["steals", (n) => /steals|roubos|roubadas/.test(n)],
+  ["blocks", (n) => /blocks|bloqueios|tocos|desarmes de lan/.test(n)],
 ];
-const PARCIAL = /quarter|half|1st|2nd|3rd|4th|first|second|period|minute/i;
-const lado = (nome) => (/\bover\b|\bmais\b/i.test(nome) ? "O" : /\bunder\b|\bmenos\b/i.test(nome) ? "U" : null);
+const PARCIAL = /quarter|half|1st|2nd|3rd|4th|first|second|period|minute|quarto|tempo|per[ií]odo|parte|1º|2º|3º|4º/i;
+const lado = (nome) => (/\bover\b|\bmais\b|\bacima\b/i.test(nome) ? "O" : /\bunder\b|\bmenos\b|\babaixo\b/i.test(nome) ? "U" : null);
 const numero = (s) => { const m = String(s ?? "").match(/[-+]?\d+(?:[.,]\d+)?/g); return m ? parseFloat(m[m.length - 1].replace(",", ".")) : null; };
 // um GetEventDetails → { nome, inicio, mercados: [{ nome, pares: [{L, O, U}], opcoes: [{nome, preco}] }] }
 function lerEvento(d, daLista) {
@@ -131,13 +133,13 @@ function comparar(jogos) {
         for (const p of m.pares) linhas.push(par(j, jog[0], tipo, TIPOS_PROP[tipo], p, dk, m.nome));
         continue;
       }
-      if (/winner|money ?line|match result|1x2/.test(nm) && ml && m.opcoes.length === 2) { // vencedor
+      if (/winner|money ?line|match result|1x2|vencedor|resultado final/.test(nm) && ml && m.opcoes.length === 2) { // vencedor
         const vis = m.opcoes.find((o) => nomeChave(o.nome).includes(nomeChave(ml.rotA))), cas = m.opcoes.find((o) => nomeChave(o.nome).includes(nomeChave(ml.rotB)));
         const pv = semMargem(ml.dk.over, ml.dk.under);
         if (vis && cas && pv != null) linhas.push({ j, quem: "Vencedor", mercado: "Vencedor", L: null, O: vis.preco, U: cas.preco, dk: ml.dk, rotA: ml.rotA, rotB: ml.rotB, chance: pv, evO: pv * vis.preco - 1, evU: (1 - pv) * cas.preco - 1, nomeCampeon: m.nome });
         continue;
       }
-      if (/total/.test(nm) && !/team|player/.test(nm) && tot && !(j.mercados[0] && [j.mercados[0].rotA, j.mercados[0].rotB].some((t) => t && nomeChave(m.nome).includes(nomeChave(t))))) { // total do jogo
+      if (/total/.test(nm) && !/team|player|equipa|equipe|jogador/.test(nm) && tot && !(j.mercados[0] && [j.mercados[0].rotA, j.mercados[0].rotB].some((t) => t && nomeChave(m.nome).includes(nomeChave(t))))) { // total do jogo
         for (const p of m.pares) linhas.push(par(j, "Total do jogo", "jogo-total", "Total do jogo", p, tot, m.nome));
       }
     }
@@ -181,7 +183,7 @@ export function renderCampeon(el, f, jogos) {
     </tbody></table></div>` : "";
   el.innerHTML = `<section class="panel"><h2>CampeonBet × DraftKings</h2>
       <p class="muted">A CampeonBet costuma demorar a acompanhar os movimentos. Aqui cada linha dela é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) é levada para a linha da CampeonBet e vira o <b>valor esperado</b> de cada lado na odd da CampeonBet. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}%: a CampeonBet ainda paga como se a linha não tivesse andado. A coleta só acontece quando você clica no botão — nada consulta a CampeonBet sozinho.</p>
-      <div class="campeon-passos"><b>Como coletar (recomendado, com extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> (Chrome novo exige) · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar") · 3) abra a <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">página da NBA na CampeonBet</a>, espere as odds e clique no botão azul <b>"📊 Coletar para o Trader Poly"</b> no canto inferior esquerdo · 4) <b>fique na aba da CampeonBet</b>: a caixa no canto direito mostra o andamento (~2 s por jogo, como quem abre um por um); no fim clique em <b>"Abrir a comparação"</b>. (Já tinha instalado? Abra o link do coletor de novo e clique em "Atualizar" — versão 1.2.)
+      <div class="campeon-passos"><b>Como coletar (recomendado, com extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> (Chrome novo exige) · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar") · 3) na <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">CampeonBet</a>, abra um jogo da NBA (a página com as props) e clique em <b>"Capturar este jogo"</b> na caixa azul do canto inferior esquerdo — ela lê só o que já está na tela, sem nenhuma consulta extra ao site · 4) repita nos jogos que quiser e clique em <b>"Abrir a comparação"</b>. (Já tinha instalado? Abra o link do coletor de novo e clique em "Atualizar" — versão 1.3.)
         <br><small class="muted">Sem extensão: arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> (ou <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito, edite e cole no lugar do endereço) e clique nele na página da CampeonBet.</small></div>
       ${coleta ? `<p class="${idade > 15 ? "banner" : "muted"}">Coleta das ${hora(coleta.em)} (há ${idade} min): ${coleta.eventos.length} jogos, ${coleta.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${coleta.erros ? `, ${coleta.erros} jogos com erro` : ""} · ${linhas.length} linhas casadas com a DK · <b>${defasadas} defasadas</b>.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""} ${bruto ? `<a href="#" id="baixar-bruto">baixar os dados brutos</a>` : ""} · <a href="#" class="colar-dados">colar dados</a></p>${!linhas.length && coleta.amostra ? `<p class="muted">Nenhuma linha casou com a DK. Formato recebido (para ajustar o leitor): <code>${esc(JSON.stringify(coleta.amostra).slice(0, 600))}</code></p>` : ""}` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa da CampeonBet mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}
       ${tab}

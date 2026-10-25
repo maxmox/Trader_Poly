@@ -1,137 +1,114 @@
 // ==UserScript==
 // @name         Trader Poly — coletor CampeonBet
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.2
+// @version      1.3
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Botão "Coletar para o Trader Poly" na CampeonBet: lê as odds da NBA SÓ quando você clica e manda para a aba "CampeonBet × DK".
+// @description  Na CampeonBet: "Capturar este jogo" lê as odds que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "CampeonBet × DK" do Trader Poly.
 // @match        https://campeonbet.io/*
 // @match        https://*.campeonbet.io/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
-// Coletor da CampeonBet (25/10/2026), um arquivo só para os dois jeitos de rodar:
-//   - Tampermonkey (recomendado): instalado por este endereço (.user.js); põe um botão fixo na página da CampeonBet.
-//   - Favorito (bookmarklet): a aba "CampeonBet × DK" monta o link "javascript:" com este arquivo e window.__traderPolyFavorito = 1.
-// Roda NO NAVEGADOR DO USUÁRIO, só quando ele clica, com a página da NBA da CampeonBet aberta: as odds vêm da API da
-// Altenar (biahosted.com, atrás do Cloudflare, que bloqueia servidor/robô — não contornamos isso). O coletor usa a mesma
-// API que a página já usou (descobre o endereço e os parâmetros pelos recursos carregados), 1 consulta da lista de jogos
-// + 1 por jogo, com 1,5–2,5 s entre elas (como alguém abrindo jogo por jogo), e manda tudo para a aba do nosso site
-// por postMessage. Nada roda sozinho.
+// Coletor da CampeonBet. v1.3 (25/10/2026): LÊ A TELA, não chama a API. As versões 1.0–1.2 chamavam a API da Altenar
+// (sb2integration-altenar2.biahosted.com/api/Widget), mas a página não usa uma consulta de lista de jogos visível e
+// carrega um endereço-isca ("Y21Gd…" = "random bullshit go" em base64 duas vezes): proteção contra robôs. Insistir na
+// API arriscaria a conta do usuário. Agora:
+//   - "Capturar este jogo": com um jogo da NBA aberto na tela, lê os mercados e odds que a página JÁ mostrou (texto
+//     dos botões de odd e o título do bloco de cada mercado). Nenhuma requisição ao site. Guarda neste navegador.
+//   - "Abrir a comparação": abre props.html?aba=campeon#campeon=<gzip+base64> com todos os jogos capturados.
+//   - "Baixar o HTML": salva a página aberta, para ajustar o leitor se ele não reconhecer os mercados.
 (() => {
-  async function coletar() {
-    const SITE = "https://maxmox.github.io/Trader_Poly";
-    if (!/campeonbet\./i.test(location.host)) { alert("Abra a página da NBA na CampeonBet (com as odds carregadas) e clique de novo no botão."); return; }
-    if (window.__coletorCampeon) { alert("A coleta já está rodando nesta aba."); return; }
-    window.__coletorCampeon = true;
-    // v1.1 (25/10): a coleta fica NESTA aba, com o andamento à vista; no fim, "Abrir a comparação" abre a nossa aba com
-    // os dados no próprio endereço (comprimidos). A v1.0 abria a nossa aba no começo e mandava por postMessage, e os
-    // dados não chegavam. Reserva: "Copiar dados" aqui e "Colar dados" na nossa aba.
-    document.getElementById("trader-poly-caixa")?.remove();
-    const caixa = document.createElement("div");
-    caixa.id = "trader-poly-caixa";
-    caixa.style.cssText = "position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:360px;padding:12px 14px;border-radius:8px;background:#10243e;color:#fff;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)";
-    const texto = document.createElement("div");
-    caixa.appendChild(texto);
-    document.body.appendChild(caixa);
-    const status = (t) => { texto.textContent = `Trader Poly · ${t}`; };
-    const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 8px 0 0;padding:7px 11px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", fn); caixa.appendChild(b); return b; };
-    const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
-    // gzip + base64url (para caber no endereço)
-    const comprime = async (txt) => {
-      const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
-      let bin = "";
-      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-      return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-    };
-    // um GetEventDetails da Altenar → { id, nome, inicio, mercados: [[nome, sv, [[nome da odd, preço, sv]]]] } (compacto)
-    const compacta = (d, e) => {
-      const ev = d?.event && typeof d.event === "object" ? { ...d, ...d.event } : d || {};
-      const odds = new Map((ev.odds || []).map((o) => [o.id, o]));
-      const mercados = (ev.markets || []).map((m) => {
-        const ids = m.oddIds || [...(m.desktopOddIds || []), ...(m.mobileOddIds || [])].flat();
-        return [String(m.name || ""), m.sv ?? null, [...new Set(ids)].map((id) => odds.get(id)).filter(Boolean).map((o) => [String(o.name || ""), +o.price, o.sv ?? null])];
-      }).filter((m) => m[2].length);
-      return { id: ev.id ?? e.id, nome: String(ev.name || e.name || ""), inicio: ev.startDate || e.startDate || null, mercados };
-    };
-    try {
-      // v1.2 (25/10): a API da CampeonBet é sb2integration-altenar2.biahosted.com/api/Widget e lá "GetEvents" não existe
-      // (404). Então nada de montar nomes: a LISTA de jogos é a mesma consulta que a página já fez (trocando só o idioma), e
-      // o nome da função do DETALHE de um jogo é o que a página usou (se algum jogo foi aberto) ou o primeiro nome conhecido
-      // da Altenar que responder com mercados. Se não achar, a caixa lista as funções que a página usa.
-      const nomes = [];
-      const junta = (w) => { try { nomes.push(...w.performance.getEntriesByType("resource").map((e) => e.name)); } catch { /* quadro de outro site */ } };
-      junta(window);
-      for (const fr of document.querySelectorAll("iframe")) junta(fr.contentWindow);
-      const api = [...new Set(nomes.filter((n) => /biahosted\.com\/api\//i.test(n)))];
-      const funcao = (url) => new URL(url).pathname.split("/").pop();
-      const funcoes = [...new Set(api.map(funcao))];
-      const vistos = () => `Funções que a página usa: ${funcoes.join(", ") || "nenhuma (a página carregou as odds?)"}`;
-      const idioma = (url) => { const x = new URL(url); x.searchParams.set("culture", "en-GB"); return x.toString(); }; // nomes em inglês
-      const busca = async (url) => {
-        const r = await fetch(url).catch((e) => { throw new Error(`o navegador recusou ${funcao(url)} (${e.message})`); });
-        if (!r.ok) throw new Error(`${funcao(url)} respondeu ${r.status}`);
-        return r.json();
-      };
-      const eventosDe = (j) => j?.events || j?.Events || Object.values(j || {}).find((v) => Array.isArray(v) && v[0]?.id != null && v[0]?.name != null) || [];
-      const mercadosDe = (d) => d?.markets || d?.event?.markets || d?.Markets || [];
-      const champ = new URLSearchParams(location.search).get("championshipIds") || "2980";
-      // 1) lista de jogos: as consultas que a página fez, primeiro as do campeonato
-      status("lendo a lista de jogos…");
-      const candLista = api.filter((n) => /events|championship/i.test(n)).sort((a, b) => (b.includes(champ) ? 1 : 0) - (a.includes(champ) ? 1 : 0));
-      let lista = null, urlLista = null;
-      for (const url of candLista.slice(0, 4)) {
-        try { const j = await busca(idioma(url)); if (eventosDe(j).length) { lista = j; urlLista = url; break; } } catch { /* tenta a próxima */ }
-        await espera(600);
-      }
-      if (!lista) throw new Error(`não achei a lista de jogos. ${vistos()}`);
-      const eventos = eventosDe(lista).slice(0, 16);
-      // 2) detalhe de cada jogo, no mesmo servidor e com os mesmos parâmetros da lista
-      const u = new URL(urlLista), base = `${u.origin}${u.pathname.replace(/\/[^/]*$/, "")}`;
-      const P = new URLSearchParams(u.search);
-      P.set("culture", "en-GB");
-      for (const k of ["eventId", "eventIds", "championshipIds", "sportId", "sportIds", "eventCount", "categoryIds", "champIds"]) P.delete(k);
-      const det = (fn, id) => { const q = new URLSearchParams(P); q.set("eventId", String(id)); return busca(`${base}/${fn}?${q}`); };
-      const cands = [...new Set([...funcoes.filter((f) => /detail/i.test(f)), "GetEventDetails", "GetEventDetail", "GetEvent", "GetEventMarkets", "GetMarkets"])];
-      let fnDet = null, primeiro = null;
-      for (const fn of cands) {
-        status(`procurando o detalhe dos jogos (${fn})…`);
-        try { const d = await det(fn, eventos[0].id); if (mercadosDe(d).length) { fnDet = fn; primeiro = d; break; } } catch { /* tenta o próximo nome */ }
-        await espera(800);
-      }
-      if (!fnDet) throw new Error(`achei ${eventos.length} jogos, mas não a consulta do detalhe de um jogo (testei ${cands.join(", ")}). ${vistos()}. Tente: abra um jogo da NBA na CampeonBet, volte para a lista e clique de novo.`);
-      const lidos = [];
-      let erros = 0;
-      const amostra = { lista: funcao(urlLista), detalhe: fnDet, funcoes, chaves: Object.keys(primeiro || {}), mercado: mercadosDe(primeiro)[0] || null, odd: (primeiro?.odds || primeiro?.event?.odds || [])[0] || null };
-      for (const [i, e] of eventos.entries()) {
-        status(`lendo o jogo ${i + 1} de ${eventos.length}… (fique nesta aba)`);
-        try {
-          const d = i === 0 ? primeiro : (await espera(1500 + Math.random() * 1000), await det(fnDet, e.id));
-          lidos.push(compacta(d, e));
-        } catch (err) { erros++; }
-      }
-      const pacote = { v: 2, em: Date.now(), champ, eventos: lidos, erros, amostra };
-      const nMerc = lidos.reduce((t, e) => t + e.mercados.length, 0);
-      const json = JSON.stringify(pacote), dados = await comprime(json);
-      status(`pronto: ${lidos.length} jogos, ${nMerc} mercados${erros ? ` (${erros} com erro)` : ""}.`);
-      botao("Abrir a comparação", () => window.open(`${SITE}/props.html?aba=campeon#campeon=${dados}`, "_blank"));
-      botao("Copiar dados", async (ev) => { try { await navigator.clipboard.writeText(dados); ev.target.textContent = "copiado: cole na aba do Trader Poly"; } catch { ev.target.textContent = "não consegui copiar"; } });
-      botao("Fechar", () => caixa.remove());
-    } catch (e) {
-      status(`não deu: ${e.message || e} — tire um print desta caixa e mande`);
-      botao("Fechar", () => caixa.remove());
-    } finally {
-      window.__coletorCampeon = false;
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
+  if (window.__traderPolyCampeon) return;
+  window.__traderPolyCampeon = true;
+
+  const ler = () => { try { return JSON.parse(localStorage.getItem(CHAVE) || "{}"); } catch { return {}; } };
+  const grava = (o) => { try { localStorage.setItem(CHAVE, JSON.stringify(o)); return true; } catch { return false; } };
+  const PRECO = /^\d{1,3}[.,]\d{1,3}$/;
+  const linhasDe = (el) => (el.innerText || "").split("\n").map((s) => s.trim()).filter(Boolean);
+
+  // ---------- leitura da tela ----------
+  // botão de odd = elemento cujo texto é "<rótulo>\n<preço>" (ou só o preço), sem outro botão de odd dentro;
+  // mercado = o menor ancestral com 2+ botões de odd; nome do mercado = 1ª linha de texto dele que não é de odd
+  function capturar() {
+    const raiz = document.querySelector("main") || document.body;
+    const cands = [];
+    for (const el of raiz.querySelectorAll("button, [role=button], [class*=odd], [class*=Odd], [class*=outcome], [class*=Outcome], [class*=selection], [class*=Selection], [class*=bet-btn], [class*=betBtn]")) {
+      if (el.closest("#trader-poly-caixa")) continue;
+      const L = linhasDe(el);
+      if (!L.length || L.length > 3) continue;
+      const preco = L[L.length - 1];
+      if (!PRECO.test(preco)) continue;
+      const v = parseFloat(preco.replace(",", "."));
+      if (!(v > 1 && v < 100)) continue;
+      cands.push({ el, rot: L.slice(0, -1).join(" "), preco: v });
     }
+    // fica só o botão mais interno (um invólucro com o mesmo texto não conta duas vezes)
+    const odds = cands.filter((c) => !cands.some((o) => o !== c && c.el.contains(o.el)));
+    const porMercado = new Map();
+    for (const o of odds) {
+      let a = o.el.parentElement;
+      while (a && a !== raiz && odds.filter((x) => a.contains(x.el)).length < 2) a = a.parentElement;
+      if (!a || a === raiz) continue;
+      (porMercado.get(a) || porMercado.set(a, []).get(a)).push(o);
+    }
+    const mercados = [];
+    for (const [bloco, os] of porMercado) {
+      const textosOdds = new Set(os.flatMap((o) => linhasDe(o.el)));
+      const nome = linhasDe(bloco).find((t) => !textosOdds.has(t) && !PRECO.test(t)) || "";
+      // props em tabela ("Pontos do jogador" › linha "LeBron James"): junta o título da seção acima
+      let secao = "", up = bloco.parentElement;
+      for (let k = 0; k < 4 && up && up !== raiz && !secao; k++, up = up.parentElement) {
+        const t = linhasDe(up).find((x) => !textosOdds.has(x) && !PRECO.test(x));
+        if (t && t !== nome) secao = t;
+      }
+      mercados.push([secao ? `${secao} | ${nome}` : nome, null, os.map((o) => [o.rot, o.preco, null])]);
+    }
+    // nome do jogo: título com "-", "vs" ou "@" (cabeçalho da página) ou o título da aba
+    const titulo = [...document.querySelectorAll("h1, h2, [class*=event-name], [class*=eventName], [class*=EventName], [class*=teams], [class*=Teams]")]
+      .map((e) => (e.innerText || "").replace(/\s+/g, " ").trim()).find((t) => / - | vs\.? | v | @ /i.test(t) && t.length < 90) || document.title;
+    return { nome: titulo, mercados };
   }
-  if (window.__traderPolyFavorito) { window.__traderPolyFavorito = 0; coletar(); return; } // rodou pelo favorito
-  // Tampermonkey: botão fixo no canto (só age no clique)
-  if (document.getElementById("trader-poly-coletar")) return;
-  const b = document.createElement("button");
-  b.id = "trader-poly-coletar";
-  b.textContent = "📊 Coletar para o Trader Poly";
-  b.title = "Lê as odds da NBA desta página (devagar, ~2 s por jogo) e abre a comparação com a DraftKings";
-  b.style.cssText = "position:fixed;z-index:2147483646;left:16px;bottom:16px;padding:9px 13px;border:0;border-radius:8px;background:#1d5fa8;color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.3)";
-  b.addEventListener("click", coletar);
-  document.body.appendChild(b);
+
+  // ---------- caixa e botões ----------
+  const caixa = document.createElement("div");
+  caixa.id = "trader-poly-caixa";
+  caixa.style.cssText = "position:fixed;z-index:2147483646;left:16px;bottom:16px;max-width:380px;padding:10px 12px;border-radius:8px;background:#10243e;color:#fff;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+  const texto = document.createElement("div");
+  texto.style.whiteSpace = "pre-line";
+  caixa.appendChild(texto);
+  const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 6px 0 0;padding:6px 10px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 12px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", fn); caixa.appendChild(b); return b; };
+  const resumo = () => {
+    const jogos = Object.values(ler()), velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
+    return `📊 Trader Poly · ${jogos.length} jogo(s) capturado(s)${velhos ? ` (${velhos} com mais de 30 min)` : ""}`;
+  };
+  const status = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
+  botao("Capturar este jogo", () => {
+    const j = capturar(), n = j.mercados.length, nOdds = j.mercados.reduce((t, m) => t + m[2].length, 0);
+    if (!n) { status("Não reconheci mercados nesta tela. Abra um jogo da NBA (a página com as props) e tente de novo; se continuar, use \"Baixar o HTML\" e mande o arquivo."); return; }
+    const c = ler();
+    c[j.nome] = { em: Date.now(), nome: j.nome, mercados: j.mercados };
+    status(grava(c) ? `Capturado: ${j.nome} · ${n} mercados, ${nOdds} odds.` : "Não consegui guardar neste navegador.");
+  });
+  botao("Abrir a comparação", async () => {
+    const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, mercados: j.mercados, em: j.em }));
+    if (!eventos.length) { status("Nenhum jogo capturado ainda: abra um jogo e clique em \"Capturar este jogo\"."); return; }
+    const w = window.open("about:blank", "_blank"); // a janela abre JÁ no clique (depois o navegador bloquearia)
+    const txt = JSON.stringify({ v: 2, em: Math.min(...eventos.map((e) => e.em)), fonte: "tela", eventos, erros: 0 });
+    const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    const url = `${SITE}/props.html?aba=campeon#campeon=${btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
+    if (w) w.location.href = url; else location.href = url;
+  });
+  botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
+  botao("Baixar o HTML", () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([document.documentElement.outerHTML], { type: "text/html" }));
+    a.download = `campeon-tela-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.html`;
+    a.click();
+  });
+  status("Abra um jogo da NBA e clique em \"Capturar este jogo\". Repita nos jogos que quiser; no fim, \"Abrir a comparação\".");
+  document.body.appendChild(caixa);
 })();
