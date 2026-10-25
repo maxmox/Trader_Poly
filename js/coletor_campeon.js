@@ -18,19 +18,25 @@
   const status = (t) => { caixa.textContent = `Trader Poly · ${t}`; };
   const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
   try {
-    const recursos = performance.getEntriesByType("resource").map((e) => e.name).filter((n) => /\/api\/widget\/Get/i.test(n));
-    const modelo = recursos.find((n) => /GetEvents/i.test(n)) || recursos[0];
-    if (!modelo) throw new Error("as odds desta página ainda não carregaram (espere a lista de jogos aparecer)");
+    // endereço da API: pelos recursos já carregados (na página e nos quadros/iframes acessíveis); senão, o padrão da Altenar
+    const nomes = [];
+    const junta = (w) => { try { nomes.push(...w.performance.getEntriesByType("resource").map((e) => e.name)); } catch { /* quadro de outro site */ } };
+    junta(window);
+    for (const fr of document.querySelectorAll("iframe")) junta(fr.contentWindow);
+    const recursos = nomes.filter((n) => /\/api\/widget\/Get/i.test(n));
+    const modelo = recursos.find((n) => /GetEvents/i.test(n)) || recursos[0]
+      || "https://sb2frontend-altenar2.biahosted.com/api/widget/GetEvents?culture=pt-PT&timezoneOffset=180&integration=campeonbet&deviceType=1&numFormat=en-GB&countryCode=BR";
     const u = new URL(modelo), base = `${u.origin}${u.pathname.replace(/\/[^/]*$/, "")}`;
     const P = new URLSearchParams(u.search);
+    if (!P.get("integration")) P.set("integration", "campeonbet");
     P.set("culture", "en-GB"); // nomes dos mercados em inglês: mais fáceis de ler do nosso lado
     for (const k of ["eventId", "championshipIds", "sportId", "eventCount", "categoryIds"]) P.delete(k);
     const champ = new URLSearchParams(location.search).get("championshipIds") || "2980";
     const pega = async (fn, extra) => {
       const q = new URLSearchParams(P);
       for (const [k, v] of Object.entries(extra)) q.set(k, v);
-      const r = await fetch(`${base}/${fn}?${q}`, { credentials: "include" });
-      if (!r.ok) throw new Error(`${fn} respondeu ${r.status}`);
+      const r = await fetch(`${base}/${fn}?${q}`).catch((e) => { throw new Error(`${fn}: o navegador recusou a consulta (${e.message}) em ${base}`); });
+      if (!r.ok) throw new Error(`${fn} respondeu ${r.status} (${base})`);
       return r.json();
     };
     status("lendo a lista de jogos…");
@@ -50,9 +56,9 @@
     for (let t = 0; t < 80 && !ok; t++) { destino?.postMessage({ tipo: "campeon", pacote }, ORIGEM); await espera(500); }
     status(ok ? `pronto: ${eventos.length} jogos enviados. Veja a aba "CampeonBet × DK".` : "não consegui entregar à aba do Trader Poly (o navegador bloqueou a janela?). Libere pop-ups para este site e clique de novo.");
   } catch (e) {
-    status(`não deu: ${e.message || e}`);
+    status(`não deu: ${e.message || e} — tire um print desta caixa e mande (ela some em 60 s)`);
   } finally {
     window.__coletorCampeon = false;
-    setTimeout(() => caixa.remove(), 15000);
+    setTimeout(() => caixa.remove(), 60000);
   }
 })();

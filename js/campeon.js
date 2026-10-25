@@ -126,7 +126,11 @@ async function linkColetor() {
 }
 export function renderCampeon(el, f, jogos) {
   const alvo = el;
-  linkColetor().then((href) => { const a = alvo.querySelector("#link-coletor"); if (a && href) a.href = href; });
+  linkColetor().then((href) => {
+    const a = alvo.querySelector("#link-coletor");
+    if (a && href) { a.href = href; a.textContent = "Coletar CampeonBet"; } // só fica arrastável quando o código carregou
+    alvo.querySelector("#copiar-coletor")?.addEventListener("click", (e) => { e.preventDefault(); navigator.clipboard?.writeText(href || "").then(() => { e.target.textContent = "código copiado!"; }, () => { e.target.textContent = "não consegui copiar"; }); });
+  });
   const busca = nomeChave(f.busca);
   const { linhas, semPar } = coleta ? comparar(jogos) : { linhas: [], semPar: [] };
   const L = linhas.filter((r) => (!f.tipo || r.tipo === f.tipo || (f.tipo === "jogo" && !TIPOS_PROP[r.tipo])) && (!busca || nomeChave(r.quem).includes(busca)))
@@ -141,7 +145,7 @@ export function renderCampeon(el, f, jogos) {
     </tbody></table></div>` : "";
   el.innerHTML = `<section class="panel"><h2>CampeonBet × DraftKings</h2>
       <p class="muted">A CampeonBet costuma demorar a acompanhar os movimentos. Aqui cada linha dela é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) é levada para a linha da CampeonBet e vira o <b>valor esperado</b> de cada lado na odd da CampeonBet. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}%: a CampeonBet ainda paga como se a linha não tivesse andado. A coleta só acontece quando você clica no botão — nada consulta a CampeonBet sozinho.</p>
-      <div class="campeon-passos"><b>Como coletar:</b> 1) arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">Coletar CampeonBet</a> · 2) abra a <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">página da NBA na CampeonBet</a> e espere as odds aparecerem · 3) clique no favorito. Ele lê os jogos devagar (~2 s por jogo, como quem abre um por um) e manda para esta aba.</div>
+      <div class="campeon-passos"><b>Como coletar:</b> 1) arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> <small class="muted">(se não der para arrastar: <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito qualquer, edite e cole o código no lugar do endereço)</small> · 2) abra a <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">página da NBA na CampeonBet</a> e espere as odds aparecerem · 3) clique no favorito. Ele lê os jogos devagar (~2 s por jogo, como quem abre um por um) e manda para esta aba.</div>
       ${coleta ? `<p class="${idade > 15 ? "banner" : "muted"}">Coleta das ${hora(coleta.em)} (há ${idade} min): ${coleta.eventos.length} jogos, ${coleta.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${coleta.erros ? `, ${coleta.erros} jogos com erro` : ""} · ${linhas.length} linhas casadas com a DK · <b>${defasadas} defasadas</b>.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""} ${bruto ? `<a href="#" id="baixar-bruto">baixar os dados brutos</a>` : ""}</p>` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os 3 passos acima.</span></div>`}
       ${tab}
       ${semPar.length ? `<details><summary class="muted">${semPar.length} mercados da CampeonBet sem par na DK (outro jogador, outra estatística ou linha que a DK não tem)</summary><p class="muted">${semPar.slice(0, 80).map(esc).join(" · ")}</p></details>` : ""}
