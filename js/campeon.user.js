@@ -1,23 +1,23 @@
 // ==UserScript==
 // @name         Trader Poly — coletor CampeonBet
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.3
+// @version      1.4
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet: "Capturar este jogo" lê as odds que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "CampeonBet × DK" do Trader Poly.
+// @description  Na CampeonBet: "Capturar esta tela" lê as tabelas de props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "CampeonBet × DK" do Trader Poly.
 // @match        https://campeonbet.io/*
 // @match        https://*.campeonbet.io/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
-// Coletor da CampeonBet. v1.3 (25/10/2026): LÊ A TELA, não chama a API. As versões 1.0–1.2 chamavam a API da Altenar
-// (sb2integration-altenar2.biahosted.com/api/Widget), mas a página não usa uma consulta de lista de jogos visível e
-// carrega um endereço-isca ("Y21Gd…" = "random bullshit go" em base64 duas vezes): proteção contra robôs. Insistir na
-// API arriscaria a conta do usuário. Agora:
-//   - "Capturar este jogo": com um jogo da NBA aberto na tela, lê os mercados e odds que a página JÁ mostrou (texto
-//     dos botões de odd e o título do bloco de cada mercado). Nenhuma requisição ao site. Guarda neste navegador.
-//   - "Abrir a comparação": abre props.html?aba=campeon#campeon=<gzip+base64> com todos os jogos capturados.
-//   - "Baixar o HTML": salva a página aberta, para ajustar o leitor se ele não reconhecer os mercados.
+// Coletor da CampeonBet. LÊ A TELA, não chama a API (a API deles tem endereço-isca contra robôs; v1.0–1.2 chamavam e
+// não deu). v1.4 (25/10/2026), feita pelos prints do usuário: em "Especiais de Jogadores" cada mercado é um quadro com
+// título ("Pontos Mais de/Menos de (incluindo Prorrogação)"), abas dos dois times e uma tabela
+//   Jogador | Linha | Mais | Menos
+// (a odd é só o número; o rótulo está no cabeçalho). Cada linha da tabela vira um par Over/Under. Tabelas só com "Mais"
+// (Pts-Reb/Pts-Ast a 1,01: marcos) e odds trancadas ficam de fora. As capturas SE SOMAM: capture um time, troque de
+// time/aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) e capture de novo. Lê o texto da tabela inclusive dentro de
+// shadow DOM e de linhas ainda escondidas.
 (() => {
   const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
   if (window.__traderPolyCampeon) return;
@@ -25,75 +25,67 @@
 
   const ler = () => { try { return JSON.parse(localStorage.getItem(CHAVE) || "{}"); } catch { return {}; } };
   const grava = (o) => { try { localStorage.setItem(CHAVE, JSON.stringify(o)); return true; } catch { return false; } };
-  const PRECO = /^\d{1,3}[.,]\d{1,3}$/;
-  const linhasDe = (el) => (el.innerText || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const PRECO = /^\d{1,3}[.,]\d{1,3}$/, LINHA = /^\d{1,3}(?:[.,]\d)?$/, NOME = /^[^\d]{3,}$/;
+  // todos os elementos, entrando nos shadow roots
+  const todos = (raiz) => { const out = []; const anda = (r) => { for (const el of r.querySelectorAll("*")) { out.push(el); if (el.shadowRoot) anda(el.shadowRoot); } }; anda(raiz); return out; };
+  // textos das folhas (nós de texto não vazios), em ordem, entrando nos shadow roots
+  const folhas = (el) => { const out = []; const anda = (n) => { for (const c of n.childNodes) { if (c.nodeType === 3) { const t = c.nodeValue.trim(); if (t) out.push(t); } else if (c.nodeType === 1) { anda(c); if (c.shadowRoot) anda(c.shadowRoot); } } }; anda(el); return out; };
+  const ehLinhaDeTabela = (F) => F.length === 4 && NOME.test(F[0]) && LINHA.test(F[1]) && PRECO.test(F[2]) && PRECO.test(F[3]);
+  const num = (t) => parseFloat(t.replace(",", "."));
 
-  // ---------- leitura da tela ----------
-  // botão de odd = elemento cujo texto é "<rótulo>\n<preço>" (ou só o preço), sem outro botão de odd dentro;
-  // mercado = o menor ancestral com 2+ botões de odd; nome do mercado = 1ª linha de texto dele que não é de odd
   function capturar() {
-    const raiz = document.querySelector("main") || document.body;
-    const cands = [];
-    for (const el of raiz.querySelectorAll("button, [role=button], [class*=odd], [class*=Odd], [class*=outcome], [class*=Outcome], [class*=selection], [class*=Selection], [class*=bet-btn], [class*=betBtn]")) {
-      if (el.closest("#trader-poly-caixa")) continue;
-      const L = linhasDe(el);
-      if (!L.length || L.length > 3) continue;
-      const preco = L[L.length - 1];
-      if (!PRECO.test(preco)) continue;
-      const v = parseFloat(preco.replace(",", "."));
-      if (!(v > 1 && v < 100)) continue;
-      cands.push({ el, rot: L.slice(0, -1).join(" "), preco: v });
-    }
-    // fica só o botão mais interno (um invólucro com o mesmo texto não conta duas vezes)
-    const odds = cands.filter((c) => !cands.some((o) => o !== c && c.el.contains(o.el)));
-    const porMercado = new Map();
-    for (const o of odds) {
-      let a = o.el.parentElement;
-      while (a && a !== raiz && odds.filter((x) => a.contains(x.el)).length < 2) a = a.parentElement;
-      if (!a || a === raiz) continue;
-      (porMercado.get(a) || porMercado.set(a, []).get(a)).push(o);
-    }
-    const mercados = [];
-    for (const [bloco, os] of porMercado) {
-      const textosOdds = new Set(os.flatMap((o) => linhasDe(o.el)));
-      const nome = linhasDe(bloco).find((t) => !textosOdds.has(t) && !PRECO.test(t)) || "";
-      // props em tabela ("Pontos do jogador" › linha "LeBron James"): junta o título da seção acima
-      let secao = "", up = bloco.parentElement;
-      for (let k = 0; k < 4 && up && up !== raiz && !secao; k++, up = up.parentElement) {
-        const t = linhasDe(up).find((x) => !textosOdds.has(x) && !PRECO.test(x));
-        if (t && t !== nome) secao = t;
+    const els = todos(document.body).filter((el) => !el.closest?.("#trader-poly-caixa"));
+    const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+    // linhas da tabela: o menor elemento cujo texto é exatamente jogador, linha, Mais, Menos
+    const linhas = els.filter((el) => ehLinhaDeTabela(F(el)));
+    const minimas = linhas.filter((el) => !linhas.some((o) => o !== el && el.contains(o)));
+    const pares = [];
+    for (const el of minimas) {
+      const [jogador, linha, mais, menos] = F(el);
+      // título do quadro: subindo, o 1º texto que é de mercado ("Mais de/Menos de", "incluindo Prorrogação"…)
+      let titulo = "", up = el.parentElement || el.getRootNode()?.host;
+      for (let k = 0; k < 14 && up && !titulo; k++) {
+        titulo = F(up).find((t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under/i.test(t)) || "";
+        up = up.parentElement || up.getRootNode()?.host;
       }
-      mercados.push([secao ? `${secao} | ${nome}` : nome, null, os.map((o) => [o.rot, o.preco, null])]);
+      if (!titulo) continue;
+      pares.push([titulo, jogador, num(linha), num(mais), num(menos)]);
     }
-    // nome do jogo: título com "-", "vs" ou "@" (cabeçalho da página) ou o título da aba
-    const titulo = [...document.querySelectorAll("h1, h2, [class*=event-name], [class*=eventName], [class*=EventName], [class*=teams], [class*=Teams]")]
-      .map((e) => (e.innerText || "").replace(/\s+/g, " ").trim()).find((t) => / - | vs\.? | v | @ /i.test(t) && t.length < 90) || document.title;
-    return { nome: titulo, mercados };
+    // jogo: aba do jogo no topo ("Utah Jazz x LA Lakers") ou o título da página
+    let jogo = "";
+    for (const el of els) { const f = F(el); if (f.length === 3 && f[1].toLowerCase() === "x" && NOME.test(f[0]) && NOME.test(f[2])) { jogo = `${f[0]} - ${f[2]}`; break; } }
+    return { nome: jogo || document.title, pares };
   }
 
   // ---------- caixa e botões ----------
   const caixa = document.createElement("div");
   caixa.id = "trader-poly-caixa";
-  caixa.style.cssText = "position:fixed;z-index:2147483646;left:16px;bottom:16px;max-width:380px;padding:10px 12px;border-radius:8px;background:#10243e;color:#fff;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+  caixa.style.cssText = "position:fixed;z-index:2147483646;left:16px;bottom:16px;max-width:400px;padding:10px 12px;border-radius:8px;background:#10243e;color:#fff;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)";
   const texto = document.createElement("div");
   texto.style.whiteSpace = "pre-line";
   caixa.appendChild(texto);
   const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 6px 0 0;padding:6px 10px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 12px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", fn); caixa.appendChild(b); return b; };
   const resumo = () => {
-    const jogos = Object.values(ler()), velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
-    return `📊 Trader Poly · ${jogos.length} jogo(s) capturado(s)${velhos ? ` (${velhos} com mais de 30 min)` : ""}`;
+    const jogos = Object.values(ler()), n = jogos.reduce((t, j) => t + Object.keys(j.pares || {}).length, 0);
+    const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
+    return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
   const status = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
-  botao("Capturar este jogo", () => {
-    const j = capturar(), n = j.mercados.length, nOdds = j.mercados.reduce((t, m) => t + m[2].length, 0);
-    if (!n) { status("Não reconheci mercados nesta tela. Abra um jogo da NBA (a página com as props) e tente de novo; se continuar, use \"Baixar o HTML\" e mande o arquivo."); return; }
-    const c = ler();
-    c[j.nome] = { em: Date.now(), nome: j.nome, mercados: j.mercados };
-    status(grava(c) ? `Capturado: ${j.nome} · ${n} mercados, ${nOdds} odds.` : "Não consegui guardar neste navegador.");
+  botao("Capturar esta tela", () => {
+    const j = capturar();
+    if (!j.pares.length) { status("Não achei tabelas de props nesta tela. Abra o jogo › \"Especiais de Jogadores\" › Pontos (ou outra aba) e tente de novo. Se continuar, use \"Diagnóstico\" e mande o arquivo."); return; }
+    const c = ler(), g = (c[j.nome] ||= { nome: j.nome, em: Date.now(), pares: {} });
+    let novas = 0;
+    for (const [titulo, jogador, L, O, U] of j.pares) { const k = `${titulo}|${jogador}|${L}`; if (!g.pares[k]) novas++; g.pares[k] = [titulo, jogador, L, O, U]; }
+    g.em = Date.now();
+    const mercados = [...new Set(j.pares.map((p) => p[0].replace(/\s*\(incluindo.*$/i, "")))].join(", ");
+    status(grava(c) ? `Capturado em ${j.nome}: ${j.pares.length} linhas (${novas} novas) — ${mercados}.\nTroque de time ou de aba e capture de novo; no fim, "Abrir a comparação".` : "Não consegui guardar neste navegador.");
   });
   botao("Abrir a comparação", async () => {
-    const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, mercados: j.mercados, em: j.em }));
-    if (!eventos.length) { status("Nenhum jogo capturado ainda: abra um jogo e clique em \"Capturar este jogo\"."); return; }
+    // formato compacto que a aba lê: mercado = "título | jogador", odds = Mais de L / Menos de L
+    const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, em: j.em,
+      mercados: Object.values(j.pares).map(([titulo, jogador, L, O, U]) => [`${titulo} | ${jogador}`, L, [[`Mais de ${L}`, O, L], [`Menos de ${L}`, U, L]]]) }));
+    if (!eventos.length) { status("Nada capturado ainda: abra um jogo › Especiais de Jogadores e clique em \"Capturar esta tela\"."); return; }
     const w = window.open("about:blank", "_blank"); // a janela abre JÁ no clique (depois o navegador bloquearia)
     const txt = JSON.stringify({ v: 2, em: Math.min(...eventos.map((e) => e.em)), fonte: "tela", eventos, erros: 0 });
     const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
@@ -103,12 +95,14 @@
     if (w) w.location.href = url; else location.href = url;
   });
   botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
-  botao("Baixar o HTML", () => {
+  botao("Diagnóstico", () => {
+    // os textos de cada elemento com até 8 folhas (o suficiente para ajustar o leitor), sem dados pessoais da conta
+    const amostra = todos(document.body).map(folhas).filter((f) => f.length >= 2 && f.length <= 8 && f.some((t) => PRECO.test(t))).slice(0, 600);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([document.documentElement.outerHTML], { type: "text/html" }));
-    a.download = `campeon-tela-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.html`;
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ url: location.href, titulo: document.title, amostra }, null, 1)], { type: "application/json" }));
+    a.download = `campeon-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
     a.click();
   });
-  status("Abra um jogo da NBA e clique em \"Capturar este jogo\". Repita nos jogos que quiser; no fim, \"Abrir a comparação\".");
+  status("Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\". Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".");
   document.body.appendChild(caixa);
 })();
