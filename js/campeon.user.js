@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor CampeonBet
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.1
+// @version      1.2
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Botão "Coletar para o Trader Poly" na CampeonBet: lê as odds da NBA SÓ quando você clica e manda para a aba "CampeonBet × DK".
@@ -55,39 +55,58 @@
       return { id: ev.id ?? e.id, nome: String(ev.name || e.name || ""), inicio: ev.startDate || e.startDate || null, mercados };
     };
     try {
-      // endereço da API: pelos recursos já carregados (na página e nos quadros/iframes acessíveis); senão, o padrão da Altenar
+      // v1.2 (25/10): a API da CampeonBet é sb2integration-altenar2.biahosted.com/api/Widget e lá "GetEvents" não existe
+      // (404). Então nada de montar nomes: a LISTA de jogos é a mesma consulta que a página já fez (trocando só o idioma), e
+      // o nome da função do DETALHE de um jogo é o que a página usou (se algum jogo foi aberto) ou o primeiro nome conhecido
+      // da Altenar que responder com mercados. Se não achar, a caixa lista as funções que a página usa.
       const nomes = [];
       const junta = (w) => { try { nomes.push(...w.performance.getEntriesByType("resource").map((e) => e.name)); } catch { /* quadro de outro site */ } };
       junta(window);
       for (const fr of document.querySelectorAll("iframe")) junta(fr.contentWindow);
-      const recursos = nomes.filter((n) => /\/api\/widget\/Get/i.test(n));
-      const modelo = recursos.find((n) => /GetEvents/i.test(n)) || recursos[0]
-        || "https://sb2frontend-altenar2.biahosted.com/api/widget/GetEvents?culture=pt-PT&timezoneOffset=180&integration=campeonbet&deviceType=1&numFormat=en-GB&countryCode=BR";
-      const u = new URL(modelo), base = `${u.origin}${u.pathname.replace(/\/[^/]*$/, "")}`;
-      const P = new URLSearchParams(u.search);
-      if (!P.get("integration")) P.set("integration", "campeonbet");
-      P.set("culture", "en-GB"); // nomes dos mercados em inglês: mais fáceis de ler do nosso lado
-      for (const k of ["eventId", "championshipIds", "sportId", "eventCount", "categoryIds"]) P.delete(k);
-      const champ = new URLSearchParams(location.search).get("championshipIds") || "2980";
-      const pega = async (fn, extra) => {
-        const q = new URLSearchParams(P);
-        for (const [k, v] of Object.entries(extra)) q.set(k, v);
-        const r = await fetch(`${base}/${fn}?${q}`).catch((e) => { throw new Error(`${fn}: o navegador recusou a consulta (${e.message}) em ${base}`); });
-        if (!r.ok) throw new Error(`${fn} respondeu ${r.status} (${base})`);
+      const api = [...new Set(nomes.filter((n) => /biahosted\.com\/api\//i.test(n)))];
+      const funcao = (url) => new URL(url).pathname.split("/").pop();
+      const funcoes = [...new Set(api.map(funcao))];
+      const vistos = () => `Funções que a página usa: ${funcoes.join(", ") || "nenhuma (a página carregou as odds?)"}`;
+      const idioma = (url) => { const x = new URL(url); x.searchParams.set("culture", "en-GB"); return x.toString(); }; // nomes em inglês
+      const busca = async (url) => {
+        const r = await fetch(url).catch((e) => { throw new Error(`o navegador recusou ${funcao(url)} (${e.message})`); });
+        if (!r.ok) throw new Error(`${funcao(url)} respondeu ${r.status}`);
         return r.json();
       };
+      const eventosDe = (j) => j?.events || j?.Events || Object.values(j || {}).find((v) => Array.isArray(v) && v[0]?.id != null && v[0]?.name != null) || [];
+      const mercadosDe = (d) => d?.markets || d?.event?.markets || d?.Markets || [];
+      const champ = new URLSearchParams(location.search).get("championshipIds") || "2980";
+      // 1) lista de jogos: as consultas que a página fez, primeiro as do campeonato
       status("lendo a lista de jogos…");
-      const lista = await pega("GetEvents", { eventCount: "0", sportId: "0", championshipIds: champ });
-      const eventos = (lista.events || []).slice(0, 16);
-      if (!eventos.length) throw new Error(`nenhum jogo na lista (a resposta tinha: ${Object.keys(lista || {}).join(", ")})`);
+      const candLista = api.filter((n) => /events|championship/i.test(n)).sort((a, b) => (b.includes(champ) ? 1 : 0) - (a.includes(champ) ? 1 : 0));
+      let lista = null, urlLista = null;
+      for (const url of candLista.slice(0, 4)) {
+        try { const j = await busca(idioma(url)); if (eventosDe(j).length) { lista = j; urlLista = url; break; } } catch { /* tenta a próxima */ }
+        await espera(600);
+      }
+      if (!lista) throw new Error(`não achei a lista de jogos. ${vistos()}`);
+      const eventos = eventosDe(lista).slice(0, 16);
+      // 2) detalhe de cada jogo, no mesmo servidor e com os mesmos parâmetros da lista
+      const u = new URL(urlLista), base = `${u.origin}${u.pathname.replace(/\/[^/]*$/, "")}`;
+      const P = new URLSearchParams(u.search);
+      P.set("culture", "en-GB");
+      for (const k of ["eventId", "eventIds", "championshipIds", "sportId", "sportIds", "eventCount", "categoryIds", "champIds"]) P.delete(k);
+      const det = (fn, id) => { const q = new URLSearchParams(P); q.set("eventId", String(id)); return busca(`${base}/${fn}?${q}`); };
+      const cands = [...new Set([...funcoes.filter((f) => /detail/i.test(f)), "GetEventDetails", "GetEventDetail", "GetEvent", "GetEventMarkets", "GetMarkets"])];
+      let fnDet = null, primeiro = null;
+      for (const fn of cands) {
+        status(`procurando o detalhe dos jogos (${fn})…`);
+        try { const d = await det(fn, eventos[0].id); if (mercadosDe(d).length) { fnDet = fn; primeiro = d; break; } } catch { /* tenta o próximo nome */ }
+        await espera(800);
+      }
+      if (!fnDet) throw new Error(`achei ${eventos.length} jogos, mas não a consulta do detalhe de um jogo (testei ${cands.join(", ")}). ${vistos()}. Tente: abra um jogo da NBA na CampeonBet, volte para a lista e clique de novo.`);
       const lidos = [];
-      let erros = 0, amostra = null;
+      let erros = 0;
+      const amostra = { lista: funcao(urlLista), detalhe: fnDet, funcoes, chaves: Object.keys(primeiro || {}), mercado: mercadosDe(primeiro)[0] || null, odd: (primeiro?.odds || primeiro?.event?.odds || [])[0] || null };
       for (const [i, e] of eventos.entries()) {
         status(`lendo o jogo ${i + 1} de ${eventos.length}… (fique nesta aba)`);
-        await espera(1500 + Math.random() * 1000);
         try {
-          const d = await pega("GetEventDetails", { eventId: String(e.id) });
-          amostra ??= { chaves: Object.keys(d || {}), mercado: (d?.markets || d?.event?.markets || [])[0] || null, odd: (d?.odds || d?.event?.odds || [])[0] || null };
+          const d = i === 0 ? primeiro : (await espera(1500 + Math.random() * 1000), await det(fnDet, e.id));
           lidos.push(compacta(d, e));
         } catch (err) { erros++; }
       }
