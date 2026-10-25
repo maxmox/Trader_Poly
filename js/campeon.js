@@ -61,17 +61,53 @@ function lerPacote(p) {
   return { em: p?.em || Date.now(), eventos, erros: (p?.detalhes || []).filter((d) => d?.erro).length };
 }
 
-// recebe a coleta do botão dos favoritos (origem: a CampeonBet)
+// coleta compacta do coletor v1.1 (js/campeon.user.js): eventos com mercados [[nome, sv, [[nome da odd, preço, sv]]]]
+function lerCompacto(p) {
+  const eventos = (p?.eventos || []).map((e) => ({
+    id: e.id, nome: e.nome, inicio: Date.parse(e.inicio || "") || null,
+    mercados: (e.mercados || []).map(([nome, sv, odds]) => {
+      const pares = new Map();
+      for (const [n, preco, osv] of odds) {
+        const l = lado(n), L = numero(osv ?? n) ?? numero(sv);
+        if (!l || L == null || !(preco > 1)) continue;
+        (pares.get(L) || pares.set(L, { L }).get(L))[l] = preco;
+      }
+      return { nome: String(nome || ""), pares: [...pares.values()].filter((q) => q.O && q.U), opcoes: odds.map(([n, preco]) => ({ nome: String(n || ""), preco })) };
+    }),
+  }));
+  return { em: p?.em || Date.now(), eventos, erros: p?.erros || 0, amostra: p?.amostra || null };
+}
+// gzip + base64url (o coletor manda assim no endereço "#campeon=…" ou na área de transferência)
+async function abre(b64) {
+  const bin = atob(b64.replaceAll("-", "+").replaceAll("_", "/"));
+  const u8 = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return JSON.parse(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"))).text());
+}
+let aoChegarCb = null;
+function receber(pacote) {
+  bruto = pacote;
+  coleta = pacote?.v === 2 ? lerCompacto(pacote) : lerPacote(pacote);
+  try { localStorage.setItem(CHAVE, JSON.stringify(coleta)); } catch { /* sem armazenamento: só nesta visita */ }
+  aoChegarCb?.();
+}
+// recebe a coleta: pelo endereço (coletor v1.1), por "Colar dados" ou por postMessage (coletor antigo/favorito)
 export function ouvirCampeon(aoChegar) {
+  aoChegarCb = aoChegar;
+  const h = location.hash.match(/^#campeon=([A-Za-z0-9_-]+)$/);
+  if (h) {
+    history.replaceState(null, "", location.pathname + location.search); // tira os dados do endereço
+    abre(h[1]).then(receber).catch((e) => alert(`Não consegui ler os dados da CampeonBet: ${e.message || e}`));
+  }
   addEventListener("message", (e) => {
     if (!/^https:\/\/([a-z0-9-]+\.)*campeonbet\.[a-z]+$/i.test(e.origin) || e.data?.tipo !== "campeon") return;
     e.source?.postMessage("campeon-ok", e.origin);
     if (bruto?.em === e.data.pacote?.em) return; // o coletor reenvia até receber o ok
-    bruto = e.data.pacote;
-    coleta = lerPacote(bruto);
-    try { localStorage.setItem(CHAVE, JSON.stringify(coleta)); } catch { /* sem armazenamento: só nesta visita */ }
-    aoChegar?.();
+    receber(e.data.pacote);
   });
+}
+async function colar() {
+  const txt = (await navigator.clipboard.readText()).trim();
+  receber(txt.startsWith("{") ? JSON.parse(txt) : await abre(txt.replace(/^.*#campeon=/, "")));
 }
 
 // ---------- comparação com a DraftKings de agora ----------
@@ -145,12 +181,13 @@ export function renderCampeon(el, f, jogos) {
     </tbody></table></div>` : "";
   el.innerHTML = `<section class="panel"><h2>CampeonBet × DraftKings</h2>
       <p class="muted">A CampeonBet costuma demorar a acompanhar os movimentos. Aqui cada linha dela é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) é levada para a linha da CampeonBet e vira o <b>valor esperado</b> de cada lado na odd da CampeonBet. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}%: a CampeonBet ainda paga como se a linha não tivesse andado. A coleta só acontece quando você clica no botão — nada consulta a CampeonBet sozinho.</p>
-      <div class="campeon-passos"><b>Como coletar (recomendado, com extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> (Chrome novo exige) · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar") · 3) abra a <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">página da NBA na CampeonBet</a>, espere as odds e clique no botão azul <b>"📊 Coletar para o Trader Poly"</b> no canto inferior esquerdo. Ele lê os jogos devagar (~2 s por jogo, como quem abre um por um) e abre esta aba com o resultado.
+      <div class="campeon-passos"><b>Como coletar (recomendado, com extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> (Chrome novo exige) · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar") · 3) abra a <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">página da NBA na CampeonBet</a>, espere as odds e clique no botão azul <b>"📊 Coletar para o Trader Poly"</b> no canto inferior esquerdo · 4) <b>fique na aba da CampeonBet</b>: a caixa no canto direito mostra o andamento (~2 s por jogo, como quem abre um por um); no fim clique em <b>"Abrir a comparação"</b>. (Já tinha instalado? Abra o link do coletor de novo e clique em "Atualizar" — versão 1.1.)
         <br><small class="muted">Sem extensão: arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> (ou <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito, edite e cole no lugar do endereço) e clique nele na página da CampeonBet.</small></div>
-      ${coleta ? `<p class="${idade > 15 ? "banner" : "muted"}">Coleta das ${hora(coleta.em)} (há ${idade} min): ${coleta.eventos.length} jogos, ${coleta.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${coleta.erros ? `, ${coleta.erros} jogos com erro` : ""} · ${linhas.length} linhas casadas com a DK · <b>${defasadas} defasadas</b>.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""} ${bruto ? `<a href="#" id="baixar-bruto">baixar os dados brutos</a>` : ""}</p>` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os 3 passos acima.</span></div>`}
+      ${coleta ? `<p class="${idade > 15 ? "banner" : "muted"}">Coleta das ${hora(coleta.em)} (há ${idade} min): ${coleta.eventos.length} jogos, ${coleta.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${coleta.erros ? `, ${coleta.erros} jogos com erro` : ""} · ${linhas.length} linhas casadas com a DK · <b>${defasadas} defasadas</b>.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""} ${bruto ? `<a href="#" id="baixar-bruto">baixar os dados brutos</a>` : ""} · <a href="#" class="colar-dados">colar dados</a></p>${!linhas.length && coleta.amostra ? `<p class="muted">Nenhuma linha casou com a DK. Formato recebido (para ajustar o leitor): <code>${esc(JSON.stringify(coleta.amostra).slice(0, 600))}</code></p>` : ""}` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa da CampeonBet mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}
       ${tab}
       ${semPar.length ? `<details><summary class="muted">${semPar.length} mercados da CampeonBet sem par na DK (outro jogador, outra estatística ou linha que a DK não tem)</summary><p class="muted">${semPar.slice(0, 80).map(esc).join(" · ")}</p></details>` : ""}
     </section>`;
+  el.querySelectorAll(".colar-dados").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); colar().catch((err) => { e.target.textContent = `não consegui colar (${err.message || err})`; }); }));
   el.querySelector("#baixar-bruto")?.addEventListener("click", (e) => {
     e.preventDefault();
     const a = document.createElement("a");
