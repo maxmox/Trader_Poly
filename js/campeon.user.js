@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor CampeonBet
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.4
+// @version      1.5
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet: "Capturar esta tela" lê as tabelas de props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "CampeonBet × DK" do Trader Poly.
@@ -16,7 +16,7 @@
 //   Jogador | Linha | Mais | Menos
 // (a odd é só o número; o rótulo está no cabeçalho). Cada linha da tabela vira um par Over/Under. Tabelas só com "Mais"
 // (Pts-Reb/Pts-Ast a 1,01: marcos) e odds trancadas ficam de fora. As capturas SE SOMAM: capture um time, troque de
-// time/aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) e capture de novo. Lê o texto da tabela inclusive dentro de
+// time/aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) e capture de novo. v1.5: título do quadro mais próximo mesmo sem "Mais de/Menos de" (o "3pt tentados" saía como "3pt conseguidos"). Lê o texto da tabela inclusive dentro de
 // shadow DOM e de linhas ainda escondidas.
 (() => {
   const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
@@ -32,6 +32,8 @@
   const folhas = (el) => { const out = []; const anda = (n) => { for (const c of n.childNodes) { if (c.nodeType === 3) { const t = c.nodeValue.trim(); if (t) out.push(t); } else if (c.nodeType === 1) { anda(c); if (c.shadowRoot) anda(c.shadowRoot); } } }; anda(el); return out; };
   const ehLinhaDeTabela = (F) => F.length === 4 && NOME.test(F[0]) && LINHA.test(F[1]) && PRECO.test(F[2]) && PRECO.test(F[3]);
   const num = (t) => parseFloat(t.replace(",", "."));
+  // título de quadro de mercado (os rótulos das abas, "Pontos", "Assistências"…, são curtos e ficam de fora)
+  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
 
   function capturar() {
     const els = todos(document.body).filter((el) => !el.closest?.("#trader-poly-caixa"));
@@ -43,9 +45,10 @@
     for (const el of minimas) {
       const [jogador, linha, mais, menos] = F(el);
       // título do quadro: subindo, o 1º texto que é de mercado ("Mais de/Menos de", "incluindo Prorrogação"…)
+      // (v1.5: aceita também título sem "Mais de/Menos de" — ex. "3pt tentados" —, senão a linha herdava o título do quadro de cima)
       let titulo = "", up = el.parentElement || el.getRootNode()?.host;
       for (let k = 0; k < 14 && up && !titulo; k++) {
-        titulo = F(up).find((t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under/i.test(t)) || "";
+        titulo = F(up).find(ehTitulo) || "";
         up = up.parentElement || up.getRootNode()?.host;
       }
       if (!titulo) continue;
@@ -98,8 +101,10 @@
   botao("Diagnóstico", () => {
     // os textos de cada elemento com até 8 folhas (o suficiente para ajustar o leitor), sem dados pessoais da conta
     const amostra = todos(document.body).map(folhas).filter((f) => f.length >= 2 && f.length <= 8 && f.some((t) => PRECO.test(t))).slice(0, 600);
+    const titulos = [...new Set(todos(document.body).flatMap(folhas).filter(ehTitulo))];
+    const capturado = capturar().pares;
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ url: location.href, titulo: document.title, amostra }, null, 1)], { type: "application/json" }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ url: location.href, titulo: document.title, titulos, capturado, amostra }, null, 1)], { type: "application/json" }));
     a.download = `campeon-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
     a.click();
   });

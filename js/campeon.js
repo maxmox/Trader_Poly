@@ -32,6 +32,8 @@ const STATS = [
   ["steals", (n) => /steals|roubos|roubadas/.test(n)],
   ["blocks", (n) => /blocks|bloqueios|tocos|desarmes de lan/.test(n)],
 ];
+// mercados que a DK não tem e que casariam com uma estatística dela (25/10: "3pt tentados" saiu como cestas de 3 a 6,5)
+const OUTRO = /tentad|tentativ|attempt|arremess|duplo|double/i;
 const PARCIAL = /quarter|half|1st|2nd|3rd|4th|first|second|period|minute|quarto|tempo|per[ií]odo|parte|1º|2º|3º|4º/i;
 const lado = (nome) => (/\bover\b|\bmais\b|\bacima\b/i.test(nome) ? "O" : /\bunder\b|\bmenos\b|\babaixo\b/i.test(nome) ? "U" : null);
 const numero = (s) => { const m = String(s ?? "").match(/[-+]?\d+(?:[.,]\d+)?/g); return m ? parseFloat(m[m.length - 1].replace(",", ".")) : null; };
@@ -125,6 +127,7 @@ function comparar(jogos) {
     for (const m of ev.mercados) {
       const nm = m.nome.toLowerCase(), chave = nomeChave(m.nome + " " + m.opcoes.map((o) => o.nome).join(" "));
       if (PARCIAL.test(nm)) continue;
+      if (OUTRO.test(nm)) { semPar.push(m.nome); continue; }
       const jog = jogadores.find(([, k]) => chave.includes(k));
       if (jog) { // prop de jogador
         const tipo = STATS.find(([, ok]) => ok(nm))?.[0];
@@ -153,7 +156,9 @@ function par(j, quem, tipo, mercado, p, x, nomeCampeon) {
   const q = p.L === x.dk.linha ? p1 : movimentoMercado(tipo, p.L, x.dk.linha, 0, p1);
   if (q == null) return null;
   const c = Math.min(0.99, Math.max(0.01, q));
-  return { j, quem, tipo, mercado, L: p.L, O: p.O, U: p.U, dk: x.dk, rotA: "Over", rotB: "Under", chance: c, evO: c * p.O - 1, evU: (1 - c) * p.U - 1, nomeCampeon };
+  // linha muito longe da DK (ou chance quase certa) = quase sempre outro mercado lido com o nome errado: não conta como defasada
+  const suspeita = p.L !== x.dk.linha && (Math.abs(p.L - x.dk.linha) > Math.max(2, 0.3 * x.dk.linha) || c < 0.1 || c > 0.9);
+  return { j, quem, tipo, mercado, L: p.L, O: p.O, U: p.U, dk: x.dk, rotA: "Over", rotB: "Under", chance: c, evO: c * p.O - 1, evU: (1 - c) * p.U - 1, nomeCampeon, suspeita };
 }
 
 // ---------- página ----------
@@ -172,20 +177,21 @@ export function renderCampeon(el, f, jogos) {
   const busca = nomeChave(f.busca);
   const { linhas, semPar } = coleta ? comparar(jogos) : { linhas: [], semPar: [] };
   const L = linhas.filter((r) => (!f.tipo || r.tipo === f.tipo || (f.tipo === "jogo" && !TIPOS_PROP[r.tipo])) && (!busca || nomeChave(r.quem).includes(busca)))
-    .map((r) => ({ ...r, melhor: Math.max(r.evO, r.evU) })).sort((a, b) => b.melhor - a.melhor);
+    .map((r) => ({ ...r, melhor: Math.max(r.evO, r.evU) })).sort((a, b) => !!a.suspeita - !!b.suspeita || b.melhor - a.melhor);
   const idade = coleta ? Math.round((Date.now() - coleta.em) / 60e3) : null;
-  const defasadas = L.filter((r) => r.melhor >= MIN_EV).length;
-  const ev = (v) => `<td class="n${v >= MIN_EV ? " ev-bom" : ""}">${pc(v)}</td>`;
+  const boa = (r) => r.melhor >= MIN_EV && !r.suspeita;
+  const defasadas = L.filter(boa).length, suspeitas = L.filter((r) => r.suspeita).length;
+  const ev = (v, r) => `<td class="n${v >= MIN_EV && !r.suspeita ? " ev-bom" : ""}">${pc(v)}</td>`;
   const tab = L.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador / mercado</th><th>Jogo</th><th class="n">CampeonBet<small>linha · Over / Under</small></th><th class="n">DraftKings agora<small>linha · Over / Under</small></th><th class="n">Chance justa do Over<small>pela DK, na linha da Campeon</small></th><th class="n">EV Over<small>na Campeon</small></th><th class="n">EV Under<small>na Campeon</small></th></tr></thead><tbody>
-    ${L.slice(0, 300).map((r) => `<tr${r.melhor >= MIN_EV ? ' class="defasada"' : ""}><td><b>${esc(r.quem)}</b><small title="${esc(r.nomeCampeon)}">${esc(r.mercado)}</small></td><td>${esc(r.j.titulo)}<small>${r.j.inicio ? hora(r.j.inicio) : ""}</small></td>
+    ${L.slice(0, 300).map((r) => `<tr${boa(r) ? ' class="defasada"' : r.suspeita ? ' class="suspeita"' : ""}><td><b>${esc(r.quem)}</b><small title="${esc(r.nomeCampeon)}">${esc(r.mercado)}</small>${r.suspeita ? `<small class="aviso">linha longe da DK — confira se é o mesmo mercado: “${esc(r.nomeCampeon.split(" | ")[0])}”</small>` : ""}</td><td>${esc(r.j.titulo)}<small>${r.j.inicio ? hora(r.j.inicio) : ""}</small></td>
       <td class="n"><b>${r.L == null ? "" : `${lin(r.L)} · `}${num(r.O)} / ${num(r.U)}</b></td><td class="n">${r.dk.linha == null || r.L == null ? "" : `${lin(r.dk.linha)} · `}${num(r.dk.over)} / ${num(r.dk.under)}${r.L != null && r.dk.linha !== r.L ? `<small>linha diferente: ${r.dk.linha > r.L ? "DK subiu" : "DK caiu"}</small>` : ""}</td>
-      <td class="n">${num(100 * r.chance, 1)}%<small>${esc(r.rotA)}</small></td>${ev(r.evO)}${ev(r.evU)}</tr>`).join("")}
+      <td class="n">${num(100 * r.chance, 1)}%<small>${esc(r.rotA)}</small></td>${ev(r.evO, r)}${ev(r.evU, r)}</tr>`).join("")}
     </tbody></table></div>` : "";
   el.innerHTML = `<section class="panel"><h2>CampeonBet × DraftKings</h2>
       <p class="muted">A CampeonBet costuma demorar a acompanhar os movimentos. Aqui cada linha dela é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) é levada para a linha da CampeonBet e vira o <b>valor esperado</b> de cada lado na odd da CampeonBet. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}%: a CampeonBet ainda paga como se a linha não tivesse andado. A coleta só acontece quando você clica no botão — nada consulta a CampeonBet sozinho.</p>
-      <div class="campeon-passos"><b>Como coletar (recomendado, com extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> (Chrome novo exige) · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar") · 3) na <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">CampeonBet</a>, abra um jogo da NBA › <b>"Especiais de Jogadores"</b> e clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só as tabelas que já estão na tela, sem nenhuma consulta extra ao site · 4) troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos; "Mostrar mais jogadores" quando houver) capturando cada uma — as capturas se somam — e clique em <b>"Abrir a comparação"</b>. (Já tinha instalado? Abra o link do coletor de novo e clique em "Atualizar" — versão 1.4.)
+      <div class="campeon-passos"><b>Como coletar (recomendado, com extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> (Chrome novo exige) · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar") · 3) na <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">CampeonBet</a>, abra um jogo da NBA › <b>"Especiais de Jogadores"</b> e clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só as tabelas que já estão na tela, sem nenhuma consulta extra ao site · 4) troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos; "Mostrar mais jogadores" quando houver) capturando cada uma — as capturas se somam — e clique em <b>"Abrir a comparação"</b>. (Já tinha instalado? Abra o link do coletor de novo e clique em "Atualizar" — versão 1.5.)
         <br><small class="muted">Sem extensão: arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> (ou <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito, edite e cole no lugar do endereço) e clique nele na página da CampeonBet.</small></div>
-      ${coleta ? `<p class="${idade > 15 ? "banner" : "muted"}">Coleta das ${hora(coleta.em)} (há ${idade} min): ${coleta.eventos.length} jogos, ${coleta.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${coleta.erros ? `, ${coleta.erros} jogos com erro` : ""} · ${linhas.length} linhas casadas com a DK · <b>${defasadas} defasadas</b>.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""} ${bruto ? `<a href="#" id="baixar-bruto">baixar os dados brutos</a>` : ""} · <a href="#" class="colar-dados">colar dados</a></p>${!linhas.length && coleta.amostra ? `<p class="muted">Nenhuma linha casou com a DK. Formato recebido (para ajustar o leitor): <code>${esc(JSON.stringify(coleta.amostra).slice(0, 600))}</code></p>` : ""}` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa da CampeonBet mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}
+      ${coleta ? `<p class="${idade > 15 ? "banner" : "muted"}">Coleta das ${hora(coleta.em)} (há ${idade} min): ${coleta.eventos.length} jogos, ${coleta.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${coleta.erros ? `, ${coleta.erros} jogos com erro` : ""} · ${linhas.length} linhas casadas com a DK · <b>${defasadas} defasadas</b>${suspeitas ? ` · ${suspeitas} suspeitas (linha longe da DK, no fim da tabela)` : ""}.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""} ${bruto ? `<a href="#" id="baixar-bruto">baixar os dados brutos</a>` : ""} · <a href="#" class="colar-dados">colar dados</a></p>${!linhas.length && coleta.amostra ? `<p class="muted">Nenhuma linha casou com a DK. Formato recebido (para ajustar o leitor): <code>${esc(JSON.stringify(coleta.amostra).slice(0, 600))}</code></p>` : ""}` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa da CampeonBet mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}
       ${tab}
       ${semPar.length ? `<details><summary class="muted">${semPar.length} mercados da CampeonBet sem par na DK (outro jogador, outra estatística ou linha que a DK não tem)</summary><p class="muted">${semPar.slice(0, 80).map(esc).join(" · ")}</p></details>` : ""}
     </section>`;
