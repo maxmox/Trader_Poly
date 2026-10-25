@@ -1,25 +1,32 @@
 // ==UserScript==
-// @name         Trader Poly — coletor CampeonBet
+// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.5
+// @version      1.6
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet: "Capturar esta tela" lê as tabelas de props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "CampeonBet × DK" do Trader Poly.
+// @description  Na CampeonBet e na JogaBrasil: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly.
 // @match        https://campeonbet.io/*
 // @match        https://*.campeonbet.io/*
+// @match        https://jogabrasil.bet/*
+// @match        https://*.jogabrasil.bet/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
-// Coletor da CampeonBet. LÊ A TELA, não chama a API (a API deles tem endereço-isca contra robôs; v1.0–1.2 chamavam e
-// não deu). v1.4 (25/10/2026), feita pelos prints do usuário: em "Especiais de Jogadores" cada mercado é um quadro com
-// título ("Pontos Mais de/Menos de (incluindo Prorrogação)"), abas dos dois times e uma tabela
-//   Jogador | Linha | Mais | Menos
-// (a odd é só o número; o rótulo está no cabeçalho). Cada linha da tabela vira um par Over/Under. Tabelas só com "Mais"
-// (Pts-Reb/Pts-Ast a 1,01: marcos) e odds trancadas ficam de fora. As capturas SE SOMAM: capture um time, troque de
-// time/aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) e capture de novo. v1.5: título do quadro mais próximo mesmo sem "Mais de/Menos de" (o "3pt tentados" saía como "3pt conseguidos"). Lê o texto da tabela inclusive dentro de
-// shadow DOM e de linhas ainda escondidas.
+// Coletor das casas. LÊ A TELA, não chama a API (a API da CampeonBet tem endereço-isca contra robôs; v1.0–1.2 chamavam e
+// não deu). As capturas SE SOMAM (localStorage do próprio site): capture, troque de time/aba/role a lista e capture de novo.
+// - CampeonBet (v1.4, pelos prints do usuário): jogo › "Especiais de Jogadores" › abas Pontos/3 Pontos/Rebotes/…; cada
+//   mercado é um quadro com título ("Pontos Mais de/Menos de (incluindo Prorrogação)"), abas dos dois times e a tabela
+//     Jogador | Linha | Mais | Menos
+//   (odd só o número). Tabelas só com "Mais" (Pts-Reb/Pts-Ast a 1,01: marcos) e odds trancadas ficam de fora. v1.5: título
+//   do quadro mais próximo mesmo sem "Mais de/Menos de" ("Tentativas de Arremessos de 3" saía como "3pt conseguidos").
+// - JogaBrasil (v1.6, 25/10/2026): jogo › "Mercado de Jogadores" = lista enorme de blocos, um por jogador × estatística
+//   ("Ace Bailey Total de pontos. Com prorrogação", "George Keyonte. Cestas de três pontos…"), cada um com a ESCADA de
+//   linhas: botões "Mais 6.5 | 1.26" e "Menos 6.5 | 3.11". Lê cada botão e junta Mais/Menos da mesma linha do mesmo bloco;
+//   o título é o último título de bloco antes do botão na ordem da página.
+// Lê o texto inclusive dentro de shadow DOM e de linhas escondidas.
 (() => {
   const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
+  const CASA = /jogabrasil/i.test(location.hostname) ? "jogabrasil" : "campeon";
   if (window.__traderPolyCampeon) return;
   window.__traderPolyCampeon = true;
 
@@ -34,18 +41,25 @@
   const num = (t) => parseFloat(t.replace(",", "."));
   // título de quadro de mercado (os rótulos das abas, "Pontos", "Assistências"…, são curtos e ficam de fora)
   const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
+  // JogaBrasil: título de bloco ("Ace Bailey Total de pontos. Com prorrogação") e botão "Mais 6.5 1.26"
+  const ehTituloJB = (t) => t.length >= 12 && !/^(mais|menos)\b/i.test(t) && /prorroga|total de|cestas|pontos|ressaltos|rebotes|assist|roubos|bloqueios|desarmes/i.test(t);
+  const BOTAO_JB = /^(mais|menos)\s+(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{1,3})$/i;
+  const fora = (el) => el.closest?.("#trader-poly-caixa");
 
-  function capturar() {
-    const els = todos(document.body).filter((el) => !el.closest?.("#trader-poly-caixa"));
-    const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+  // jogo: "Utah Jazz x LA Lakers" (CampeonBet) ou "Utah Jazz VS Los Angeles Lakers" (JogaBrasil); senão o título da página
+  function nomeDoJogo(els, F) {
+    for (const el of els) { const f = F(el); if (f.length === 3 && /^(x|vs\.?)$/i.test(f[1]) && NOME.test(f[0]) && NOME.test(f[2])) return `${f[0]} - ${f[2]}`; }
+    return document.title;
+  }
+
+  function capturarCampeon(els, F) {
     // linhas da tabela: o menor elemento cujo texto é exatamente jogador, linha, Mais, Menos
     const linhas = els.filter((el) => ehLinhaDeTabela(F(el)));
     const minimas = linhas.filter((el) => !linhas.some((o) => o !== el && el.contains(o)));
     const pares = [];
     for (const el of minimas) {
       const [jogador, linha, mais, menos] = F(el);
-      // título do quadro: subindo, o 1º texto que é de mercado ("Mais de/Menos de", "incluindo Prorrogação"…)
-      // (v1.5: aceita também título sem "Mais de/Menos de" — ex. "3pt tentados" —, senão a linha herdava o título do quadro de cima)
+      // título do quadro: subindo, o 1º texto que é de mercado
       let titulo = "", up = el.parentElement || el.getRootNode()?.host;
       for (let k = 0; k < 14 && up && !titulo; k++) {
         titulo = F(up).find(ehTitulo) || "";
@@ -54,10 +68,31 @@
       if (!titulo) continue;
       pares.push([titulo, jogador, num(linha), num(mais), num(menos)]);
     }
-    // jogo: aba do jogo no topo ("Utah Jazz x LA Lakers") ou o título da página
-    let jogo = "";
-    for (const el of els) { const f = F(el); if (f.length === 3 && f[1].toLowerCase() === "x" && NOME.test(f[0]) && NOME.test(f[2])) { jogo = `${f[0]} - ${f[2]}`; break; } }
-    return { nome: jogo || document.title, pares };
+    return pares;
+  }
+
+  function capturarJogaBrasil(els, F) {
+    const txt = (el) => F(el).join(" ");
+    const botoes = new Set(els.filter((el) => BOTAO_JB.test(txt(el))));
+    for (const b of [...botoes]) for (let up = b.parentElement; up; up = up.parentElement) botoes.delete(up); // só o menor
+    // uma passada na ordem da página: o título de bloco vale até o próximo
+    const porBloco = new Map();
+    let titulo = "";
+    for (const el of els) {
+      for (const c of el.childNodes) if (c.nodeType === 3 && ehTituloJB(c.nodeValue.trim())) titulo = c.nodeValue.trim();
+      if (!botoes.has(el) || !titulo) continue;
+      const [, lado, L, preco] = txt(el).match(BOTAO_JB);
+      const k = `${titulo}|${num(L)}`;
+      const p = porBloco.get(k) || porBloco.set(k, [titulo, "", num(L), null, null]).get(k);
+      p[/^mais/i.test(lado) ? 3 : 4] = num(preco);
+    }
+    return [...porBloco.values()].filter((p) => p[3] > 1 && p[4] > 1);
+  }
+
+  function capturar() {
+    const els = todos(document.body).filter((el) => !fora(el));
+    const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+    return { nome: nomeDoJogo(els, F), pares: CASA === "jogabrasil" ? capturarJogaBrasil(els, F) : capturarCampeon(els, F) };
   }
 
   // ---------- caixa e botões ----------
@@ -74,23 +109,26 @@
     return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
   const status = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
+  const COMO = CASA === "jogabrasil"
+    ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\". Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."
+    : "Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\". Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".";
   botao("Capturar esta tela", () => {
     const j = capturar();
-    if (!j.pares.length) { status("Não achei tabelas de props nesta tela. Abra o jogo › \"Especiais de Jogadores\" › Pontos (ou outra aba) e tente de novo. Se continuar, use \"Diagnóstico\" e mande o arquivo."); return; }
+    if (!j.pares.length) { status(`Não achei props nesta tela. ${COMO} Se continuar, use "Diagnóstico" e mande o arquivo.`); return; }
     const c = ler(), g = (c[j.nome] ||= { nome: j.nome, em: Date.now(), pares: {} });
     let novas = 0;
     for (const [titulo, jogador, L, O, U] of j.pares) { const k = `${titulo}|${jogador}|${L}`; if (!g.pares[k]) novas++; g.pares[k] = [titulo, jogador, L, O, U]; }
     g.em = Date.now();
-    const mercados = [...new Set(j.pares.map((p) => p[0].replace(/\s*\(incluindo.*$/i, "")))].join(", ");
-    status(grava(c) ? `Capturado em ${j.nome}: ${j.pares.length} linhas (${novas} novas) — ${mercados}.\nTroque de time ou de aba e capture de novo; no fim, "Abrir a comparação".` : "Não consegui guardar neste navegador.");
+    const mercados = new Set(j.pares.map((p) => p[0].replace(/\s*\(incluindo.*$/i, "")));
+    status(grava(c) ? `Capturado em ${j.nome}: ${j.pares.length} linhas (${novas} novas) em ${mercados.size} mercados${mercados.size <= 6 ? ` — ${[...mercados].join(", ")}` : ""}.\nContinue capturando; no fim, "Abrir a comparação".` : "Não consegui guardar neste navegador.");
   });
   botao("Abrir a comparação", async () => {
-    // formato compacto que a aba lê: mercado = "título | jogador", odds = Mais de L / Menos de L
+    // formato compacto que a aba lê: mercado = "título | jogador" (na JogaBrasil o jogador já está no título), odds = Mais de L / Menos de L
     const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, em: j.em,
-      mercados: Object.values(j.pares).map(([titulo, jogador, L, O, U]) => [`${titulo} | ${jogador}`, L, [[`Mais de ${L}`, O, L], [`Menos de ${L}`, U, L]]]) }));
-    if (!eventos.length) { status("Nada capturado ainda: abra um jogo › Especiais de Jogadores e clique em \"Capturar esta tela\"."); return; }
+      mercados: Object.values(j.pares).map(([titulo, jogador, L, O, U]) => [jogador ? `${titulo} | ${jogador}` : titulo, L, [[`Mais de ${L}`, O, L], [`Menos de ${L}`, U, L]]]) }));
+    if (!eventos.length) { status(`Nada capturado ainda. ${COMO}`); return; }
     const w = window.open("about:blank", "_blank"); // a janela abre JÁ no clique (depois o navegador bloquearia)
-    const txt = JSON.stringify({ v: 2, em: Math.min(...eventos.map((e) => e.em)), fonte: "tela", eventos, erros: 0 });
+    const txt = JSON.stringify({ v: 2, casa: CASA, em: Math.min(...eventos.map((e) => e.em)), fonte: "tela", eventos, erros: 0 });
     const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
     let bin = "";
     for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
@@ -99,15 +137,16 @@
   });
   botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
   botao("Diagnóstico", () => {
-    // os textos de cada elemento com até 8 folhas (o suficiente para ajustar o leitor), sem dados pessoais da conta
-    const amostra = todos(document.body).map(folhas).filter((f) => f.length >= 2 && f.length <= 8 && f.some((t) => PRECO.test(t))).slice(0, 600);
-    const titulos = [...new Set(todos(document.body).flatMap(folhas).filter(ehTitulo))];
+    // textos dos elementos com preço (o suficiente para ajustar o leitor); nada da conta (saldo, nome) e nada da caixa
+    const els = todos(document.body).filter((el) => !fora(el));
+    const amostra = els.map(folhas).filter((f) => f.length >= 2 && f.length <= 8 && f.some((t) => PRECO.test(t)) && !f.some((t) => /R\$|B\$|saldo/i.test(t))).slice(0, 600);
+    const titulos = [...new Set(els.flatMap((el) => [...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.nodeValue.trim())).filter(CASA === "jogabrasil" ? ehTituloJB : ehTitulo))].slice(0, 300);
     const capturado = capturar().pares;
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ url: location.href, titulo: document.title, titulos, capturado, amostra }, null, 1)], { type: "application/json" }));
-    a.download = `campeon-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ casa: CASA, url: location.href, titulo: document.title, titulos, capturado, amostra }, null, 1)], { type: "application/json" }));
+    a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
     a.click();
   });
-  status("Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\". Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".");
+  status(COMO);
   document.body.appendChild(caixa);
 })();
