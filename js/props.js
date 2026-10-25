@@ -8,6 +8,7 @@ import { buscarDk, datasNba, semMargem, movimentoMercado, MERCADOS_JOGO, edgePro
 import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
+import { ouvirCampeon, renderCampeon } from "./campeon.js";
 
 const TIPOS = { ...TIPOS_PROP, pra: "PRA (pts+reb+ast)" };
 const NOVA_MS = 2 * 3600e3; // linha que apareceu há menos de 2 h ganha destaque
@@ -26,7 +27,7 @@ const abertos = new Set(); // linhas com o gráfico aberto
 // ---------- filtros (salvos só neste navegador) ----------
 const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", mom: "", merc: "", amostra: "30", conf: "40", conc: "1", busca: "" };
 let f = (() => { try { return { ...PADRAO_F, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO_F }; } })();
-{ const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "filtros", "acomp"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
+{ const a = new URLSearchParams(location.search).get("aba"); if (["mov", "edge", "filtros", "acomp", "campeon"].includes(a)) f.aba = a; } // link direto: props.html?aba=edge
 const salvarF = () => { try { localStorage.setItem(CHAVE, JSON.stringify({ ...f, busca: "" })); } catch { /* sem armazenamento */ } };
 for (const [k, sel] of [["tipo", "#f-tipo"], ["desde", "#f-desde"], ["min", "#f-min"], ["ev", "#f-ev"], ["mom", "#f-mom"], ["merc", "#f-merc"], ["amostra", "#f-amostra"], ["conf", "#f-conf"], ["conc", "#f-conc"], ["busca", "#f-busca"]]) {
   const el = $(sel);
@@ -46,6 +47,8 @@ function mostrarAba() {
 }
 document.querySelectorAll(".tabs [data-aba]").forEach((b) => b.addEventListener("click", () => { f.aba = b.dataset.aba; salvarF(); mostrarAba(); render(); }));
 mostrarAba();
+// coleta da CampeonBet chegando do botão dos favoritos: abre a aba de comparação
+ouvirCampeon(() => { f.aba = "campeon"; salvarF(); mostrarAba(); render(); });
 
 // botão "Buscar projeções no Edgely": o Worker guarda o pedido e dispara a Action, que consulta o Edgely 1 vez
 // (no máximo 1 busca a cada 10 min) e publica data/edgely.json; esta página relê o arquivo a cada 5 min
@@ -501,6 +504,7 @@ function render() {
     renderFiltros($("#jogos"), f, jogos);
     return;
   }
+  if (f.aba === "campeon") { renderCampeon($("#jogos"), f, jogos); return; } // coleta só pelo botão dos favoritos
   if (f.aba === "acomp") { // não depende dos jogos de hoje: lê data/apostas_edgely (relido a cada 5 min)
     if (acompVelho()) carregarAcomp().then(() => f.aba === "acomp" && renderAcomp($("#jogos"), f));
     renderAcomp($("#jogos"), f);

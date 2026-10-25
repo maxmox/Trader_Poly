@@ -385,3 +385,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .forma-tab { min-width: 0; max-width: 560px; }
 .forma-tab small { display: block; }
 .zf { font-weight: 800; } .zf.O { color: var(--sig-o); } .zf.U { color: var(--sig-u); }
+/* aba CampeonBet × DK */
+.campeon-passos { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin: 8px 0; }
+.campeon-tab small { display: block; }
+.campeon-tab tr.defasada td { background: var(--good-bg); }
+.campeon-tab td.ev-bom { color: var(--good); font-weight: 800; }
