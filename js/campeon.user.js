@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.11
+// @version      1.12
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
-// @grant        none
+// @grant        GM_registerMenuCommand
+// @grant        GM_openInTab
 // @run-at       document-idle
 // ==/UserScript==
 // Coletor das casas. LÊ A TELA, não chama a API (a API da CampeonBet tem endereço-isca contra robôs; v1.0–1.2 chamavam e
@@ -25,10 +26,11 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.12";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : null);
-  const TOPO = window.top === window;
+  // página de fora = sem ancestrais (com @grant o window do script pode ser um invólucro e window.top !== window)
+  const TOPO = location.ancestorOrigins ? location.ancestorOrigins.length === 0 : window.self === window.top;
   const ancestrais = [...(location.ancestorOrigins || [])].join(" ") || document.referrer;
   const CASA = TOPO ? casaDe(location.hostname) : casaDe(location.hostname) || casaDe(ancestrais);
   if (!CASA || window.__traderPolyCampeon) return;
@@ -150,61 +152,91 @@
     return { nome, pares, quadros: deles.length };
   }
 
-  // ---------- caixa e botões ----------
+  // ---------- ações (caixa e menu do Tampermonkey) ----------
+  const resumo = () => {
+    const jogos = Object.values(ler()), n = jogos.reduce((t, j) => t + Object.keys(j.pares || {}).length, 0);
+    const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
+    return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
+  };
+  const COMO = CASA === "jogabrasil"
+    ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\". Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."
+    : "Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\". Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".";
+  let mostrar = () => {}; // troca o texto da caixa (montada abaixo)
+  // pelo menu do Tampermonkey o resultado também vem num aviso, para o caso de o site esconder a caixa
+  const avisa = (t, peloMenu) => { mostrar(t); if (peloMenu) alert(`${resumo()}\n${t}`); };
+  async function acaoCapturar(peloMenu) {
+    mostrar("Lendo a tela…");
+    const j = await capturar();
+    if (!j.pares.length) { avisa(`Não achei props nesta tela (${j.quadros} quadro(s) embutido(s) responderam). ${COMO} Se continuar, use "Diagnóstico" e mande o arquivo.`, peloMenu); return; }
+    const c = ler(), g = (c[j.nome] ||= { nome: j.nome, em: Date.now(), pares: {} });
+    let novas = 0;
+    for (const [titulo, jogador, L, O, U] of j.pares) { const k = `${titulo}|${jogador}|${L}`; if (!g.pares[k]) novas++; g.pares[k] = [titulo, jogador, L, O, U]; }
+    g.em = Date.now();
+    const mercados = new Set(j.pares.map((p) => p[0].replace(/\s*\(incluindo.*$/i, "")));
+    avisa(grava(c) ? `Capturado em ${j.nome}: ${j.pares.length} linhas (${novas} novas) em ${mercados.size} mercados${mercados.size <= 6 ? ` — ${[...mercados].join(", ")}` : ""}.\nContinue capturando; no fim, "Abrir a comparação".` : "Não consegui guardar neste navegador.", peloMenu);
+  }
+  async function acaoAbrir(peloMenu) {
+    // formato compacto que a aba lê: mercado = "título | jogador" (na JogaBrasil o jogador já está no título), odds = Mais de L / Menos de L
+    const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, em: j.em,
+      mercados: Object.values(j.pares).map(([titulo, jogador, L, O, U]) => [jogador ? `${titulo} | ${jogador}` : titulo, L, [[`Mais de ${L}`, O, L], [`Menos de ${L}`, U, L]]]) }));
+    if (!eventos.length) { avisa(`Nada capturado ainda. ${COMO}`, peloMenu); return; }
+    const aba = typeof GM_openInTab === "function" ? null : window.open("about:blank", "_blank"); // sem GM: a janela abre JÁ no clique
+    const txt = JSON.stringify({ v: 2, casa: CASA, em: Math.min(...eventos.map((e) => e.em)), fonte: "tela", eventos, erros: 0 });
+    const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    const url = `${SITE}/props.html?aba=campeon#campeon=${btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
+    if (typeof GM_openInTab === "function") GM_openInTab(url, { active: true });
+    else if (aba) aba.location.href = url; else location.href = url;
+  }
+  function acaoLimpar(peloMenu) { grava({}); avisa("Capturas apagadas.", peloMenu); }
+  async function acaoDiagnostico() {
+    const dados = { casa: CASA, versao: VERSAO, pagina: diagnosticoAqui(), caixa: estadoCaixa(), quadros: await perguntar("tp-diagnostico") };
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 1)], { type: "application/json" }));
+    a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
+    a.click();
+  }
+
+  // ---------- caixa ----------
+  // v1.12: na CampeonBet a caixa sumia logo ao abrir (v1.7–1.11). Agora é um elemento próprio (não <div>), preso na raiz
+  // do documento, com o estilo forçado (!important na própria tag) e o conteúdo num shadow DOM fechado (o CSS do site não
+  // alcança); volta na hora se for retirado. E tudo também pelo menu do Tampermonkey.
+  let host = null;
+  function estadoCaixa() {
+    if (!host) return "não montada";
+    const r = host.getBoundingClientRect(), cs = getComputedStyle(host);
+    return { conectada: host.isConnected, pai: host.parentNode?.nodeName || null, display: cs.display, visibility: cs.visibility, opacity: cs.opacity, largura: Math.round(r.width), altura: Math.round(r.height) };
+  }
   function montarCaixa() {
+    host = document.createElement("trader-poly-caixa");
+    host.id = "trader-poly-caixa";
+    host.setAttribute("style", "all:initial !important;display:block !important;position:fixed !important;z-index:2147483647 !important;left:16px !important;bottom:16px !important;visibility:visible !important;opacity:1 !important;pointer-events:auto !important;transform:none !important;clip-path:none !important");
+    const sombra = host.attachShadow ? host.attachShadow({ mode: "closed" }) : host;
     const caixa = document.createElement("div");
-    caixa.id = "trader-poly-caixa";
-    caixa.style.cssText = "position:fixed;z-index:2147483646;left:16px;bottom:16px;max-width:400px;padding:10px 12px;border-radius:8px;background:#10243e;color:#fff;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    caixa.style.cssText = "max-width:400px;padding:10px 12px;border-radius:8px;background:#10243e;color:#fff;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)";
     const texto = document.createElement("div");
     texto.style.whiteSpace = "pre-line";
     caixa.appendChild(texto);
-    const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 6px 0 0;padding:6px 10px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 12px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", fn); caixa.appendChild(b); return b; };
-    const resumo = () => {
-      const jogos = Object.values(ler()), n = jogos.reduce((t, j) => t + Object.keys(j.pares || {}).length, 0);
-      const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
-      return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
-    };
-    const status = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
-    const COMO = CASA === "jogabrasil"
-      ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\". Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."
-      : "Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\". Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".";
-    botao("Capturar esta tela", async () => {
-      status("Lendo a tela…");
-      const j = await capturar();
-      if (!j.pares.length) { status(`Não achei props nesta tela (${j.quadros} quadro(s) embutido(s) responderam). ${COMO} Se continuar, use "Diagnóstico" e mande o arquivo.`); return; }
-      const c = ler(), g = (c[j.nome] ||= { nome: j.nome, em: Date.now(), pares: {} });
-      let novas = 0;
-      for (const [titulo, jogador, L, O, U] of j.pares) { const k = `${titulo}|${jogador}|${L}`; if (!g.pares[k]) novas++; g.pares[k] = [titulo, jogador, L, O, U]; }
-      g.em = Date.now();
-      const mercados = new Set(j.pares.map((p) => p[0].replace(/\s*\(incluindo.*$/i, "")));
-      status(grava(c) ? `Capturado em ${j.nome}: ${j.pares.length} linhas (${novas} novas) em ${mercados.size} mercados${mercados.size <= 6 ? ` — ${[...mercados].join(", ")}` : ""}.\nContinue capturando; no fim, "Abrir a comparação".` : "Não consegui guardar neste navegador.");
-    });
-    botao("Abrir a comparação", async () => {
-      // formato compacto que a aba lê: mercado = "título | jogador" (na JogaBrasil o jogador já está no título), odds = Mais de L / Menos de L
-      const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, em: j.em,
-        mercados: Object.values(j.pares).map(([titulo, jogador, L, O, U]) => [jogador ? `${titulo} | ${jogador}` : titulo, L, [[`Mais de ${L}`, O, L], [`Menos de ${L}`, U, L]]]) }));
-      if (!eventos.length) { status(`Nada capturado ainda. ${COMO}`); return; }
-      const w = window.open("about:blank", "_blank"); // a janela abre JÁ no clique (depois o navegador bloquearia)
-      const txt = JSON.stringify({ v: 2, casa: CASA, em: Math.min(...eventos.map((e) => e.em)), fonte: "tela", eventos, erros: 0 });
-      const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
-      let bin = "";
-      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-      const url = `${SITE}/props.html?aba=campeon#campeon=${btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
-      if (w) w.location.href = url; else location.href = url;
-    });
-    botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
-    botao("Diagnóstico", async () => {
-      const dados = { casa: CASA, versao: "1.11", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 1)], { type: "application/json" }));
-      a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
-      a.click();
-    });
-    status(COMO);
-    // no <body>, como até a v1.6 (funcionava na CampeonBet); volta se o site a tirar ao trocar de página
-    const prende = () => { if (!caixa.isConnected && document.body) document.body.appendChild(caixa); };
+    sombra.appendChild(caixa);
+    const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 6px 0 0;padding:6px 10px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 12px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", () => fn(false)); caixa.appendChild(b); return b; };
+    mostrar = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
+    botao("Capturar esta tela", acaoCapturar);
+    botao("Abrir a comparação", acaoAbrir);
+    botao("Limpar", acaoLimpar);
+    botao("Diagnóstico", acaoDiagnostico);
+    mostrar(COMO);
+    const prende = () => { if (!host.isConnected) document.documentElement.appendChild(host); };
     prende();
-    setInterval(prende, 1500);
+    new MutationObserver(prende).observe(document.documentElement, { childList: true });
+    setInterval(prende, 1000);
   }
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", montarCaixa, { once: true }); else montarCaixa();
+  // menu do Tampermonkey (ícone da extensão): funciona mesmo se o site esconder a caixa
+  if (typeof GM_registerMenuCommand === "function") {
+    GM_registerMenuCommand("📊 Capturar esta tela", () => acaoCapturar(true));
+    GM_registerMenuCommand("Abrir a comparação", () => acaoAbrir(true));
+    GM_registerMenuCommand("Limpar capturas", () => acaoLimpar(true));
+    GM_registerMenuCommand("Diagnóstico", () => acaoDiagnostico());
+  }
 })();
