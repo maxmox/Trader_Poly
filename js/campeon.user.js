@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.13
+// @version      1.14
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.13";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.14";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : null);
   // página de fora = sem ancestrais (com @grant o window do script pode ser um invólucro e window.top !== window)
@@ -118,11 +118,13 @@
   }
 
   // atalho (v1.13, pedido do usuário): tecla D = "Capturar esta tela"; não vale digitando num campo nem com Ctrl/Alt/⌘
-  const ehTeclaD = (e) => {
-    if (e.key?.toLowerCase() !== "d" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return false;
+  // (v1.14: E = expandir quadros, T = trocar time, só na CampeonBet/99play)
+  const ehTecla = (e, letra) => {
+    if (e.key?.toLowerCase() !== letra || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return false;
     const alvo = e.composedPath?.()[0] || e.target;
     return !(alvo && (alvo.isContentEditable || /^(input|textarea|select)$/i.test(alvo.tagName || "")));
   };
+  const ehTeclaD = (e) => ehTecla(e, "d");
 
   // ---------- dentro de um quadro: responde à página de fora ----------
   if (!TOPO) {
@@ -207,6 +209,64 @@
     a.click();
   }
 
+  // ---------- CampeonBet/99play (Altenar): expandir quadros e trocar o time (v1.14, pedido do usuário) ----------
+  // Cliques no próprio navegador, só quando o usuário manda, com pausa entre eles (como uma pessoa faria).
+  const ALTENAR = CASA === "campeon" || CASA === "play99";
+  const pausa = (ms) => new Promise((r) => setTimeout(r, ms + Math.random() * 150));
+  const clicar = (el) => { for (const tipo of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(new MouseEvent(tipo, { bubbles: true, cancelable: true, composed: true, view: window })); };
+  // cartões de mercado: o elemento do título "… Mais de/Menos de …" e o maior ancestral que só contém esse título
+  function cartoes() {
+    const els = todos(document.documentElement).filter((el) => !fora(el));
+    const tits = els.filter((el) => [...el.childNodes].some((c) => c.nodeType === 3 && /mais de\s*\/\s*menos de/i.test(c.nodeValue)));
+    return tits.map((t) => {
+      let card = t;
+      for (let up = t.parentElement, k = 0; up && k < 8; up = up.parentElement, k++) { if (tits.some((x) => x !== t && up.contains(x))) break; card = up; }
+      const F = folhas(card);
+      return { t, card, aberto: F.some((x) => /^linha$/i.test(x)) };
+    });
+  }
+  // os dois times de um cartão aberto: os textos entre o título e "Linha" (sem selos como "BB", "CA", "Pa")
+  function timesDe(card, t) {
+    const F = folhas(card), i0 = F.findIndex((x) => t.textContent.includes(x)), i1 = F.findIndex((x) => /^linha$/i.test(x));
+    const nomes = F.slice(i0 + 1, i1).filter((x) => NOME.test(x) && x.length >= 5 && !/^[—–\-+]$/.test(x));
+    return nomes.slice(0, 2).map((n) => {
+      const cand = [...card.querySelectorAll("*")].filter((el) => folhas(el).join(" ") === n);
+      return cand.find((el) => !cand.some((o) => o !== el && el.contains(o))) || null; // o menor
+    });
+  }
+  async function acaoExpandir(peloMenu) {
+    let abertos = 0, mais = 0;
+    for (const c of cartoes().filter((c) => !c.aberto)) { clicar(c.t); abertos++; await pausa(350); }
+    if (abertos) await pausa(600);
+    for (const c of cartoes().filter((c) => c.aberto)) {
+      const b = [...c.card.querySelectorAll("*")].find((el) => /^mostrar mais jogadores$/i.test(folhas(el).join(" ").trim()) && ![...el.children].some((f) => /^mostrar mais/i.test(f.textContent.trim())));
+      if (b) { clicar(b); mais++; await pausa(250); }
+    }
+    avisa(`Expandidos ${abertos} quadros${mais ? ` e ${mais} "Mostrar mais jogadores"` : ""} (${cartoes().filter((c) => c.aberto).length} abertos). Agora capture (D).`, peloMenu);
+  }
+  let timeAlvo = 0; // 0 = 1º time das abas, 1 = 2º
+  async function acaoTrocar(peloMenu, para) {
+    timeAlvo = para ?? 1 - timeAlvo;
+    let n = 0, nome = "";
+    for (const c of cartoes().filter((c) => c.aberto)) {
+      const alvo = timesDe(c.card, c.t)[timeAlvo];
+      if (alvo) { clicar(alvo); n++; nome ||= alvo.textContent.trim(); await pausa(250); }
+    }
+    avisa(n ? `Time trocado para ${nome} em ${n} quadros. Agora capture (D).` : "Nenhum quadro aberto com os dois times: use \"Expandir quadros\" (E) primeiro.", peloMenu);
+  }
+  async function acaoTudo(peloMenu) {
+    // o time antes do "Mostrar mais jogadores" (trocar de time pode recolher a lista)
+    await acaoExpandir(false); await pausa(500);
+    await acaoTrocar(false, 0); await pausa(800);
+    await acaoExpandir(false); await pausa(400);
+    await acaoCapturar(false);
+    await acaoTrocar(false, 1); await pausa(800);
+    await acaoExpandir(false); await pausa(400); // "Mostrar mais jogadores" do outro time
+    await acaoCapturar(false);
+    await acaoTrocar(false, 0);
+    avisa(`Pronto: os dois times de ${cartoes().filter((c) => c.aberto).length} quadros capturados. Troque de aba (Pontos, 3 Pontos, Rebotes…) e use "Tudo" de novo; no fim, "Abrir a comparação".`, peloMenu);
+  }
+
   // ---------- caixa ----------
   // v1.12: na CampeonBet a caixa sumia logo ao abrir (v1.7–1.11). Agora é um elemento próprio (não <div>), preso na raiz
   // do documento, com o estilo forçado (!important na própria tag) e o conteúdo num shadow DOM fechado (o CSS do site não
@@ -231,6 +291,7 @@
     const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 6px 0 0;padding:6px 10px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 12px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", () => fn(false)); caixa.appendChild(b); return b; };
     mostrar = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
     botao("Capturar esta tela (D)", acaoCapturar);
+    if (ALTENAR) { botao("Expandir quadros (E)", acaoExpandir); botao("Trocar time (T)", (m) => acaoTrocar(m)); botao("Tudo: 2 times", acaoTudo); }
     botao("Abrir a comparação", acaoAbrir);
     botao("Limpar", acaoLimpar);
     botao("Diagnóstico", acaoDiagnostico);
@@ -246,10 +307,20 @@
   const visivel = () => { if (!host?.isConnected) return false; const r = host.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(host).visibility !== "hidden"; };
   const pelaTecla = () => { if (Date.now() - ultimaTecla < 800) return; ultimaTecla = Date.now(); acaoCapturar(!visivel()); };
   addEventListener("keydown", (e) => { if (ehTeclaD(e)) { e.preventDefault(); pelaTecla(); } }, true);
+  if (ALTENAR) addEventListener("keydown", (e) => {
+    const qual = ehTecla(e, "e") ? acaoExpandir : ehTecla(e, "t") ? acaoTrocar : null;
+    if (!qual || Date.now() - ultimaTecla < 800) return;
+    e.preventDefault(); ultimaTecla = Date.now(); qual(!visivel());
+  }, true);
   addEventListener("message", (e) => { if (e.data?.tp === "tp-tecla" && quadrosDe(window).includes(e.source)) pelaTecla(); });
   // menu do Tampermonkey (ícone da extensão): funciona mesmo se o site esconder a caixa
   if (typeof GM_registerMenuCommand === "function") {
     GM_registerMenuCommand("📊 Capturar esta tela (tecla D)", () => acaoCapturar(true));
+    if (ALTENAR) {
+      GM_registerMenuCommand("Expandir quadros (tecla E)", () => acaoExpandir(true));
+      GM_registerMenuCommand("Trocar time (tecla T)", () => acaoTrocar(true));
+      GM_registerMenuCommand("Tudo: expandir e capturar os 2 times", () => acaoTudo(true));
+    }
     GM_registerMenuCommand("Abrir a comparação", () => acaoAbrir(true));
     GM_registerMenuCommand("Limpar capturas", () => acaoLimpar(true));
     GM_registerMenuCommand("Diagnóstico", () => acaoDiagnostico());
