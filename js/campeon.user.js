@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.12
+// @version      1.13
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.12";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.13";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : null);
   // página de fora = sem ancestrais (com @grant o window do script pode ser um invólucro e window.top !== window)
@@ -117,8 +117,17 @@
     return { url: location.origin + location.pathname, elementos: els.length, sombras: els.filter((el) => raiz(el)).length, quadros, titulos, capturado: capturarAqui().pares, amostra };
   }
 
+  // atalho (v1.13, pedido do usuário): tecla D = "Capturar esta tela"; não vale digitando num campo nem com Ctrl/Alt/⌘
+  const ehTeclaD = (e) => {
+    if (e.key?.toLowerCase() !== "d" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return false;
+    const alvo = e.composedPath?.()[0] || e.target;
+    return !(alvo && (alvo.isContentEditable || /^(input|textarea|select)$/i.test(alvo.tagName || "")));
+  };
+
   // ---------- dentro de um quadro: responde à página de fora ----------
   if (!TOPO) {
+    // com o foco dentro do quadro (JogaBrasil) a tecla cai aqui: avisa a página de fora
+    addEventListener("keydown", (e) => { if (ehTeclaD(e)) top.postMessage({ tp: "tp-tecla" }, "*"); }, true);
     addEventListener("message", (e) => {
       if (casaDe(e.origin) !== CASA || !e.data || typeof e.data !== "object" || !/^tp-(capturar|diagnostico)$/.test(e.data.tp)) return;
       let resp;
@@ -159,8 +168,8 @@
     return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
   const COMO = CASA === "jogabrasil"
-    ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\". Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."
-    : "Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\". Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".";
+    ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\" (ou aperte D). Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."
+    : "Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\" (ou aperte D). Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".";
   let mostrar = () => {}; // troca o texto da caixa (montada abaixo)
   // pelo menu do Tampermonkey o resultado também vem num aviso, para o caso de o site esconder a caixa
   const avisa = (t, peloMenu) => { mostrar(t); if (peloMenu) alert(`${resumo()}\n${t}`); };
@@ -221,7 +230,7 @@
     sombra.appendChild(caixa);
     const botao = (rot, fn) => { const b = document.createElement("button"); b.textContent = rot; b.style.cssText = "margin:8px 6px 0 0;padding:6px 10px;border:0;border-radius:6px;background:#3d8bfd;color:#fff;font:600 12px system-ui,sans-serif;cursor:pointer"; b.addEventListener("click", () => fn(false)); caixa.appendChild(b); return b; };
     mostrar = (t) => { texto.textContent = t ? `${resumo()}\n${t}` : resumo(); };
-    botao("Capturar esta tela", acaoCapturar);
+    botao("Capturar esta tela (D)", acaoCapturar);
     botao("Abrir a comparação", acaoAbrir);
     botao("Limpar", acaoLimpar);
     botao("Diagnóstico", acaoDiagnostico);
@@ -232,9 +241,15 @@
     setInterval(prende, 1000);
   }
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", montarCaixa, { once: true }); else montarCaixa();
+  // tecla D: captura; se a caixa estiver escondida pelo site, o resultado vem num aviso
+  let ultimaTecla = 0;
+  const visivel = () => { if (!host?.isConnected) return false; const r = host.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(host).visibility !== "hidden"; };
+  const pelaTecla = () => { if (Date.now() - ultimaTecla < 800) return; ultimaTecla = Date.now(); acaoCapturar(!visivel()); };
+  addEventListener("keydown", (e) => { if (ehTeclaD(e)) { e.preventDefault(); pelaTecla(); } }, true);
+  addEventListener("message", (e) => { if (e.data?.tp === "tp-tecla" && quadrosDe(window).includes(e.source)) pelaTecla(); });
   // menu do Tampermonkey (ícone da extensão): funciona mesmo se o site esconder a caixa
   if (typeof GM_registerMenuCommand === "function") {
-    GM_registerMenuCommand("📊 Capturar esta tela", () => acaoCapturar(true));
+    GM_registerMenuCommand("📊 Capturar esta tela (tecla D)", () => acaoCapturar(true));
     GM_registerMenuCommand("Abrir a comparação", () => acaoAbrir(true));
     GM_registerMenuCommand("Limpar capturas", () => acaoLimpar(true));
     GM_registerMenuCommand("Diagnóstico", () => acaoDiagnostico());
