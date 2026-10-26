@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.9
+// @version      1.10
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -198,14 +198,18 @@
     });
     botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
     botao("Diagnóstico", async () => {
-      const dados = { casa: CASA, versao: "1.9", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
+      const dados = { casa: CASA, versao: "1.10", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 1)], { type: "application/json" }));
       a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
       a.click();
     });
     status(COMO);
-    document.body.appendChild(caixa);
+    // v1.10: o script entra cedo (document-start, por causa do quadro da JogaBrasil) e a CampeonBet remonta a página depois,
+    // apagando a caixa — fica na raiz do documento e volta se o site a tirar
+    const prende = () => { if (!caixa.isConnected) document.documentElement.appendChild(caixa); };
+    prende();
+    setInterval(prende, 1500);
   }
-  if (document.body) montarCaixa(); else addEventListener("DOMContentLoaded", montarCaixa, { once: true });
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", montarCaixa, { once: true }); else montarCaixa();
 })();
