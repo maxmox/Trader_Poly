@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil)
+// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.8
+// @version      1.9
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet e na JogaBrasil: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
+// @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
 // @grant        none
 // @run-at       document-start
@@ -26,7 +26,8 @@
 //   leitura aos quadros por postMessage. Shadow DOM fechado: guarda a referência ao ser criado (attachShadow) para ler.
 (() => {
   const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
-  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : null);
+  // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
+  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : null);
   const TOPO = window.top === window;
   const ancestrais = [...(location.ancestorOrigins || [])].join(" ") || document.referrer;
   const CASA = TOPO ? casaDe(location.hostname) : casaDe(location.hostname) || casaDe(ancestrais);
@@ -148,7 +149,8 @@
   async function capturar() {
     const aqui = capturarAqui(), deles = await perguntar("tp-capturar");
     const pares = [...aqui.pares, ...deles.flatMap((r) => r?.pares || [])];
-    const nome = aqui.nome || deles.map((r) => r?.nome).find(Boolean) || document.title;
+    // sem nome (a 99play põe o horário entre os times): o nº do evento no endereço separa os jogos; a aba acha o jogo pelos jogadores
+    const nome = aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, "?"])[1]}`;
     return { nome, pares, quadros: deles.length };
   }
 
@@ -196,7 +198,7 @@
     });
     botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
     botao("Diagnóstico", async () => {
-      const dados = { casa: CASA, versao: "1.8", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
+      const dados = { casa: CASA, versao: "1.9", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 1)], { type: "application/json" }));
       a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
