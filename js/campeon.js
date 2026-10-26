@@ -179,16 +179,18 @@ function comparar(jogos) {
   }
   return { linhas: escada(linhas.filter(Boolean)), semPar: [...new Set(semPar)] };
 }
-// casa com escada de linhas (JogaBrasil: 6,5 a 13,5 para o mesmo jogador): longe da linha da DK a conta do movimento não
-// vale, então fica, por casa × jogo × jogador × estatística, a de maior EV entre as linhas perto da DK (ou só a mais perto)
+// casa com escada de linhas (JogaBrasil: 6,5 a 13,5 para o mesmo jogador). 26/10 (usuário: "a mudança da linha importa"):
+// antes ficava a de MAIOR EV entre as vizinhas — isso garimpa justamente onde o modelo de conversão erra. Agora fica, por
+// casa × jogo × jogador × estatística: a MESMA linha da DK (conta direta, sem modelo); senão a linha em que a DK ABRIU;
+// senão a mais perto (convertida pelo modelo, só estimativa)
 function escada(linhas) {
   const grupos = new Map();
   for (const r of linhas) { const k = `${r.casa}|${r.j.titulo}|${r.quem}|${r.tipo}`; (grupos.get(k) || grupos.set(k, []).get(k)).push(r); }
   return [...grupos.values()].flatMap((g) => {
     if (g.length === 1 || g[0].L == null) return g;
-    const d = (r) => Math.abs(r.L - r.dk.linha), perto = g.filter((r) => d(r) <= Math.max(1, 0.1 * r.dk.linha));
-    const lista = perto.length ? perto : [g.reduce((a, b) => (d(b) < d(a) ? b : a))];
-    return [{ ...lista.reduce((a, b) => (Math.max(b.evO, b.evU) > Math.max(a.evO, a.evU) ? b : a)), escada: g.length }];
+    const d = (r) => Math.abs(r.L - r.dk.linha), min = Math.min(...g.map(d));
+    const r = g.find((x) => x.base === "mesma") || g.find((x) => x.base === "abertura") || g.filter((x) => d(x) === min).reduce((a, b) => (Math.max(b.evO, b.evU) > Math.max(a.evO, a.evU) ? b : a));
+    return [{ ...r, escada: g.length }];
   });
 }
 // um par Over/Under da CampeonBet × a linha da DK (x = linha da DK: x.dk com linha e odds de agora)
@@ -200,7 +202,15 @@ function par(j, quem, tipo, mercado, p, x, nomeCampeon) {
   const c = Math.min(0.99, Math.max(0.01, q));
   // linha muito longe da DK (ou chance quase certa) = quase sempre outro mercado lido com o nome errado: não conta como defasada
   const suspeita = p.L !== x.dk.linha && (Math.abs(p.L - x.dk.linha) > Math.max(2, 0.3 * x.dk.linha) || c < 0.1 || c > 0.9);
-  return { j, quem, tipo, mercado, L: p.L, O: p.O, U: p.U, dk: x.dk, rotA: "Over", rotB: "Under", chance: c, evO: c * p.O - 1, evU: (1 - c) * p.U - 1, nomeCampeon, suspeita };
+  // de onde vem a chance (26/10): "mesma" = a casa tem a linha da DK → EV direto, sem modelo; "abertura" = a casa está na
+  // linha em que a DK ABRIU e a DK andou → é a defasagem que se procura (a conversão é de 1 movimento real); "modelo" = linha
+  // diferente sem essa explicação → chance levada pela distribuição (não calibrada): estimativa, não conta como defasada
+  const ab = x.dk.linhaAb, moveu = ab != null && ab !== x.dk.linha;
+  const base = p.L === x.dk.linha ? "mesma" : moveu && p.L === ab ? "abertura" : "modelo";
+  // para que lado a DK andou: linha (subiu = dinheiro no Over) ou, na mesma linha, a chance sem margem (≥ 3 pp)
+  const pAb = semMargem(x.dk.overAb, x.dk.underAb);
+  const ladoMov = moveu ? (x.dk.linha > ab ? "Over" : "Under") : pAb != null && Math.abs(p1 - pAb) >= 0.03 ? (p1 > pAb ? "Over" : "Under") : null;
+  return { j, quem, tipo, mercado, L: p.L, O: p.O, U: p.U, dk: x.dk, rotA: "Over", rotB: "Under", chance: c, evO: c * p.O - 1, evU: (1 - c) * p.U - 1, nomeCampeon, suspeita, base, ladoMov, pAb };
 }
 
 // ---------- página ----------
@@ -220,21 +230,24 @@ export function renderCampeon(el, f, jogos) {
   const casas = Object.keys(CASAS).filter((c) => coletas[c]);
   const { linhas, semPar } = casas.length ? comparar(jogos) : { linhas: [], semPar: [] };
   const L = linhas.filter((r) => (!f.tipo || r.tipo === f.tipo || (f.tipo === "jogo" && !TIPOS_PROP[r.tipo])) && (!busca || nomeChave(r.quem).includes(busca)))
-    .map((r) => ({ ...r, melhor: Math.max(r.evO, r.evU) })).sort((a, b) => !!a.suspeita - !!b.suspeita || b.melhor - a.melhor);
-  const boa = (r) => r.melhor >= MIN_EV && !r.suspeita;
-  const ev = (v, r) => `<td class="n${v >= MIN_EV && !r.suspeita ? " ev-bom" : ""}">${pc(v)}</td>`;
+    .map((r) => ({ ...r, melhor: Math.max(r.evO, r.evU) })).sort((a, b) => !!a.suspeita - !!b.suspeita || (a.base === "modelo") - (b.base === "modelo") || b.melhor - a.melhor);
+  // defasada só com conta confiável (mesma linha da DK ou a casa parada na abertura da DK); pelo modelo = "conferir"
+  const boa = (r) => r.melhor >= MIN_EV && !r.suspeita && r.base !== "modelo";
+  const conferir = (r) => r.melhor >= MIN_EV && !r.suspeita && r.base === "modelo";
+  const ev = (v, r) => `<td class="n${v >= MIN_EV && !r.suspeita && r.base !== "modelo" ? " ev-bom" : ""}">${pc(v)}</td>`;
+  const BASE = { mesma: "mesma linha da DK", abertura: "na linha em que a DK abriu", modelo: "linha convertida pelo modelo (estimativa)" };
   const tab = L.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador / mercado</th><th>Jogo</th><th class="n">Casa<small>linha · Over / Under</small></th><th class="n">DraftKings agora<small>linha · Over / Under</small></th><th class="n">Chance justa do Over<small>pela DK, na linha da casa</small></th><th class="n">EV Over<small>na casa</small></th><th class="n">EV Under<small>na casa</small></th></tr></thead><tbody>
-    ${L.slice(0, 300).map((r) => `<tr${boa(r) ? ' class="defasada"' : r.suspeita ? ' class="suspeita"' : ""}><td><b>${esc(r.quem)}</b><small title="${esc(r.nomeCampeon)}">${esc(r.mercado)} · ${CASAS[r.casa]}${r.escada > 1 ? ` (melhor de ${r.escada} linhas)` : ""}</small>${r.suspeita ? `<small class="aviso">linha longe da DK — confira se é o mesmo mercado: “${esc(r.nomeCampeon.split(" | ")[0])}”</small>` : ""}</td><td>${esc(r.j.titulo)}<small>${r.j.inicio ? hora(r.j.inicio) : ""}</small></td>
-      <td class="n"><b>${r.L == null ? "" : `${lin(r.L)} · `}${num(r.O)} / ${num(r.U)}</b><small>${CASAS[r.casa]}</small></td><td class="n">${r.dk.linha == null || r.L == null ? "" : `${lin(r.dk.linha)} · `}${num(r.dk.over)} / ${num(r.dk.under)}${r.L != null && r.dk.linha !== r.L ? `<small>linha diferente: ${r.dk.linha > r.L ? "DK subiu" : "DK caiu"}</small>` : ""}</td>
-      <td class="n">${num(100 * r.chance, 1)}%<small>${esc(r.rotA)}</small></td>${ev(r.evO, r)}${ev(r.evU, r)}</tr>`).join("")}
+    ${L.slice(0, 300).map((r) => `<tr${boa(r) ? ' class="defasada"' : r.suspeita ? ' class="suspeita"' : conferir(r) ? ' class="conferir"' : ""}><td><b>${esc(r.quem)}</b><small title="${esc(r.nomeCampeon)}">${esc(r.mercado)} · ${CASAS[r.casa]}${r.escada > 1 ? ` (escada de ${r.escada} linhas)` : ""}</small>${r.suspeita ? `<small class="aviso">linha longe da DK — confira se é o mesmo mercado: “${esc(r.nomeCampeon.split(" | ")[0])}”</small>` : ""}</td><td>${esc(r.j.titulo)}<small>${r.j.inicio ? hora(r.j.inicio) : ""}</small></td>
+      <td class="n"><b>${r.L == null ? "" : `${lin(r.L)} · `}${num(r.O)} / ${num(r.U)}</b><small>${r.base ? BASE[r.base] : CASAS[r.casa]}</small></td><td class="n">${r.dk.linha == null || r.L == null ? "" : `${lin(r.dk.linha)} · `}${num(r.dk.over)} / ${num(r.dk.under)}${r.dk.overAb != null ? `<small>abriu ${r.dk.linhaAb != null && r.L != null ? `${lin(r.dk.linhaAb)} · ` : ""}${num(r.dk.overAb)} / ${num(r.dk.underAb)}</small>` : ""}</td>
+      <td class="n">${num(100 * r.chance, 1)}%<small>${r.ladoMov ? `DK andou p/ o ${r.ladoMov}` : esc(r.rotA)}</small></td>${ev(r.evO, r)}${ev(r.evU, r)}</tr>`).join("")}
     </tbody></table></div>` : "";
   // uma linha de resumo por casa coletada
   const resumo = casas.map((c) => {
     const co = coletas[c], idade = Math.round((Date.now() - co.em) / 60e3), dela = L.filter((r) => r.casa === c);
-    return `<p class="${idade > 15 ? "banner" : "muted"}"><b>${CASAS[c]}</b>: coleta das ${hora(co.em)} (há ${idade} min) · ${co.eventos.length} jogos, ${co.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${co.erros ? `, ${co.erros} jogos com erro` : ""} · ${linhas.filter((r) => r.casa === c).length} linhas casadas com a DK · <b>${dela.filter(boa).length} defasadas</b>${dela.some((r) => r.suspeita) ? ` · ${dela.filter((r) => r.suspeita).length} suspeitas (linha longe da DK, no fim da tabela)` : ""}.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""}${brutos[c] ? ` <a href="#" class="baixar-bruto" data-casa="${c}">baixar os dados brutos</a>` : ""} · <a href="#" class="limpar-casa" data-casa="${c}">limpar</a></p>`;
+    return `<p class="${idade > 15 ? "banner" : "muted"}"><b>${CASAS[c]}</b>: coleta das ${hora(co.em)} (há ${idade} min) · ${co.eventos.length} jogos, ${co.eventos.reduce((t, e) => t + e.mercados.length, 0)} mercados lidos${co.erros ? `, ${co.erros} jogos com erro` : ""} · ${linhas.filter((r) => r.casa === c).length} linhas casadas com a DK · <b>${dela.filter(boa).length} defasadas</b>${dela.some(conferir) ? ` · ${dela.filter(conferir).length} a conferir (linha convertida pelo modelo)` : ""}${dela.some((r) => r.suspeita) ? ` · ${dela.filter((r) => r.suspeita).length} suspeitas (linha longe da DK, no fim da tabela)` : ""}.${idade > 15 ? " As odds podem ter mudado: colete de novo antes de apostar." : ""}${brutos[c] ? ` <a href="#" class="baixar-bruto" data-casa="${c}">baixar os dados brutos</a>` : ""} · <a href="#" class="limpar-casa" data-casa="${c}">limpar</a></p>`;
   }).join("");
   el.innerHTML = `<section class="panel"><h2>Casas × DraftKings</h2>
-      <p class="muted">CampeonBet, JogaBrasil e 99play costumam demorar a acompanhar os movimentos. Aqui cada linha delas é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) é levada para a linha da casa e vira o <b>valor esperado</b> de cada lado na odd da casa. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}%: a casa ainda paga como se a linha não tivesse andado. Na JogaBrasil, que mostra uma escada de linhas por jogador, fica a melhor entre as linhas perto da linha da DK. A coleta só acontece quando você clica no botão — nada consulta as casas sozinho.</p>
+      <p class="muted">CampeonBet, JogaBrasil e 99play costumam demorar a acompanhar os movimentos. Aqui cada linha delas é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) vira o <b>valor esperado</b> de cada lado na odd da casa (EV = chance × odd − 1). A linha importa: <b>na mesma linha da DK</b> a conta é direta; se a casa está <b>na linha em que a DK abriu</b> e a DK andou, a chance é levada 1 movimento real (é a defasagem que se procura); em <b>outra linha</b>, a chance é levada pelo modelo de distribuição (ainda não calibrado) e vale como estimativa. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}% nos dois primeiros casos; pelo modelo, "a conferir" (amarelo). Na JogaBrasil (escada de linhas) entra a mesma linha da DK, senão a de abertura, senão a mais perto — nunca a "melhor" escolhida a dedo. A coleta só acontece quando você clica no botão — nada consulta as casas sozinho.</p>
       <div class="campeon-passos"><b>Como coletar (com a extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar"; já tinha? clique em "Atualizar" — versão 1.15, vale para as três casas; atalhos: <b>D</b> captura a tela; na CampeonBet/99play <b>E</b> expande os quadros, <b>T</b> troca o time e o botão "Tudo: 2 times" faz os dois times da aba de uma vez; se a caixa azul não aparecer, use o menu do ícone do Tampermonkey; o Tampermonkey avisa que ele pode rodar em todos os sites: é porque as apostas da JogaBrasil ficam num quadro de outro domínio, e fora das duas casas o coletor não faz nada) · 3) clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só o que já está na tela — e no fim em <b>"Abrir a comparação"</b>:
         <br>· <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">CampeonBet</a>: jogo › <b>"Especiais de Jogadores"</b>; capture cada time e cada aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos; nos Combos abra cada quadro) — as capturas se somam.
         <br>· <a href="https://99play.io/sports" target="_blank" rel="noopener">99play</a>: igual à CampeonBet — jogo › <b>"Especiais de Jogadores"</b>; abra cada quadro, capture um time, troque para o outro e capture de novo.

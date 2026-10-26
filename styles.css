@@ -391,4 +391,5 @@ table.estreita { min-width: 0; max-width: 560px; }
 .campeon-tab tr.defasada td { background: var(--good-bg); }
 .campeon-tab td.ev-bom { color: var(--good); font-weight: 800; }
 .campeon-tab tr.suspeita td { color: var(--ink-3); }
+.campeon-tab tr.conferir td { background: var(--warn-bg); }
 .campeon-tab small.aviso { color: var(--warn); font-family: inherit; }
