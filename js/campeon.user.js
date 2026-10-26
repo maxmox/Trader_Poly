@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.10
+// @version      1.11
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
 // @grant        none
-// @run-at       document-start
+// @run-at       document-idle
 // ==/UserScript==
 // Coletor das casas. LÊ A TELA, não chama a API (a API da CampeonBet tem endereço-isca contra robôs; v1.0–1.2 chamavam e
 // não deu). As capturas SE SOMAM (localStorage do próprio site): capture, troque de time/aba/role a lista e capture de novo.
@@ -23,7 +23,7 @@
 //   v1.7: as apostas da JogaBrasil ficam no SDK da TurboSports, num quadro (iframe) de outro domínio, decidido na hora pela
 //   API deles — a v1.6 só rodava na página de fora e não via nada. Agora o script roda também dentro de quadros, mas SÓ
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
-//   leitura aos quadros por postMessage. Shadow DOM fechado: guarda a referência ao ser criado (attachShadow) para ler.
+//   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
   const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
@@ -34,13 +34,9 @@
   if (!CASA || window.__traderPolyCampeon) return;
   window.__traderPolyCampeon = true;
 
-  // shadow DOM fechado: a referência só existe na criação
-  const sombras = new WeakMap();
-  try {
-    const orig = Element.prototype.attachShadow;
-    Element.prototype.attachShadow = function (o) { const r = orig.call(this, o); sombras.set(this, r); return r; };
-  } catch { /* sem acesso: lê só o que está aberto */ }
-  const raiz = (el) => el.shadowRoot || sombras.get(el);
+  // só shadow DOM aberto. (v1.7–1.10 embrulhavam o attachShadow para ler o fechado, rodando em document-start; a CampeonBet
+  // passou a apagar a caixa — v1.11 voltou ao document-idle sem mexer em nada da página. O quadro da JogaBrasil não usa sombra.)
+  const raiz = (el) => el.shadowRoot;
 
   const ler = () => { try { return JSON.parse(localStorage.getItem(CHAVE) || "{}"); } catch { return {}; } };
   const grava = (o) => { try { localStorage.setItem(CHAVE, JSON.stringify(o)); return true; } catch { return false; } };
@@ -198,16 +194,15 @@
     });
     botao("Limpar", () => { grava({}); status("Capturas apagadas."); });
     botao("Diagnóstico", async () => {
-      const dados = { casa: CASA, versao: "1.10", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
+      const dados = { casa: CASA, versao: "1.11", pagina: diagnosticoAqui(), quadros: await perguntar("tp-diagnostico") };
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 1)], { type: "application/json" }));
       a.download = `${CASA}-diagnostico-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
       a.click();
     });
     status(COMO);
-    // v1.10: o script entra cedo (document-start, por causa do quadro da JogaBrasil) e a CampeonBet remonta a página depois,
-    // apagando a caixa — fica na raiz do documento e volta se o site a tirar
-    const prende = () => { if (!caixa.isConnected) document.documentElement.appendChild(caixa); };
+    // no <body>, como até a v1.6 (funcionava na CampeonBet); volta se o site a tirar ao trocar de página
+    const prende = () => { if (!caixa.isConnected && document.body) document.body.appendChild(caixa); };
     prende();
     setInterval(prende, 1500);
   }
