@@ -210,7 +210,7 @@ function par(j, quem, tipo, mercado, p, x, nomeCampeon) {
   // para que lado a DK andou: linha (subiu = dinheiro no Over) ou, na mesma linha, a chance sem margem (≥ 3 pp)
   const pAb = semMargem(x.dk.overAb, x.dk.underAb);
   const ladoMov = moveu ? (x.dk.linha > ab ? "Over" : "Under") : pAb != null && Math.abs(p1 - pAb) >= 0.03 ? (p1 > pAb ? "Over" : "Under") : null;
-  return { j, quem, tipo, mercado, L: p.L, O: p.O, U: p.U, dk: x.dk, rotA: "Over", rotB: "Under", chance: c, evO: c * p.O - 1, evU: (1 - c) * p.U - 1, nomeCampeon, suspeita, base, ladoMov, pAb };
+  return { j, quem, tipo, mercado, L: p.L, O: p.O, U: p.U, dk: x.dk, rotA: "Over", rotB: "Under", chance: c, evO: c * p.O - 1, evU: (1 - c) * p.U - 1, nomeCampeon, suspeita, base, ladoMov, pAb, proj: x.proj ?? null };
 }
 
 // ---------- página ----------
@@ -236,9 +236,10 @@ export function renderCampeon(el, f, jogos) {
   const conferir = (r) => r.melhor >= MIN_EV && !r.suspeita && r.base === "modelo";
   const ev = (v, r) => `<td class="n${v >= MIN_EV && !r.suspeita && r.base !== "modelo" ? " ev-bom" : ""}">${pc(v)}</td>`;
   const BASE = { mesma: "mesma linha da DK", abertura: "na linha em que a DK abriu", modelo: "linha convertida pelo modelo (estimativa)" };
-  const tab = L.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador / mercado</th><th>Jogo</th><th class="n">Casa<small>linha · Over / Under</small></th><th class="n">DraftKings agora<small>linha · Over / Under</small></th><th class="n">Chance justa do Over<small>pela DK, na linha da casa</small></th><th class="n">EV Over<small>na casa</small></th><th class="n">EV Under<small>na casa</small></th></tr></thead><tbody>
+  const tab = L.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador / mercado</th><th>Jogo</th><th class="n">Casa<small>linha · Over / Under</small></th><th class="n">DraftKings agora<small>linha · Over / Under</small></th><th class="n">Edgely<small>projeção</small></th><th class="n">Chance justa do Over<small>pela DK, na linha da casa</small></th><th class="n">EV Over<small>na casa</small></th><th class="n">EV Under<small>na casa</small></th></tr></thead><tbody>
     ${L.slice(0, 300).map((r) => `<tr${boa(r) ? ' class="defasada"' : r.suspeita ? ' class="suspeita"' : conferir(r) ? ' class="conferir"' : ""}><td><b>${esc(r.quem)}</b><small title="${esc(r.nomeCampeon)}">${esc(r.mercado)} · ${CASAS[r.casa]}${r.escada > 1 ? ` (escada de ${r.escada} linhas)` : ""}</small>${r.suspeita ? `<small class="aviso">linha longe da DK — confira se é o mesmo mercado: “${esc(r.nomeCampeon.split(" | ")[0])}”</small>` : ""}</td><td>${esc(r.j.titulo)}<small>${r.j.inicio ? hora(r.j.inicio) : ""}</small></td>
       <td class="n"><b>${r.L == null ? "" : `${lin(r.L)} · `}${num(r.O)} / ${num(r.U)}</b><small>${r.base ? BASE[r.base] : CASAS[r.casa]}</small></td><td class="n">${r.dk.linha == null || r.L == null ? "" : `${lin(r.dk.linha)} · `}${num(r.dk.over)} / ${num(r.dk.under)}${r.dk.overAb != null ? `<small>abriu ${r.dk.linhaAb != null && r.L != null ? `${lin(r.dk.linhaAb)} · ` : ""}${num(r.dk.overAb)} / ${num(r.dk.underAb)}</small>` : ""}</td>
+      <td class="n">${r.proj != null && r.L != null ? num(r.proj, 1) : "–"}</td>
       <td class="n">${num(100 * r.chance, 1)}%<small>${r.ladoMov ? `DK andou p/ o ${r.ladoMov}` : esc(r.rotA)}</small></td>${ev(r.evO, r)}${ev(r.evU, r)}</tr>`).join("")}
     </tbody></table></div>` : "";
   // uma linha de resumo por casa coletada
