@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play)
+// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.15
+// @version      1.16
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet, JogaBrasil e 99play: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
+// @description  Na CampeonBet, JogaBrasil, 99play e VelvetSpin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
@@ -26,9 +26,12 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.15";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.16";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
-  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : null);
+  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : null);
+  // VelvetSpin (v1.16, 30/10/2026, pelos prints): quadros "individual total" (= pontos), "Três pontos. individual total",
+  // "Rebotes. …", "Assistências. …", "Tocos. …", "Bolas recuperadas. …" com a tabela Jogador | Linha | Mais | Menos
+  // → mesmo leitor de tabela da CampeonBet; o título "individual total" entra como título de quadro
   // página de fora = sem ancestrais (com @grant o window do script pode ser um invólucro e window.top !== window)
   const TOPO = location.ancestorOrigins ? location.ancestorOrigins.length === 0 : window.self === window.top;
   const ancestrais = [...(location.ancestorOrigins || [])].join(" ") || document.referrer;
@@ -50,7 +53,7 @@
   const ehLinhaDeTabela = (F) => F.length === 4 && NOME.test(F[0]) && LINHA.test(F[1]) && PRECO.test(F[2]) && PRECO.test(F[3]);
   const num = (t) => parseFloat(t.replace(",", "."));
   // título de quadro de mercado (os rótulos das abas, "Pontos", "Assistências"…, são curtos e ficam de fora)
-  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
+  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under|individual total/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
   // JogaBrasil: título de bloco ("Ace Bailey Total de pontos. Com prorrogação") e botão "Mais 6.5 1.26"
   const ehTituloJB = (t) => t.length >= 12 && !/^(mais|menos)\b/i.test(t) && /prorroga|total de|cestas|pontos|ressaltos|rebotes|assist|roubos|bloqueios|desarmes/i.test(t);
   const BOTAO_JB = /^(mais|menos)\s+(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{1,3})$/i;
@@ -159,7 +162,7 @@
     const aqui = capturarAqui(), deles = await perguntar("tp-capturar");
     const pares = [...aqui.pares, ...deles.flatMap((r) => r?.pares || [])];
     // sem nome (a 99play põe o horário entre os times): o nº do evento no endereço separa os jogos; a aba acha o jogo pelos jogadores
-    const nome = aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, "?"])[1]}`;
+    const nome = aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, location.pathname.split("/").filter(Boolean).pop() || "?"])[1]}`;
     return { nome, pares, quadros: deles.length };
   }
 
@@ -169,7 +172,9 @@
     const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
     return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
-  const COMO = CASA === "jogabrasil"
+  const COMO = CASA === "velvet"
+    ? "Abra o jogo › aba \"Total de jogadores\" (quadros \"individual total\") e aperte D ou \"Capturar esta tela\"; role e capture de novo se houver mais quadros; no fim, \"Abrir a comparação\"."
+    : CASA === "jogabrasil"
     ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\" (ou aperte D). Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."
     : "Abra um jogo › \"Especiais de Jogadores\" e clique em \"Capturar esta tela\" (ou aperte D). Troque de time e de aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos) capturando cada uma; no fim, \"Abrir a comparação\".";
   let mostrar = () => {}; // troca o texto da caixa (montada abaixo)

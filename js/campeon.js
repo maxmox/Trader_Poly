@@ -10,7 +10,7 @@ import { esc, hora } from "./formato.js";
 import { semMargem, movimentoMercado, nomeChave, TIPOS_PROP } from "./core.js";
 
 // 25/10: também a JogaBrasil (mesmo coletor; o pacote diz a casa). Uma coleta por casa; a de uma casa não apaga a da outra.
-const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet)
+const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
 const CHAVE = "casas-coleta", MIN_EV = 0.03;
 const coletas = (() => {
   try {
@@ -35,12 +35,13 @@ const STATS = [
   ["pr", (n) => PTS.test(n) && REB.test(n)],
   ["ra", (n) => REB.test(n) && AST.test(n)],
   ["stocks", (n) => /steals|roubos|roubadas/.test(n) && /blocks|bloqueios|tocos|desarmes/.test(n)],
-  ["threes", (n) => /three|3-?point|3 ?pt|threes|triplos|cestas de (3|tr[eê]s)|lan[cç]amentos de 3|de (3|tr[eê]s) pontos/.test(n)],
+  ["threes", (n) => /three|3-?point|3 ?pt|threes|triplos|cestas de (3|tr[eê]s)|lan[cç]amentos de 3|(3|tr[eê]s) pontos/.test(n)],
   ["points", (n) => PTS.test(n)],
   ["rebounds", (n) => REB.test(n)],
   ["assists", (n) => AST.test(n)],
-  ["steals", (n) => /steals|roubos|roubadas/.test(n)],
+  ["steals", (n) => /steals|roubos|roubadas|bolas recuperadas/.test(n)],
   ["blocks", (n) => /blocks|bloqueios|tocos|desarmes de lan/.test(n)],
+  ["points", (n) => /individual total/.test(n)], // VelvetSpin: "individual total" sem outra estatística = pontos
 ];
 // mercados que a DK não tem e que casariam com uma estatística dela (25/10: "3pt tentados" saiu como cestas de 3 a 6,5)
 const OUTRO = /tentad|tentativ|attempt|arremess|duplo|double/i;
@@ -249,8 +250,9 @@ export function renderCampeon(el, f, jogos) {
   }).join("");
   el.innerHTML = `<section class="panel"><h2>Casas × DraftKings</h2>
       <p class="muted">CampeonBet, JogaBrasil e 99play costumam demorar a acompanhar os movimentos. Aqui cada linha delas é comparada com a <b>DraftKings de agora</b>: a chance justa da DK (sem a margem) vira o <b>valor esperado</b> de cada lado na odd da casa (EV = chance × odd − 1). A linha importa: <b>na mesma linha da DK</b> a conta é direta; se a casa está <b>na linha em que a DK abriu</b> e a DK andou, a chance é levada 1 movimento real (é a defasagem que se procura); em <b>outra linha</b>, a chance é levada pelo modelo de distribuição (ainda não calibrado) e vale como estimativa. <b>Defasada</b> (verde) = EV ≥ ${num(100 * MIN_EV, 0)}% nos dois primeiros casos; pelo modelo, "a conferir" (amarelo). Na JogaBrasil (escada de linhas) entra a mesma linha da DK, senão a de abertura, senão a mais perto — nunca a "melhor" escolhida a dedo. A coleta só acontece quando você clica no botão — nada consulta as casas sozinho.</p>
-      <div class="campeon-passos"><b>Como coletar (com a extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar"; já tinha? clique em "Atualizar" — versão 1.15, vale para as três casas; atalhos: <b>D</b> captura a tela; na CampeonBet/99play <b>E</b> expande os quadros, <b>T</b> troca o time e o botão "Tudo: 2 times" faz os dois times da aba de uma vez; se a caixa azul não aparecer, use o menu do ícone do Tampermonkey; o Tampermonkey avisa que ele pode rodar em todos os sites: é porque as apostas da JogaBrasil ficam num quadro de outro domínio, e fora das duas casas o coletor não faz nada) · 3) clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só o que já está na tela — e no fim em <b>"Abrir a comparação"</b>:
+      <div class="campeon-passos"><b>Como coletar (com a extensão):</b> 1) instale o <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> no Chrome; nos detalhes da extensão (chrome://extensions), ligue <b>"Permitir scripts do usuário"</b> · 2) <a href="js/campeon.user.js" target="_blank" rel="noopener"><b>instale o coletor</b></a> (o Tampermonkey abre uma tela: clique em "Instalar"; já tinha? clique em "Atualizar" — versão 1.16, vale para as quatro casas; atalhos: <b>D</b> captura a tela; na CampeonBet/99play <b>E</b> expande os quadros, <b>T</b> troca o time e o botão "Tudo: 2 times" faz os dois times da aba de uma vez; se a caixa azul não aparecer, use o menu do ícone do Tampermonkey; o Tampermonkey avisa que ele pode rodar em todos os sites: é porque as apostas da JogaBrasil ficam num quadro de outro domínio, e fora das duas casas o coletor não faz nada) · 3) clique em <b>"Capturar esta tela"</b> na caixa azul do canto inferior esquerdo — ela lê só o que já está na tela — e no fim em <b>"Abrir a comparação"</b>:
         <br>· <a href="https://campeonbet.io/pt/sports?page=championship&amp;championshipIds=2980" target="_blank" rel="noopener">CampeonBet</a>: jogo › <b>"Especiais de Jogadores"</b>; capture cada time e cada aba (Pontos, 3 Pontos, Rebotes, Assistências, Combos; nos Combos abra cada quadro) — as capturas se somam.
+        <br>· <a href="https://www.velvetspin.fun/sports" target="_blank" rel="noopener">VelvetSpin</a>: jogo › aba <b>"Total de jogadores"</b> (quadros "individual total"); capture com D.
         <br>· <a href="https://99play.io/sports" target="_blank" rel="noopener">99play</a>: igual à CampeonBet — jogo › <b>"Especiais de Jogadores"</b>; abra cada quadro, capture um time, troque para o outro e capture de novo.
         <br>· <a href="https://jogabrasil.bet/sports/basketball/13589-nba" target="_blank" rel="noopener">JogaBrasil</a>: jogo › <b>"Mercado de Jogadores"</b>; se a lista carregar aos poucos, role até o fim e capture de novo.
         <br><small class="muted">Sem extensão: arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> (ou <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito, edite e cole no lugar do endereço) e clique nele na página da casa.</small></div>
