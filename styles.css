@@ -322,6 +322,14 @@ table.estreita { min-width: 0; max-width: 560px; }
 /* linha que apareceu nas últimas 2 h */
 .props-tab tr.nova td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .props-tab tr.nova td { background: var(--warn-bg); }
+.tag-cand { display: inline-block; margin-left: 4px; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.tag-cand.sinal { background: var(--good-bg); color: var(--good); }
+.tag-cand.caiu { background: none; color: var(--ink-3); font-weight: 500; }
+.sit-cand { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.sit-cand.sinal { background: var(--good-bg); color: var(--good); }
+.sit-cand.caiu { background: var(--bad-bg); color: var(--bad); }
+.cand-tab small { display: block; }
+tr.cand-caiu td { color: var(--ink-3); }
 .tag-nova { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--warn); color: var(--panel); white-space: nowrap; }
 /* aba Filtros: matriz filtro × mercado */
 .filtros-matriz { min-width: 1100px; font-size: 12.5px; }

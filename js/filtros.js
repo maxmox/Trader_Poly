@@ -132,18 +132,75 @@ export function propsDoArquivo(Ms) {
   }
   return props;
 }
+// ESTRATÉGIAS CANDIDATAS A SINAL (02/11/2026, pedido do usuário: "qual vale usar como sinal?"). Saíram de ~160 combinações
+// estratégia × mercado em 12 noites (scratchpad sinais_validar.mjs): NENHUMA passou no critério completo; estas ficaram positivas
+// nas duas metades e sem os 3 melhores jogos (por acaso sairiam ~5 de 9: parte é sorte), mais "manhã em assistências", a única
+// regra de 28/10 que se destacou fora da amostra. A situação é recalculada a cada rodada: sobe para "sinal" ou cai sozinha.
+// fonte = registro ao vivo (odds do registro); sem fonte = regra simulada no arquivo (fechamento). agora(y) = lado hoje ou null.
+export const DESDE_CAND = "2026-11-02"; // daqui em diante é o teste limpo: nada disto foi visto ao montar a lista
+export const CANDIDATAS = [
+  { id: "e12-pra", nome: "Edgely 12 h → Under", merc: "pra", fonte: "12h", lado: "U", agora: (y) => (y.reg12?.[0] === "U" ? "U" : null) },
+  { id: "e12-points", nome: "Edgely 12 h → Under", merc: "points", fonte: "12h", lado: "U", agora: (y) => (y.reg12?.[0] === "U" ? "U" : null) },
+  { id: "e12-pa", nome: "Edgely 12 h (lado dele)", merc: "pa", fonte: "12h", agora: (y) => y.reg12?.[0] ?? null },
+  { id: "par-ra", nome: "Jogo parelho, titular → Under", merc: "ra", fonte: "parelho-under", lado: "U", agora: (y) => (y.projMin >= 30 && y.handicap != null && Math.abs(y.handicap) <= 4 ? "U" : null) },
+  { id: "par-reb", nome: "Jogo parelho, titular → Under", merc: "rebounds", fonte: "parelho-under", lado: "U", agora: (y) => (y.projMin >= 30 && y.handicap != null && Math.abs(y.handicap) <= 4 ? "U" : null) },
+  { id: "tarde-pa", nome: "Linha caiu à tarde → Under", merc: "pa", fonte: "tarde-under", lado: "U", agora: (y) => (tarde(y) != null && tarde(y) <= -ANDOU && ladoMov(y) === "U" ? "U" : null) },
+  { id: "est-ast", nome: "Linha alta (6,5+) → Under", merc: "assists", fonte: "estrela-under", lado: "U", agora: (y) => (y.L1 >= ALTA.assists ? "U" : null) },
+  { id: "mov-3pm", nome: "Linha andou p/ Under → Under", merc: "threes", lado: "U", agora: (y) => (ladoMov(y) === "U" ? "U" : null) },
+  { id: "mov-pra", nome: "Linha andou p/ Under → Under", merc: "pra", lado: "U", agora: (y) => (ladoMov(y) === "U" ? "U" : null) },
+  { id: "manha-ast", nome: "Seguir o movimento da manhã", merc: "assists", agora: (y) => dirDe(cedo(y)) },
+];
+// mesmo critério da análise: amostra, intervalo por jogo acima de zero, as 2 metades positivas, positivo sem os 3 melhores jogos, noites
+function estatCand(B, corte) {
+  const n = B.length, roi = n ? B.reduce((t, b) => t + b.l, 0) / n : 0, J = new Map(), noite = {};
+  for (const b of B) { const q = J.get(b.jogo) || J.set(b.jogo, { s: 0, n: 0 }).get(b.jogo); q.s += b.l; q.n++; const w = (noite[b.dia] ||= [0, 0]); w[0] += b.l; w[1]++; }
+  let v = 0; for (const q of J.values()) v += (q.s - roi * q.n) ** 2;
+  const ep = J.size > 1 ? Math.sqrt((v * J.size) / (J.size - 1)) / n : null;
+  const ns = Object.values(noite).filter((q) => q[1] >= 3), pos = ns.filter((q) => q[0] > 0).length;
+  const sem = [...J.values()].sort((a, b) => b.s - a.s).slice(3), nS = sem.reduce((t, q) => t + q.n, 0);
+  const r = (V) => (V.length ? V.reduce((t, b) => t + b.l, 0) / V.length : null), m1 = B.filter((b) => b.dia < corte), m2 = B.filter((b) => b.dia >= corte), novo = B.filter((b) => b.dia >= DESDE_CAND);
+  const e = { n, jogos: J.size, roi, ic0: ep == null ? null : roi - 1.96 * ep, ic1: ep == null ? null : roi + 1.96 * ep, r1: r(m1), n1: m1.length, r2: r(m2), n2: m2.length, sem3: nS ? sem.reduce((t, q) => t + q.s, 0) / nS : null, noites: ns.length, pos, novo: r(novo), nNovo: novo.length };
+  const base = n >= 60 && roi > 0 && e.r1 > 0 && e.r2 > 0 && e.sem3 > 0;
+  e.sit = base && J.size >= 15 && e.ic0 > 0 && pos >= 0.6 * ns.length ? "sinal" : base && pos >= 0.5 * ns.length ? "observar" : "caiu";
+  return e;
+}
+export function avaliarCandidatas(props, A) {
+  const P = props.filter((x) => x.real != null && x.L1 != null && x.O1 && x.U1);
+  const noites = [...new Set(P.map((x) => x.dia))].sort(), corte = noites[Math.ceil(noites.length / 2)];
+  const lucro = (x, l) => { const o = l === "O" ? x.O1 : x.U1, r = resultadoA(x.tipo, x.real, x.L1); return r == null ? null : r === 0 ? 0 : (r > 0) === (l === "O") ? o - 1 : -1; };
+  const out = {};
+  for (const c of CANDIDATAS) {
+    const B = [];
+    if (c.fonte) for (const M of A.filter(Boolean)) {
+      const C = Object.fromEntries(M.campos.map((k, i) => [k, i]));
+      for (const a of M.apostas) {
+        if ((a[C.momento] || "12h") !== c.fonte || a[C.tipo] !== c.merc || !a[C.res] || a[C.res] === "A" || (c.lado && a[C.lado] !== c.lado)) continue;
+        const odd = a[C.lado] === "O" ? a[C.over] : a[C.under];
+        B.push({ jogo: a[C.jogo], dia: M.jogos[a[C.jogo]]?.dia, l: a[C.res] === "G" ? odd - 1 : a[C.res] === "R" ? -1 : 0 });
+      }
+    } else for (const x of P) {
+      if (x.tipo !== c.merc) continue;
+      const l = c.agora(x), v = l && lucro(x, l);
+      if (v != null && l) B.push({ jogo: x.jogo, dia: x.dia, l: v });
+    }
+    out[c.id] = estatCand(B, corte);
+  }
+  return out;
+}
 // resumo da temporada para a página (data/resumo/filtros.json, gravado pela Action em scripts/resumo.mjs): simulação,
 // persistência e os retratos das 12 h dos jogos que ainda vão começar (A = arquivos de apostas dos meses recentes)
-export function montarFiltros(props, A, agora = Date.now()) {
-  const p12 = {}, pj12 = {};
+export function montarFiltros(props, A, agora = Date.now(), todos = A) {
+  const p12 = {}, pj12 = {}, ap12 = {}; // ap12: registro das 12 h dos jogos por começar ("jogo|atleta|tipo" → [lado, linha, over, under])
   for (const M of A.filter(Boolean)) for (const [id, j] of Object.entries(M.jogos || {})) {
     if (j.inicio && j.inicio < agora - 12 * 3600e3) continue;
     if (j.p12) p12[id] = j.p12;
     if (j.pj12) pj12[id] = j.pj12;
+    const C = Object.fromEntries(M.campos.map((k, i) => [k, i]));
+    for (const a of M.apostas) if (a[C.jogo] === id && (a[C.momento] || "12h") === "12h") ap12[`${id}|${a[C.atleta]}|${a[C.tipo]}`] = [a[C.lado], a[C.linha], a[C.over], a[C.under]];
   }
   const porMercado = {};
   for (const x of props) if (x.real != null) porMercado[mercadoDe(x.tipo)] = (porMercado[mercadoDe(x.tipo)] || 0) + 1;
-  return { em: agora, sim: simular(props), pers: persistencia(props), dims: montarDims(props), porMercado, nProps: props.length, dias: new Set(props.map((x) => x.dia)).size, jogos: new Set(props.map((x) => x.jogo)).size, p12, pj12 };
+  return { em: agora, sim: simular(props), pers: persistencia(props), dims: montarDims(props), porMercado, nProps: props.length, dias: new Set(props.map((x) => x.dia)).size, jogos: new Set(props.map((x) => x.jogo)).size, p12, pj12, ap12, cand: avaliarCandidatas(props, todos) };
 }
 // LEVE (24/10): a página lê o resumo pronto (antes baixava a temporada inteira e simulava no navegador)
 export async function carregarFiltros() {
@@ -404,21 +461,30 @@ export function renderFiltros(el, f, jogos) {
   const minN = +(f.amostra || 30), minF = +(f.conf || 40), minConc = +(f.conc || 0), busca = nomeChave(f.busca), dims = arquivo.dims || {};
 
   // HOJE: as props de jogador dos jogos que não começaram, cada uma com as 4 respostas
-  const hoje = [];
+  const hoje = [], cands = arquivo.cand || {}, hojePorCand = {};
+  // "hoje" conta todas as linhas dos jogos por começar, sem os filtros de estatística e de jogador
+  const ativa = (c) => cands[c.id] && cands[c.id].sit !== "caiu";
+  const quais = (y, tipo) => CANDIDATAS.filter((c) => c.merc === tipo).map((c) => ({ c, lado: c.agora(y) })).filter((q) => q.lado);
+  const querCand = (q) => (f.cand === "todas" ? q.some((w) => ativa(w.c)) : q.some((w) => w.c.id === f.cand));
   for (const j of jogos) {
     if (j.estado !== "pre") continue;
     // linha às 12 h de Brasília (15h10 UTC do dia do jogo em Nova York): último ponto do histórico até lá
     const corte = Date.parse(`${new Date(j.inicio).toLocaleDateString("en-CA", { timeZone: "America/New_York" })}T15:10:00Z`) / 1000;
-    for (const x of j.linhas.filter((x) => (!f.tipo || x.tipo === f.tipo) && (!busca || nomeChave(x.jogador).includes(busca)))) {
+    const handicap = j.mercados?.find((m) => m.k === "spread")?.dk?.linha ?? null;
+    for (const x of j.linhas) {
       const h12 = (x.hist || []).filter((h) => h[0] != null && h[0] <= corte).pop();
       const y = { tipo: x.tipo, L0: x.dk.linhaAb, O0: x.dk.overAb, U0: x.dk.underAb, L1: x.dk.linha, O1: x.dk.over, U1: x.dk.under, proj30: x.proj ?? null,
-        L12: h12?.[1] ?? null, O12: h12?.[2] ?? null, U12: h12?.[3] ?? null };
+        L12: h12?.[1] ?? null, O12: h12?.[2] ?? null, U12: h12?.[3] ?? null, reg12: arquivo.ap12?.[x.id] ?? null, projMin: x.projMin ?? null, handicap };
+      const qc = quais(y, x.tipo);
+      for (const q of qc) hojePorCand[q.c.id] = (hojePorCand[q.c.id] || 0) + 1;
+      if ((f.tipo && x.tipo !== f.tipo) || (busca && !nomeChave(x.jogador).includes(busca))) continue;
+      if (f.cand && !querCand(qc)) continue;
       const R = DIMS.map(([id, , , bucket]) => resposta(dims, id, y.tipo, bucket(y), minN));
       const fortes = R.filter((r) => r && !r.vazio && !r.pouco && r.forca >= minF && r.firme), nO = fortes.filter((r) => r.lado === "O").length, nU = fortes.filter((r) => r.lado === "U").length;
       const conc = nO && nU ? 0 : Math.max(nO, nU);
-      if (conc < minConc) continue;
+      if (!f.cand && conc < minConc) continue; // com uma estratégia escolhida, a lista é a dela
       const lado = nO > nU ? "O" : nU > nO ? "U" : null;
-      hoje.push({ j, x, y, R, nO, nU, conc, lado, base: baseDe(x.tipo), soma: lado ? fortes.reduce((t, r) => t + r.s.rel, 0) : -9 });
+      hoje.push({ j, x, y, R, nO, nU, conc, lado, qc, base: baseDe(x.tipo), soma: lado ? fortes.reduce((t, r) => t + r.s.rel, 0) : -9 });
     }
   }
   hoje.sort((a, b) => b.conc - a.conc || b.soma - a.soma);
@@ -429,7 +495,7 @@ export function renderFiltros(el, f, jogos) {
     return `<span class="leit ${h.lado}">${h.lado === "O" ? "Over" : "Under"}<small>${h.conc} de ${DIMS.length} sinais</small></span>`;
   };
   const tabHoje = hoje.length ? `<div class="tbl-wrap"><table class="props-tab filtros-hoje filtros-sinais"><thead><tr><th>Jogador</th><th>Mercado</th><th class="n">Linha<small>abertura → agora</small></th><th class="n">Odds O / U<small>abertura → agora</small></th><th class="n">Projeção</th><th>Normal do mercado<small>Over / Under em tudo</small></th>${DIMS.map(([, nome, sub]) => `<th>${esc(nome)}<small>${esc(sub)}</small></th>`).join("")}<th>Leitura</th></tr></thead><tbody>
-    ${hoje.slice(0, MAX).map((h) => { const { j, x, y, R, base } = h; return `<tr${novaDesde(x) ? ' class="nova"' : ""}><td><b>${esc(x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}${novaDesde(x) ? ` <span class="tag-nova">nova · ${novaDesde(x)} min</span>` : ""}<small>${esc(j.titulo)} · ${quandoJogo(j)}</small></td>
+    ${hoje.slice(0, MAX).map((h) => { const { j, x, y, R, base } = h; return `<tr${novaDesde(x) ? ' class="nova"' : ""}><td><b>${esc(x.jogador)}</b>${x.lesao ? ` <span class="tag-les">${esc(x.lesao.status)}</span>` : ""}${novaDesde(x) ? ` <span class="tag-nova">nova · ${novaDesde(x)} min</span>` : ""}${h.qc.map((q) => `<span class="tag-cand ${cands[q.c.id]?.sit || ""}" title="${esc(`${q.c.nome} · ${MERCADOS[q.c.merc]}. Situação: ${cands[q.c.id]?.sit || "?"}${q.c.fonte === "12h" && y.reg12 ? `. No registro das 12 h: linha ${y.reg12[1]}, ${y.reg12[2]} / ${y.reg12[3]}` : ""}`)}">★ ${q.lado === "O" ? "Over" : "Under"}</span>`).join("")}<small>${esc(j.titulo)} · ${quandoJogo(j)}</small></td>
       <td>${TIPOS[x.tipo]}</td>
       <td class="n">${y.L0 != null && y.L0 !== y.L1 ? `${lin(y.L0)} → ` : ""}<b>${lin(y.L1)}</b>${y.L12 != null && y.L12 !== y.L1 ? `<small>12 h: ${lin(y.L12)}</small>` : ""}</td>
       <td class="n">${num(y.O0, 2)} / ${num(y.U0, 2)}<small>→ <b>${num(y.O1, 2)} / ${num(y.U1, 2)}</b></small></td>
@@ -454,7 +520,14 @@ export function renderFiltros(el, f, jogos) {
     ${grupos.map((g) => linhaPers(`${esc(g)} <small>a favor do filtro</small>`, P[`${g}|com`]) + linhaPers(`${esc(g)} <small>contra o filtro</small>`, P[`${g}|contra`])).join("")}</tbody></table></div>`;
   const umMercado = f.tipo && f.tipo !== "jogo" && arquivo.porMercado[mercadoDe(f.tipo)];
 
-  el.innerHTML = `<section class="panel"><h2>Linhas de hoje: de que lado está o dinheiro</h2>
+  const SIT = { sinal: ["sinal", "Sinal"], observar: ["observar", "Observar"], caiu: ["caiu", "Caiu"] };
+  const nSinal = CANDIDATAS.filter((c) => cands[c.id]?.sit === "sinal").length;
+  const painelCand = `<section class="panel"><h2>Estratégias candidatas a sinal</h2>
+      <p class="muted">Das ~160 combinações estratégia × mercado do Acompanhamento, estas são as que ainda ficam de pé. ${nSinal ? `<b>${nSinal} já passa${nSinal > 1 ? "m" : ""} no critério completo.</b>` : "<b>Nenhuma passou no critério completo ainda:</b> trate como candidatas, não como sinal comprovado; por acaso, cerca de metade da lista sairia assim."} A situação é recalculada a cada rodada. <b>Sinal</b> = ≥ 60 apostas, intervalo de 95% por jogo acima de zero, as 2 metades da temporada positivas, positivo sem os 3 melhores jogos e ≥ 60% das noites. <b>Observar</b> = igual, mas o intervalo ainda toca o zero. <b>Caiu</b> = deixou de cumprir. A coluna <b>desde ${DESDE_CAND.slice(8)}/${DESDE_CAND.slice(5, 7)}</b> é o teste limpo: nada dela foi visto ao montar a lista. Use o filtro <b>Estratégia</b> acima para ver as linhas de hoje de cada uma.</p>
+      <div class="tbl-wrap"><table class="props-tab filtros-temp cand-tab"><thead><tr><th>Estratégia</th><th>Mercado</th><th>Situação</th><th class="n">ROI<small>intervalo 95%</small></th><th class="n">Apostas<small>jogos</small></th><th class="n">1ª → 2ª metade</th><th class="n">Sem os 3 melhores</th><th class="n">Noites +</th><th class="n">Desde ${DESDE_CAND.slice(8)}/${DESDE_CAND.slice(5, 7)}</th><th class="n">Hoje</th></tr></thead><tbody>
+      ${[...CANDIDATAS].sort((a, b) => { const o = { sinal: 0, observar: 1, caiu: 2 }, A = cands[a.id], B = cands[b.id]; return (o[A?.sit] ?? 3) - (o[B?.sit] ?? 3) || (B?.roi ?? -9) - (A?.roi ?? -9); }).map((c) => { const e = cands[c.id]; if (!e) return ""; const s = SIT[e.sit]; return `<tr class="cand-${s[0]}"><td><b>${esc(c.nome)}</b></td><td>${esc(MERCADOS[c.merc])}</td><td><span class="sit-cand ${s[0]}">${s[1]}</span></td><td class="n"><b>${pc(e.roi)}</b><small>${pc(e.ic0, 0)} a ${pc(e.ic1, 0)}</small></td><td class="n">${e.n}<small>${e.jogos} jogos</small></td><td class="n">${pc(e.r1, 0)} → ${pc(e.r2, 0)}</td><td class="n">${pc(e.sem3)}</td><td class="n">${e.pos}/${e.noites}</td><td class="n">${e.nNovo ? `${pc(e.novo)}<small>${e.nNovo} apostas</small>` : "–"}</td><td class="n">${hojePorCand[c.id] || 0}</td></tr>`; }).join("")}
+      </tbody></table></div></section>`;
+  el.innerHTML = `${painelCand}<section class="panel"><h2>Linhas de hoje: de que lado está o dinheiro</h2>
       <p class="muted">Cada prop de jogador dos jogos que não começaram, com 4 perguntas sobre o <b>movimento da linha</b> e a <b>projeção do Edgely</b>, respondidas pela temporada <b>só no mesmo mercado</b>. O placar do jogo decide boa parte das props (numa noite de Over, todo Under perde), então cada resposta é <b>relativa ao jogo</b>: nas linhas que estavam como esta, quanto o Over e o Under renderam <b>a mais ou a menos que as outras props do mesmo jogo</b> (em pp de ROI) — o que sobra é o que a linha sabia. <b>Movimento total</b> = desde a abertura; <b>da tarde</b> = desde as 12 h de Brasília (o dinheiro da tarde é o mais informado); <b>projeção × linha</b> e <b>× abertura</b> = onde a projeção do Edgely está em desvios (em pontos, 17,5 com projeção 19 ≈ "acima"). Cada etiqueta: o lado melhor que o jogo, quantos pp e em quantas noites; embaixo, o ROI cru dos dois lados. Cor: <span class="sig O" style="--f:.8">azul = Over</span> <span class="sig U" style="--f:.8">laranja = Under</span>, forte só com força ≥ mínima <b>e</b> melhor que o jogo em ≥ 3/4 das noites; clara = fraco ou não se repetiu; cinza tracejado = pouca amostra. <b>Normal do mercado</b> = a margem da casa (ROI cru de apostar em tudo). <b>Leitura</b> = quantas perguntas apontam o mesmo lado com cor forte. Lembre: as props do mesmo jogo andam juntas — a leitura diz qual lado é melhor <b>dentro do jogo</b>; o clima do jogo é com você.</p>
       ${tabHoje}</section>
     <section class="panel"><h2>Como cada pergunta respondeu na temporada</h2>

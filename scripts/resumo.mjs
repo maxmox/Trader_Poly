@@ -43,7 +43,7 @@ for (const g of acomp.jogos) {
 }
 
 // Filtros
-const filtros = montarFiltros(propsDoArquivo(mk), ms.slice(-2));
+const filtros = montarFiltros(propsDoArquivo(mk), ms.slice(-2), Date.now(), ms); // candidatas a sinal: a temporada inteira de apostas
 await writeFile(new URL("filtros.json", OUT), json(filtros));
 
 const kb = (o) => `${Math.round(json(o).length / 1024)} KB`;
