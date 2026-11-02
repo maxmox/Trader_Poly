@@ -56,6 +56,13 @@ const custoCopia = (p) => p + taxa(p);
 const tetoDe = (preco, r = PADRAO) => Math.min(preco + Math.min(r.tetoCentavos / 100, preco * (r.tetoRelativo ?? 1)), r.precoMax);
 const toleranciaDe = (preco, r = PADRAO) => preco + Math.min(r.toleranciaCentavos / 100, preco * (r.toleranciaRelativa ?? 1));
 
+// Data API v2 (a v1 saiu do ar em 02/11/2026): linha em snake_case volta com os nomes da v1, usados no resto do código.
+// Em /positions, initialValue = custo de entrada do que ele ainda tem e cashPnl = ganho não realizado (como na v1).
+const linhaV1 = (x) => ({
+  ...x, proxyWallet: x.proxy_wallet, conditionId: x.condition_id, asset: x.token_id, usdcSize: x.usdc_size, eventSlug: x.event_slug, outcomeIndex: x.outcome_index,
+  ...(x.current_size != null && { size: x.current_size, avgPrice: x.avg_price, curPrice: x.current_price, initialValue: x.entry_cost_usdc, cashPnl: x.unrealized_pnl }),
+});
+
 function criarApi({ relay = "", fetchFn = globalThis.fetch, timeoutMs = 15000 } = {}) {
   const base = (host) => (relay && !DIRETO.has(host) ? `${relay.replace(/\/$/, "")}/${host}` : HOSTS[host]);
   async function get(host, path) {
@@ -70,7 +77,27 @@ function criarApi({ relay = "", fetchFn = globalThis.fetch, timeoutMs = 15000 } 
       clearTimeout(t);
     }
   }
-  return { get };
+  // v2: { data, pagination } com cursor (sem offset); continuar(página) decide se busca a próxima
+  async function dados(path, { maxPaginas = 1, continuar = () => true } = {}) {
+    const linhas = [];
+    let cursor = null;
+    for (let i = 0; i < maxPaginas; i++) {
+      const j = await get("data", `/v2${path}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      const pagina = (j?.data || []).map(linhaV1);
+      linhas.push(...pagina);
+      cursor = j?.pagination?.next_cursor;
+      if (!cursor || !pagina.length || !continuar(pagina)) break;
+    }
+    return linhas;
+  }
+  return { get, dados };
+}
+
+// Negócios de um mercado entre a e b (segundos). A v2 ignora start/end quando filtra por mercado e entrega do mais novo
+// para o mais antigo: anda pelas páginas até passar de a. Sem chegar lá em maxPaginas, a janela fica incompleta ou vazia.
+async function negociosDoMercado(api, cond, a, b, maxPaginas = 5) {
+  const linhas = await api.dados(`/trades?condition=${cond}&limit=1000`, { maxPaginas, continuar: (p) => p[p.length - 1].timestamp >= a });
+  return linhas.filter((x) => x.timestamp >= a && x.timestamp <= b);
 }
 
 // "nfl-chi-atl-2026-10-18" -> "nfl"; slugs antigos sem esse formato caem nas tags do evento
@@ -114,7 +141,7 @@ function volumeMercado(evento, slug) {
 // Serve para saber se ele "absorveu" (pagou no/acima do mercado) ou "pescou" preço abaixo.
 async function nivelAntes(api, cond, asset, carteira, t0seg) {
   if (!cond || !t0seg) return null;
-  const tr = await api.get("data", `/trades?market=${cond}&limit=500&start=${t0seg - 120}&end=${t0seg - 5}`).catch(() => null);
+  const tr = await negociosDoMercado(api, cond, t0seg - 120, t0seg - 5).catch(() => null);
   let s = 0, u = 0;
   for (const x of tr || []) {
     if ((x.proxyWallet || "").toLowerCase() === carteira.toLowerCase()) continue;
@@ -253,8 +280,9 @@ function vendasRecentes(atividade, desdeSeg, restante = {}) {
 async function carregarTrader(api, trader, { prefixos, regras = PADRAO, agora = Date.now(), cacheEventos = new Map(), limiteAtividade = 500, soEspecialidade = false, maxPosicoes = Infinity, comNivel = true, indices = null, comLivro = true } = {}) {
   const w = trader.carteira;
   const [posicoes, atividade] = await Promise.all([
-    api.get("data", `/positions?user=${w}&sizeThreshold=1&redeemable=false&limit=200`),
-    limiteAtividade ? api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`) : Promise.resolve([]),
+    // a v2 inclui as já resolvidas (redeemable, filtradas abaixo) e ordena por valor: limite alto para não perder as abertas
+    api.dados(`/positions?user=${w}&filter_type=TOKENS&filter_amount=1&limit=1000`),
+    limiteAtividade ? api.dados(`/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`) : Promise.resolve([]),
   ]);
   const primeiraCompra = {}, usdEntrada = {};
   const ultimaAtividade = (atividade || []).reduce((m, t) => Math.max(m, t.timestamp), 0);
@@ -345,7 +373,7 @@ async function carregarTodos(api, traders, opts = {}) {
 // Precisa de acesso em tempo real (direto ou relay); o retrato de 10 min não serve.
 async function carregarSinaisAoVivo(api, trader, { prefixos, agora = Date.now(), regras = PADRAO, cacheEventos = new Map(), historicoSeg = 900, limiteAtividade = 100, soCopiaveis = false, comNivel = true, indices = null } = {}) {
   const w = trader.carteira;
-  const atividade = (await api.get("data", `/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`)) || [];
+  const atividade = await api.dados(`/activity?user=${w}&type=TRADE&limit=${limiteAtividade}`);
   const corte = agora / 1000 - historicoSeg;
   // primeira compra de cada ativo dentro da lista (se já comprava antes da janela, não é entrada nova)
   const porAtivo = new Map();
@@ -752,6 +780,25 @@ function movimentoProp(tipo, linhaAb, linha, pAb, p) {
 // Projeção do Edgely (fórmula da página deles, nba.js _findBestOUPick): pontos do mandante = (ORtg mandante + DRtg
 // visitante) / 200 × ritmo médio; idem visitante. Guardamos {casa, fora, total, margem = mandante − visitante}.
 const DP_JOGO = { total: 18, margem: 12.5 }; // desvio típico do total e da margem de um jogo da NBA
+// FORMA RECENTE DOS TIMES (25/10/2026): projeção de pontos de cada time pelos últimos N_FORMA jogos (data/forma_times.json,
+// gravado pela Action em scripts/forma_times.mjs; no começo da temporada completa com o fim da anterior).
+//   pontos do visitante = (média que ele marca + média que o mandante sofre) / 2; idem para o mandante; total = soma.
+//   desvio-padrão da amostra: total = dos totais dos jogos dos dois times; time = raiz da média das variâncias de quanto ele
+//   marca e quanto o adversário sofre. z = (projeção − linha da DraftKings) / desvio: |z| < 0,15 na linha, 0,15–0,4 leve,
+//   ≥ 0,4 forte. Pontos de cada time pela DraftKings: total ± handicap (visitante +L → mandante = (T + L)/2).
+const N_FORMA = 10;
+function formaDoJogo(forma, siglaFora, siglaCasa) {
+  const A = forma?.times?.[siglaFora]?.jogos, B = forma?.times?.[siglaCasa]?.jogos;
+  if (!A?.length || !B?.length) return null;
+  const est = (v) => { const m = v.reduce((a, b) => a + b, 0) / v.length; return { m, dp: v.length > 1 ? Math.sqrt(v.reduce((t, x) => t + (x - m) ** 2, 0) / (v.length - 1)) : null }; };
+  const time = (J) => ({ marca: est(J.map((j) => j[1])), sofre: est(J.map((j) => j[2])), n: J.length, nAtual: J.filter((j) => j[4] === forma.temporada).length });
+  const a = time(A), b = time(B), dpTime = (x, y) => (x != null && y != null ? Math.sqrt((x * x + y * y) / 2) : null);
+  const fora = (a.marca.m + b.sofre.m) / 2, casa = (b.marca.m + a.sofre.m) / 2;
+  return { fora, casa, total: fora + casa, a, b, dpTotal: est([...A, ...B].map((j) => j[1] + j[2])).dp, dpFora: dpTime(a.marca.dp, b.sofre.dp), dpCasa: dpTime(b.marca.dp, a.sofre.dp) };
+}
+// leitura de uma projeção × linha em desvios
+const leituraZ = (z) => (z == null || !Number.isFinite(z) ? null : Math.abs(z) < 0.15 ? "na linha" : `${z > 0 ? "Over" : "Under"} ${Math.abs(z) < 0.4 ? "leve" : "forte"}`);
+
 function projecaoJogoEdgely(advCasa, advFora) {
   if (!advCasa || !advFora) return null;
   const ritmo = ((advCasa.pace || 100) + (advFora.pace || 100)) / 2;
@@ -986,8 +1033,7 @@ function entradasDe(atividade) {
 
 // preço que quem copia pagaria 1 min depois (1º negócio de compra no lado dele) e o nível antes
 async function precosEntrada(api, cond, asset, carteira, t0) {
-  const janela = (a, b) => api.get("data", `/trades?market=${cond}&limit=500&start=${a}&end=${b}`).catch(() => []);
-  const tr = [...((await janela(t0 - 120, t0 + 120)) || []), ...((await janela(t0 + 120, t0 + 660)) || [])];
+  const tr = await negociosDoMercado(api, cond, t0 - 120, t0 + 660, 30).catch(() => []);
   let s = 0, u = 0, p60 = null, t60 = Infinity;
   for (const x of tr) {
     if ((x.proxyWallet || "").toLowerCase() === carteira.toLowerCase()) continue;

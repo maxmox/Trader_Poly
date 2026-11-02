@@ -39,16 +39,7 @@ async function evento(slug) {
   return eventos.get(slug);
 }
 
-async function atividade(w) {
-  const out = [];
-  for (let off = 0; off < 1500; off += 500) {
-    const p = await api.get("data", `/activity?user=${w}&type=TRADE&limit=500&offset=${off}`).catch(() => null);
-    if (!p?.length) break;
-    out.push(...p);
-    if (p.length < 500 || p[p.length - 1].timestamp * 1000 < agora - DIAS * 864e5) break;
-  }
-  return out;
-}
+const atividade = (w) => api.dados(`/activity?user=${w}&type=TRADE&limit=500`, { maxPaginas: 3, continuar: (p) => p[p.length - 1].timestamp * 1000 >= agora - DIAS * 864e5 });
 
 function resumo(L) {
   const res = L.filter((x) => x.res != null);
