@@ -21,11 +21,19 @@ const api = criarApi({ relay: process.env.RELAY || "" });
 
 const indices = await ler("data/indices.json").catch(() => null);
 const snap = await carregarTodos(api, traders, { prefixos, indices });
-await writeFile(new URL("data/snapshot.json", raiz), JSON.stringify(snap));
-
 const n = snap.traders.reduce((s, t) => s + t.posicoes.length, 0);
 const copiar = snap.traders.reduce((s, t) => s + t.posicoes.filter((p) => p.status === "COPIAR").length, 0);
 const erros = snap.traders.filter((t) => t.erro);
 console.log(`${n} posições abertas, ${copiar} copiáveis agora`);
 for (const t of erros) console.error("erro", t.carteira, t.erro);
-if (erros.length === traders.length) process.exit(1);
+// Polymarket recusando todos (03/11/2026: 6h40 seguidas) não pode derrubar a rodada: o resto da Action (linhas e registro
+// da NBA) não depende dele. Fica o último retrato publicado; a causa aparece nas anotações da execução (públicas).
+if (erros.length === traders.length) {
+  const SITE = process.env.SITE_URL || "https://maxmox.github.io/Trader_Poly";
+  const pub = await fetch(`${SITE}/data/snapshot.json?t=${Date.now()}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  console.log(`::warning::Polymarket recusou todos os traders (${erros[0].erro}); ${pub?.traders ? "mantido o retrato publicado" : "sem retrato publicado"}`);
+  if (pub?.traders) await writeFile(new URL("data/snapshot.json", raiz), JSON.stringify(pub));
+  process.exitCode = pub?.traders ? 0 : 1;
+} else {
+  await writeFile(new URL("data/snapshot.json", raiz), JSON.stringify(snap));
+}

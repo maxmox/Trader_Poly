@@ -17,14 +17,12 @@ const agora = Date.now();
 
 // este cálculo leva ~6 min e segurava toda publicação (inclusive a das projeções da NBA): se o publicado tem menos
 // de 20 min, reaproveita (o placar e as entradas recentes ficam com no máximo ~30 min de atraso). FORCAR=1 recalcula.
-{
-  const SITE = process.env.SITE_URL || "https://maxmox.github.io/Trader_Poly";
-  const pub = await fetch(`${SITE}/data/desempenho.json?t=${agora}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  if (process.env.FORCAR !== "1" && pub?.geradoEm && agora - pub.geradoEm < 20 * 60e3 && pub.traders) {
-    await writeFile(new URL("data/desempenho.json", raiz), JSON.stringify(pub));
-    console.log(`Desempenho: reaproveitado o publicado (de ${Math.round((agora - pub.geradoEm) / 60e3)} min atrás)`);
-    process.exit(0);
-  }
+const SITE = process.env.SITE_URL || "https://maxmox.github.io/Trader_Poly";
+const pub = await fetch(`${SITE}/data/desempenho.json?t=${agora}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+if (process.env.FORCAR !== "1" && pub?.geradoEm && agora - pub.geradoEm < 20 * 60e3 && pub.traders) {
+  await writeFile(new URL("data/desempenho.json", raiz), JSON.stringify(pub));
+  console.log(`Desempenho: reaproveitado o publicado (de ${Math.round((agora - pub.geradoEm) / 60e3)} min atrás)`);
+  process.exit(0);
 }
 
 const prefixos = await ler("data/prefixos.json");
@@ -97,6 +95,13 @@ const out = {};
 for (let i = 0; i < listas.length; i += 4) {
   const lote = await Promise.all(listas.slice(i, i + 4).map((x) => trader(x).catch((e) => [x.t.carteira, { nome: x.t.nome, erro: String(e.message || e) }])));
   for (const [w, r] of lote) out[w] = r;
+}
+// Polymarket fora do ar: não troca o placar bom por um placar só de erros
+const falhas = Object.values(out).filter((r) => r.erro);
+if (pub?.traders && falhas.length === listas.length) {
+  console.log(`::warning::Desempenho: Polymarket recusou todos os traders (${falhas[0].erro}); mantido o placar publicado`);
+  await writeFile(new URL("data/desempenho.json", raiz), JSON.stringify(pub));
+  process.exit(0);
 }
 await writeFile(new URL("data/desempenho.json", raiz), JSON.stringify({ geradoEm: agora, dias: DIAS, traders: out }));
 for (const r of Object.values(out)) {
