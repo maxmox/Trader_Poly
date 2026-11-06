@@ -26,8 +26,13 @@
   <section>
     <div class="sec-head"><h1>Padrões por jogador</h1><span id="gerado" class="muted"></span></div>
     <p class="lede">Para cada titular provável: o que muda no resto do jogo depois de cada situação (começo, placar, faltas, colega fora), contra a taxa dele mesmo no mesmo placar. Só descreve comportamento: não é recomendação de aposta, e nada foi testado fora da amostra.</p>
+    <div class="tabs" role="tablist" aria-label="Visão">
+      <button type="button" role="tab" data-aba="pre" aria-selected="true">Pré-jogo</button>
+      <button type="button" role="tab" data-aba="vivo" aria-selected="false">Ao vivo</button>
+    </div>
     <p id="criterios" class="hint"></p>
     <div id="jogos"><p class="muted">carregando…</p></div>
+    <div id="vivo" hidden></div>
   </section>
 </main>
 <script type="module" src="js/padroes.js"></script>

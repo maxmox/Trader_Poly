@@ -1,5 +1,6 @@
 // Padrões por jogador (padroes.html): lê data/padroes/<dia>.json, gerado no PC por nba_pbp/analise_dia.py.
 import { $, esc } from "./formato.js";
+import { contarAte, margemAte, fechou, condicao, variaveis } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA" };
 const CHAVE = { points: "pts", rebounds: "reb", assists: "ast", threes: "tpm", pra: "pra" };
@@ -88,12 +89,129 @@ async function mostrar(dia) {
     $("#gerado").textContent = `gerado em ${new Date(d.gerado_em).toLocaleString("pt-BR")}`;
     $("#criterios").textContent = [d.definicoes, d.criterios].filter(Boolean).join(" ");
     $("#jogos").innerHTML = d.jogos.length ? d.jogos.map(jogoHtml).join("") : `<p class="muted">Sem jogos neste dia.</p>`;
+    DIA = d;
+    resumos.clear();
+    if (aba === "vivo") atualizarVivo();
   } catch (e) {
     $("#jogos").innerHTML = `<p class="erro">Não consegui ler a análise de ${esc(dia)} (${esc(e.message)}).</p>`;
   }
 }
 
+// ---------- Ao vivo: o lance a lance da ESPN diz se a situação de cada achado aconteceu ----------
+const ESPN_NBA = "/apis/site/v2/sports/basketball/nba";
+const ESPN_DIRETO = "https://site.api.espn.com";
+const PERIODO = { 12: 1, 24: 2, 36: 3 };
+const CHAVE_M = { pontos: "pts", arremessos: "fga", rebotes: "reb", "assistências": "ast", "cestas de 3": "tpm", "tentativas de 3": "tpa", "lances livres": "fta" };
+let DIA = null, aba = "pre", RELAY = null, rodando = false;
+const resumos = new Map(); // jogo → summary já encerrado (não busca de novo)
+
+async function espn(caminho) {
+  if (RELAY == null) {
+    const cfg = await fetch(`data/config.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
+    let relay = cfg.relay || "";
+    try { relay = JSON.parse(localStorage.getItem("traderpoly.cfg") || "{}").relay || relay; } catch { /* padrão */ }
+    RELAY = relay.replace(/\/$/, "");
+  }
+  // pelo relay (como a aba de props); se ele falhar, direto na ESPN
+  const urls = RELAY ? [`${RELAY}/espn${ESPN_NBA}${caminho}`, `${ESPN_DIRETO}${ESPN_NBA}${caminho}`] : [`${ESPN_DIRETO}${ESPN_NBA}${caminho}`];
+  for (const u of urls) {
+    const r = await fetch(u, { cache: "no-store" }).catch(() => null);
+    if (r?.ok) return r.json();
+  }
+  throw new Error("ESPN sem resposta");
+}
+
+const ESTADO = {
+  ativou: ["✔ aconteceu", "background:var(--good-bg);color:var(--good)"],
+  nao: ["não aconteceu", "background:var(--bg);color:var(--ink-3)"],
+  espera: ["aguardando", "background:var(--warn-bg);color:var(--warn)"],
+  antes: ["antes do jogo", "background:var(--bg);color:var(--ink-3)"],
+};
+
+function parcialTxt(a, st, margem) {
+  const k = /z_(\w+)/.exec(a.cond)?.[1];
+  if (k) return `agora: ${st?.[k] ?? 0} ${ESTAT[k]}`;
+  if (a.cond.includes("pf")) return `agora: ${st?.pf ?? 0} faltas`;
+  if (a.cond.includes("margem")) return `placar agora: ${sinal(margem, 0)}`;
+  return "";
+}
+
+function vivoJogo(g, s) {
+  const comp = s?.header?.competitions?.[0];
+  const status = comp?.status;
+  const comecou = status && status.type?.state !== "pre";
+  const per = status?.period ?? 0;
+  const placar = comp ? comp.competitors.map((c) => `${esc(c.team.abbreviation)} ${c.score ?? 0}`).join(" × ") : "";
+  const quando = !comecou ? "antes do jogo" : esc(status.type?.shortDetail || "");
+  const ativos = [];
+  const jogs = g.jogadores.map((j) => {
+    const vivos = j.achados.filter((a) => a.cond && !a.cond.includes(" in fora") && !a.comum_liga);
+    const pre = j.achados.filter((a) => a.cond?.includes(" in fora") && !a.comum_liga);
+    if (!vivos.length && !pre.length) return "";
+    const linhas = vivos.map((a) => {
+      const p = PERIODO[a.corte];
+      let est = "antes", extra = "";
+      if (comecou) {
+        const fechado = fechou(status, p);
+        const st = contarAte(s.plays, fechado ? p : per)[j.aid];
+        const margem = margemAte(comp.competitors, j.time, fechado ? p : per);
+        if (fechado) {
+          const v = variaveis(st, j.regua?.[String(a.corte)], margem, []);
+          est = condicao(a.cond)(v) ? "ativou" : "nao";
+          extra = parcialTxt(a, st, margem).replace("agora", "no corte").replace("placar agora", "placar no corte");
+        } else { est = "espera"; extra = parcialTxt(a, st, margem); }
+      }
+      // jogo encerrado: o que ele fez depois do corte, para conferir o achado (minutos não saem do lance a lance)
+      const k = CHAVE_M[a.metrica];
+      if (est === "ativou" && status.type?.completed && k) {
+        const depois = (contarAte(s.plays, 4)[j.aid]?.[k] ?? 0) - (contarAte(s.plays, PERIODO[a.corte])[j.aid]?.[k] ?? 0);
+        const certo = (depois - a.padrao) * (a.real - a.padrao) > 0;
+        extra += ` · depois fez ${depois} (achado ${num(a.real)}, padrão ${num(a.padrao)}) ${certo ? "→ foi para o lado do achado" : "→ não foi"}`;
+      }
+      if (est === "ativou") ativos.push({ j, a });
+      const [rot, cor] = ESTADO[est];
+      return `<li style="${est === "nao" ? "opacity:.55" : ""}"><span class="chip" style="${cor}">${rot}</span>
+        <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo
+        <small class="muted">(${a.classe}, ${a.n} jogos${extra ? " · " + esc(extra) : ""})</small></li>`;
+    }).join("");
+    const preHtml = pre.map((a) => `<li><span class="chip">pré-jogo</span> <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} <small class="muted">(${a.classe}, ${a.n} jogos; vale o jogo todo se ele seguir fora)</small></li>`).join("");
+    return `<article class="panel" style="margin:8px 0"><h3 style="margin:0 0 4px">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>
+      ${preHtml ? `<h4 style="margin:6px 0 2px">Pré-jogo</h4><ul class="regras">${preHtml}</ul>` : ""}
+      ${linhas ? `<h4 style="margin:6px 0 2px">Ao vivo</h4><ul class="regras">${linhas}</ul>` : ""}</article>`;
+  }).join("");
+  return { ativos, html: `<section style="margin-top:22px"><div class="sec-head"><h2>${esc(g.fora)} @ ${esc(g.casa)}</h2><span class="muted">${placar} · ${quando}</span></div>${jogs || '<p class="muted">Nenhum achado próprio dos titulares neste jogo.</p>'}</section>` };
+}
+
+async function atualizarVivo() {
+  if (!DIA || rodando || document.hidden) return;
+  rodando = true;
+  try {
+    await Promise.all(DIA.jogos.map(async (g) => {
+      if (resumos.get(g.id)?.header?.competitions?.[0]?.status?.type?.completed) return;
+      try { resumos.set(g.id, await espn(`/summary?event=${g.id}`)); } catch { /* fica com o anterior */ }
+    }));
+    const partes = DIA.jogos.map((g) => vivoJogo(g, resumos.get(g.id)));
+    const ativos = partes.flatMap((p) => p.ativos);
+    const topo = ativos.length
+      ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Situações que aconteceram (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a }) => `<li><b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small></li>`).join("")}</ul></div>`
+      : `<p class="muted">Nenhuma situação dos achados aconteceu ainda.</p>`;
+    $("#vivo").innerHTML = `<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). O começo bom/ruim é medido pela régua dele com os minutos típicos; se ele jogou bem mais ou bem menos no período, confira. Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
+  } finally { rodando = false; }
+}
+
+function trocarAba(nova) {
+  aba = nova;
+  for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.aba === nova));
+  $("#jogos").hidden = nova !== "pre";
+  $("#criterios").hidden = nova !== "pre";
+  $("#vivo").hidden = nova !== "vivo";
+  if (nova === "vivo") { $("#vivo").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; atualizarVivo(); }
+}
+
 (async () => {
+  for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => trocarAba(b.dataset.aba);
+  setInterval(() => { if (aba === "vivo") atualizarVivo(); }, 60e3);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && aba === "vivo") atualizarVivo(); });
   let datas = [];
   try { datas = (await json("data/padroes/indice.json")).datas; } catch { /* sem índice ainda */ }
   const sel = $("#data");
