@@ -33,6 +33,31 @@ export function contarAte(plays, ate) {
   return out;
 }
 
+// Segundos de jogo (tempo normal) de uma jogada ou do status: quarto + relógio "m:ss" restando.
+export function tempoDe(periodo, relogio) {
+  const [m, s] = String(relogio || "0:00").split(":").map(Number);
+  return (Math.min(periodo, 4) - 1) * 720 + 720 - ((m || 0) * 60 + (s || 0));
+}
+
+// O jogador está em quadra? Pelas substituições ("X enters the game for Y": 1º participante entra, 2º sai) e por qualquer
+// jogada dele depois da última saída. Entre quartos a ESPN não registra trocas: sem registro no quarto atual, diz que não sabe.
+export function emQuadra(plays, id, titular) {
+  // compara pela ordem das jogadas, não pelo relógio: troca e lance livre acontecem no mesmo segundo
+  let entrou = -1, saiu = -1, acao = -1, tEnt = 0, tSai = 0, tAc = 0;
+  (plays || []).forEach((p, i) => {
+    const t = tempoDe(p.period?.number ?? 1, p.clock?.displayValue);
+    const ids = (p.participants || []).map((x) => x.athlete?.id);
+    if (/substitution/i.test(p.type?.text || "")) {
+      if (ids[0] === id) { entrou = i; tEnt = t; }
+      if (ids[1] === id) { saiu = i; tSai = t; }
+    } else if (ids.includes(id)) { acao = i; tAc = t; }
+  });
+  if (saiu < 0) return { quadra: entrou >= 0 || acao >= 0 || !!titular, desde: tEnt };
+  // jogada no mesmo segundo da saída não conta como volta (a ESPN lança a troca antes dos lances livres do mesmo lance)
+  const voltou = entrou > saiu || (acao > saiu && tAc > tSai);
+  return { quadra: voltou, desde: voltou ? (entrou > acao ? tEnt : tAc) : tSai };
+}
+
 // Placar do time (sigla) menos o do adversário, somando os períodos até `ate`.
 export function margemAte(competitors, sigla, ate) {
   const soma = (c) => (c.linescores || []).slice(0, ate).reduce((t, l) => t + Number(l.displayValue ?? l.value ?? 0), 0);

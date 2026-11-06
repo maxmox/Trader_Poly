@@ -1,6 +1,6 @@
 // Padrões por jogador (padroes.html): lê data/padroes/<dia>.json, gerado no PC por nba_pbp/analise_dia.py.
 import { $, esc } from "./formato.js";
-import { contarAte, margemAte, fechou, condicao, variaveis } from "./jogada.js";
+import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA" };
 const CHAVE = { points: "pts", rebounds: "reb", assists: "ast", threes: "tpm", pra: "pra" };
@@ -66,6 +66,7 @@ function jogadorHtml(j) {
       <span class="muted">titular provável (${esc(j.origem)}) · ${base}</span></div>
     ${e ? `<p class="hint">Edgely: ${num(e.min)} min · ${num(e.pts)} pts · ${num(e.reb)} reb · ${num(e.ast)} ast · ${num(e.tpm)} 3PM · PRA ${num(e.pra)}</p>` : ""}
     ${linhasHtml(j)}
+    ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; entrar ao vivo ~1 min antes da volta, com ele no banco): ${j.rotacao.voltas.map((v) => `sai ${esc(v.saiu)}, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}
     ${fp ? `<p class="hint">Fim de jogo parelho (últimos 5 min, até 5 pontos; ${fp.min} min em ${fp.jogos} jogos): ${num(fp.pts36)} × ${num(fp.pts36_resto)} pontos por 36 · parte no volume do time ${num(100 * fp.parte)}% × ${num(100 * fp.parte_resto)}%${fp.posicao ? ` · ${fp.posicao}º maior aumento de ${fp.de}` : ""}</p>` : ""}
     <h4 style="margin:10px 0 4px">Situações do jogo</h4>${reguaHtml(j.regua)}${contagem}
     ${proprios.length ? `<ul class="regras">${proprios.map(achadoHtml).join("")}</ul>` : `<p class="muted">Nada firme dele: em ${j.testes} testes, nenhuma situação passou do critério além do que a liga já faz.</p>`}
@@ -136,6 +137,11 @@ function parcialTxt(a, st, margem) {
   return "";
 }
 
+// Volta no começo do quarto (sentou no fim do anterior): a janela é o fim do quarto anterior / a pausa entre eles.
+const voltaTxt = (v) => (v.volta === "12:00" ? `no início do Q${v.quarto}` : `no Q${v.quarto} com ~${v.volta}`);
+const entradaTxt = (v) => (v.volta === "12:00" ? `no fim do Q${v.quarto - 1} ou na pausa` : `~Q${v.quarto} ${v.entrada}`);
+const relogioTxt = (t) => { const r = Math.round(720 - (t % 720 || (t ? 720 : 0))); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
+
 function vivoJogo(g, s) {
   const comp = s?.header?.competitions?.[0];
   const status = comp?.status;
@@ -143,11 +149,26 @@ function vivoJogo(g, s) {
   const per = status?.period ?? 0;
   const placar = comp ? comp.competitors.map((c) => `${esc(c.team.abbreviation)} ${c.score ?? 0}`).join(" × ") : "";
   const quando = !comecou ? "antes do jogo" : esc(status.type?.shortDetail || "");
-  const ativos = [];
+  const ativos = [], janelas = [];
+  const tAgora = comecou ? tempoDe(per, status.displayClock) : -1;
+  const titulares = new Set((s?.boxscore?.players || []).flatMap((t) => (t.statistics?.[0]?.athletes || []).filter((a) => a.starter).map((a) => a.athlete?.id)));
   const jogs = g.jogadores.map((j) => {
     const vivos = j.achados.filter((a) => a.cond && !a.cond.includes(" in fora") && !a.comum_liga);
     const pre = j.achados.filter((a) => a.cond?.includes(" in fora") && !a.comum_liga);
-    if (!vivos.length && !pre.length) return "";
+    // Rotação: em quadra ou no banco, e se está na janela (até 2,5 min antes da volta típica neste quarto)
+    let rotHtml = "";
+    const rot = j.rotacao;
+    if (rot?.voltas?.length && comecou && !status.type?.completed) {
+      const st = emQuadra(s.plays, j.aid, titulares.has(j.aid));
+      const v = rot.voltas.find((x) => x.quarto === Math.min(per, 4) && tAgora <= x.volta_t + 30) || rot.voltas.find((x) => x.volta_t > tAgora);
+      const janela = !st.quadra && v && tAgora >= v.volta_t - 150 && tAgora <= v.volta_t + 30;
+      if (janela) janelas.push({ j, v });
+      const onde = st.quadra ? "em quadra" : `no banco desde Q${Math.min(Math.floor(st.desde / 720) + 1, 4)} ${relogioTxt(st.desde)}`;
+      rotHtml = `<p class="hint" style="${janela ? "background:var(--good-bg);color:var(--good);padding:4px 8px;border-radius:6px" : ""}">${janela ? "⏱ <b>janela de entrada agora</b> · " : ""}${onde}${v ? ` · volta típica ${voltaTxt(v)} (entrar ${entradaTxt(v)}, ${v.jogos}/${rot.jogos} jogos)` : ""}</p>`;
+    } else if (rot?.voltas?.length) {
+      rotHtml = `<p class="hint">Rotação (últimos ${rot.jogos} jogos): ${rot.voltas.map((v) => `volta ${voltaTxt(v)} → entrar ${entradaTxt(v)}`).join(" · ")}</p>`;
+    }
+    if (!vivos.length && !pre.length && !rotHtml) return "";
     const linhas = vivos.map((a) => {
       const p = PERIODO[a.corte];
       let est = "antes", extra = "";
@@ -175,11 +196,11 @@ function vivoJogo(g, s) {
         <small class="muted">(${a.classe}, ${a.n} jogos${extra ? " · " + esc(extra) : ""})</small></li>`;
     }).join("");
     const preHtml = pre.map((a) => `<li><span class="chip">pré-jogo</span> <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} <small class="muted">(${a.classe}, ${a.n} jogos; vale o jogo todo se ele seguir fora)</small></li>`).join("");
-    return `<article class="panel" style="margin:8px 0"><h3 style="margin:0 0 4px">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>
+    return `<article class="panel" style="margin:8px 0"><h3 style="margin:0 0 4px">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>${rotHtml}
       ${preHtml ? `<h4 style="margin:6px 0 2px">Pré-jogo</h4><ul class="regras">${preHtml}</ul>` : ""}
       ${linhas ? `<h4 style="margin:6px 0 2px">Ao vivo</h4><ul class="regras">${linhas}</ul>` : ""}</article>`;
   }).join("");
-  return { ativos, html: `<section style="margin-top:22px"><div class="sec-head"><h2>${esc(g.fora)} @ ${esc(g.casa)}</h2><span class="muted">${placar} · ${quando}</span></div>${jogs || '<p class="muted">Nenhum achado próprio dos titulares neste jogo.</p>'}</section>` };
+  return { ativos, janelas, html: `<section style="margin-top:22px"><div class="sec-head"><h2>${esc(g.fora)} @ ${esc(g.casa)}</h2><span class="muted">${placar} · ${quando}</span></div>${jogs || '<p class="muted">Nenhum achado próprio dos titulares neste jogo.</p>'}</section>` };
 }
 
 async function atualizarVivo() {
@@ -192,10 +213,14 @@ async function atualizarVivo() {
     }));
     const partes = DIA.jogos.map((g) => vivoJogo(g, resumos.get(g.id)));
     const ativos = partes.flatMap((p) => p.ativos);
+    const janelas = partes.flatMap((p) => p.janelas);
+    const janHtml = janelas.length
+      ? `<div class="panel" style="border-color:var(--accent);margin-bottom:10px"><h2 style="margin:0 0 6px">⏱ Janelas de entrada agora (${janelas.length})</h2><ul class="regras">${janelas.map(({ j, v }) => `<li><b>${esc(j.nome)}</b> (${esc(j.time)}) está no banco; costuma voltar ${voltaTxt(v)} (${v.jogos} dos últimos ${j.rotacao.jogos} jogos)</li>`).join("")}</ul></div>`
+      : "";
     const topo = ativos.length
       ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Situações que aconteceram (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a }) => `<li><b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small></li>`).join("")}</ul></div>`
       : `<p class="muted">Nenhuma situação dos achados aconteceu ainda.</p>`;
-    $("#vivo").innerHTML = `<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). O começo bom/ruim é medido pela régua dele com os minutos típicos; se ele jogou bem mais ou bem menos no período, confira. Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
+    $("#vivo").innerHTML = `${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Em quadra/no banco vem das substituições do lance a lance (aproximado: trocas entre quartos não são registradas). O começo bom/ruim é medido pela régua dele com os minutos típicos; se ele jogou bem mais ou bem menos no período, confira. Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
   } finally { rodando = false; }
 }
 
