@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Padrões por jogador</title>
+<meta name="description" content="Para cada titular provável dos jogos do dia: como ele reage ao placar, ao começo do jogo e às faltas, contra a taxa dele mesmo, com a projeção do Edgely, as linhas da DraftKings e os últimos jogos.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231d5fa8'/><path d='M8 21l6-6 4 4 7-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body class="props">
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand"><b>Trader Poly</b><span>padrões por jogador</span></div>
+    <div class="bar-right">
+      <a class="pill" href="./">← Sinais</a>
+      <a class="pill" href="props.html">Props NBA</a>
+      <select id="data" class="pill" aria-label="Dia"></select>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <section>
+    <div class="sec-head"><h1>Padrões por jogador</h1><span id="gerado" class="muted"></span></div>
+    <p class="lede">Para cada titular provável: o que muda no resto do jogo depois de cada situação (começo, placar, faltas, colega fora), contra a taxa dele mesmo no mesmo placar. Só descreve comportamento: não é recomendação de aposta, e nada foi testado fora da amostra.</p>
+    <p id="criterios" class="hint"></p>
+    <div id="jogos"><p class="muted">carregando…</p></div>
+  </section>
+</main>
+<script type="module" src="js/padroes.js"></script>
+</body>
+</html>
