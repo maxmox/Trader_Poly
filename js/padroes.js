@@ -66,7 +66,7 @@ function jogadorHtml(j) {
       <span class="muted">titular provável (${esc(j.origem)}) · ${base}</span></div>
     ${e ? `<p class="hint">Edgely: ${num(e.min)} min · ${num(e.pts)} pts · ${num(e.reb)} reb · ${num(e.ast)} ast · ${num(e.tpm)} 3PM · PRA ${num(e.pra)}</p>` : ""}
     ${linhasHtml(j)}
-    ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; entrar ao vivo ~1 min antes da volta, com ele no banco): ${j.rotacao.voltas.map((v) => `sai ${esc(v.saiu)}, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}
+    ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; tempos em minutos decorridos no quarto; entrar ao vivo ~1 min antes da volta, com ele no banco): ${j.rotacao.voltas.map((v) => `sai ${esc(saiuTxt(v.saiu))}, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}
     ${fp ? `<p class="hint">Fim de jogo parelho (últimos 5 min, até 5 pontos; ${fp.min} min em ${fp.jogos} jogos): ${num(fp.pts36)} × ${num(fp.pts36_resto)} pontos por 36 · parte no volume do time ${num(100 * fp.parte)}% × ${num(100 * fp.parte_resto)}%${fp.posicao ? ` · ${fp.posicao}º maior aumento de ${fp.de}` : ""}</p>` : ""}
     <h4 style="margin:10px 0 4px">Situações do jogo</h4>${reguaHtml(j.regua)}${contagem}
     ${proprios.length ? `<ul class="regras">${proprios.map(achadoHtml).join("")}</ul>` : `<p class="muted">Nada firme dele: em ${j.testes} testes, nenhuma situação passou do critério além do que a liga já faz.</p>`}
@@ -138,9 +138,13 @@ function parcialTxt(a, st, margem) {
 }
 
 // Volta no começo do quarto (sentou no fim do anterior): a janela é o fim do quarto anterior / a pausa entre eles.
-const voltaTxt = (v) => (v.volta === "12:00" ? `no início do Q${v.quarto}` : `no Q${v.quarto} com ~${v.volta}`);
-const entradaTxt = (v) => (v.volta === "12:00" ? `no fim do Q${v.quarto - 1} ou na pausa` : `~Q${v.quarto} ${v.entrada}`);
-const relogioTxt = (t) => { const r = Math.round(720 - (t % 720 || (t ? 720 : 0))); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
+// Tempos em minutos DECORRIDOS no quarto (pedido do usuário: "Q1 aos 10:00" = faltando 2:00); o arquivo guarda o relógio regressivo.
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+const decorrido = (rest) => { const [m, s] = String(rest).split(":").map(Number); return mmss(720 - ((m || 0) * 60 + (s || 0))); };
+const saiuTxt = (txt) => String(txt).replace(/(\d+:\d\d)/, (x) => `aos ${decorrido(x)}`);
+const voltaTxt = (v) => (v.volta === "12:00" ? `no início do Q${v.quarto}` : `no Q${v.quarto} aos ~${decorrido(v.volta)}`);
+const entradaTxt = (v) => (v.volta === "12:00" ? `no fim do Q${v.quarto - 1} ou na pausa` : `no Q${v.quarto} aos ~${decorrido(v.entrada)}`);
+const relogioTxt = (t) => `aos ${mmss(t % 720)}`;
 
 function vivoJogo(g, s) {
   const comp = s?.header?.competitions?.[0];
