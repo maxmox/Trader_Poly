@@ -34,9 +34,11 @@ export function contarAte(plays, ate) {
 }
 
 // Segundos de jogo (tempo normal) de uma jogada ou do status: quarto + relógio "m:ss" restando.
+// No último minuto a ESPN manda só os segundos ("34.5", sem ":"): não ler como 34 minutos.
 export function tempoDe(periodo, relogio) {
-  const [m, s] = String(relogio || "0:00").split(":").map(Number);
-  return (Math.min(periodo, 4) - 1) * 720 + 720 - ((m || 0) * 60 + (s || 0));
+  const txt = String(relogio || "0:00");
+  const resta = txt.includes(":") ? txt.split(":").reduce((m, s) => (Number(m) || 0) * 60 + (Number(s) || 0)) : Number(txt) || 0;
+  return (Math.min(periodo, 4) - 1) * 720 + 720 - resta;
 }
 
 // O jogador está em quadra? Pelas substituições ("X enters the game for Y": 1º participante entra, 2º sai) e por qualquer
