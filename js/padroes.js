@@ -42,11 +42,32 @@ function reguaHtml(rg) {
     <p class="hint">Com mais ou menos minutos que o típico, a régua muda junto. "–" = não dá para ficar abaixo de zero.</p></details>`;
 }
 
+// Força da entrada (pedido do usuário: colorir): classe + tamanho do efeito + amostra + os dois períodos parecidos.
+// Candidato não chega a "alta" (candidatos isolados ficam no nível do acaso na calibração).
+const FORCA = {
+  alta: ["força alta", "var(--good)", "var(--good-bg)"],
+  media: ["força média", "var(--warn)", "var(--warn-bg)"],
+  baixa: ["força baixa", "var(--ink-3)", "var(--bg)"],
+};
+function forca(a) {
+  const e = a.padrao ? Math.abs(a.real / a.padrao - 1) : 0;
+  const [p1, p2] = (a.per || []).map((v) => Math.abs(v));
+  const parecidos = p1 != null && p2 != null && Math.min(p1, p2) >= 0.5 * Math.max(p1, p2);
+  const pts = (e >= 0.15) + (e >= 0.3) + (a.n >= 25) + parecidos;
+  if (a.classe === "forte") return pts >= 3 ? "alta" : "media";
+  return pts >= 3 ? "media" : "baixa";
+}
+const ORDEM_F = { alta: 0, media: 1, baixa: 2 };
+const chipForca = (f) => `<span class="chip" style="background:${FORCA[f][2]};color:${FORCA[f][1]};border:1px solid ${FORCA[f][1]}">${FORCA[f][0]}</span>`;
+const bordaForca = (f) => `border-left:4px solid ${FORCA[f][1]};padding-left:8px`;
+const LEGENDA_F = `Força (conta 1 ponto para cada: efeito ≥ 15%, efeito ≥ 30%, 25+ jogos, os dois períodos parecidos): <b style="color:var(--good)">alta</b> = forte com 3+ pontos; <b style="color:var(--warn)">média</b> = outro forte, ou candidato com 3+ pontos; <b style="color:var(--ink-3)">baixa</b> = demais candidatos (no nível do acaso).`;
+
 function achadoHtml(a) {
   const per = a.per.map((v) => sinal(v, 2)).join(" / ");
   const nc = a.no_corte ? ` · nesses jogos, ${a.no_corte.estat === "margem" ? "placar" : ESTAT[a.no_corte.estat]} no ${CORTE[a.corte]}: ${a.no_corte.estat === "margem" ? sinal(a.no_corte.media) : num(a.no_corte.media)} em média` : "";
   const liga = a.liga == null ? "" : ` · liga ${sinal(a.liga, 2)}${a.comum_liga ? " (comum à liga)" : ""}`;
-  return `<li><span class="chip" style="${a.classe === "forte" ? "" : "background:var(--warn-bg);color:var(--warn)"}">${a.classe}</span>
+  const f = forca(a);
+  return `<li style="${bordaForca(f)}">${chipForca(f)} <span class="chip" style="${a.classe === "forte" ? "" : "background:var(--warn-bg);color:var(--warn)"}">${a.classe}</span>
     <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} do padrão no resto do jogo
     <small class="muted">(${a.n} jogos${nc} · dif. ${sinal(a.d, 2)} · P ${num(a.p, 3)} · períodos ${per}${liga})</small></li>`;
 }
@@ -60,7 +81,7 @@ function jogadorHtml(j) {
   const proprios = j.achados.filter((a) => !a.comum_liga);
   const comuns = j.achados.filter((a) => a.comum_liga);
   const acaso = RUIDO ? `${num(j.testes * RUIDO.forte)} forte e ${num(j.testes * RUIDO.candidato)} candidato(s)` : "";
-  const contagem = j.testes ? `<p class="hint">${j.testes} testes; só por acaso, sairiam ~${acaso}. Achado isolado pode ser sorte; vale mais o que combina com outros (mesma situação em várias estatísticas) ou com o que você já viu nos jogos.</p>` : "";
+  const contagem = j.testes ? `<p class="hint">${j.testes} testes; só por acaso, sairiam ~${acaso}. Achado isolado pode ser sorte; vale mais o que combina com outros (mesma situação em várias estatísticas) ou com o que você já viu nos jogos. ${LEGENDA_F}</p>` : "";
   return `<article class="panel" style="margin:10px 0">
     <div class="sec-head"><h3 style="margin:0">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>
       <span class="muted">titular provável (${esc(j.origem)}) · ${base}</span></div>
@@ -146,6 +167,25 @@ const voltaTxt = (v) => (v.volta === "12:00" ? `no início do Q${v.quarto}` : `n
 const entradaTxt = (v) => (v.volta === "12:00" ? `no fim do Q${v.quarto - 1} ou na pausa` : `no Q${v.quarto} aos ~${decorrido(v.entrada)}`);
 const relogioTxt = (t) => `aos ${mmss(t % 720)}`;
 
+// Prazo da entrada de um achado que aconteceu (segundos de jogo). A aposta é no resto do jogo, a partir do fim do corte:
+// se ele costuma sentar no começo do quarto seguinte, vale até 1 min depois da volta típica; senão, os 3 primeiros minutos
+// do quarto seguinte. Se ele já apareceu no lance a lance depois do corte, vale só até 1 min depois disso (a linha já ajustou).
+const quandoTxt = (t) => `Q${Math.floor(t / 720) + 1} aos ${mmss(t % 720)}`;
+function prazoEntrada(a, j, plays) {
+  const pc = PERIODO[a.corte], tc = pc * 720;
+  const v = j.rotacao?.voltas?.find((x) => x.quarto === pc + 1 && x.volta_t > tc + 30);
+  let prazo = v ? v.volta_t + 60 : tc + 180;
+  for (const p of plays || []) {
+    if ((p.period?.number ?? 0) <= pc) continue;
+    const ids = (p.participants || []).map((x) => x.athlete?.id);
+    if (/substitution/i.test(p.type?.text || "") ? ids[0] === j.aid : ids.includes(j.aid)) {
+      prazo = Math.min(prazo, tempoDe(p.period.number, p.clock?.displayValue) + 60);
+      break;
+    }
+  }
+  return prazo;
+}
+
 function vivoJogo(g, s) {
   const comp = s?.header?.competitions?.[0];
   const status = comp?.status;
@@ -153,17 +193,19 @@ function vivoJogo(g, s) {
   const per = status?.period ?? 0;
   const placar = comp ? comp.competitors.map((c) => `${esc(c.team.abbreviation)} ${c.score ?? 0}`).join(" × ") : "";
   const quando = !comecou ? "antes do jogo" : esc(status.type?.shortDetail || "");
-  const ativos = [], janelas = [];
-  const tAgora = comecou ? tempoDe(per, status.displayClock) : -1;
+  const ativos = [], janelas = [], velhos = [];
+  const acabou = !!status?.type?.completed;
+  const tAgora = comecou ? (acabou ? 1e9 : tempoDe(per, status.displayClock)) : -1;
   const titulares = new Set((s?.boxscore?.players || []).flatMap((t) => (t.statistics?.[0]?.athletes || []).filter((a) => a.starter).map((a) => a.athlete?.id)));
   const jogs = g.jogadores.map((j) => {
     const vivos = j.achados.filter((a) => a.cond && !a.cond.includes(" in fora") && !a.comum_liga);
     const pre = j.achados.filter((a) => a.cond?.includes(" in fora") && !a.comum_liga);
+    const stQ = comecou && !acabou ? emQuadra(s.plays, j.aid, titulares.has(j.aid)) : null;
     // Rotação: em quadra ou no banco, e se está na janela (até 2,5 min antes da volta típica neste quarto)
     let rotHtml = "";
     const rot = j.rotacao;
-    if (rot?.voltas?.length && comecou && !status.type?.completed) {
-      const st = emQuadra(s.plays, j.aid, titulares.has(j.aid));
+    if (rot?.voltas?.length && stQ) {
+      const st = stQ;
       const v = rot.voltas.find((x) => x.quarto === Math.min(per, 4) && tAgora <= x.volta_t + 30) || rot.voltas.find((x) => x.volta_t > tAgora);
       const janela = !st.quadra && v && tAgora >= v.volta_t - 150 && tAgora <= v.volta_t + 30;
       if (janela) janelas.push({ j, v });
@@ -172,10 +214,9 @@ function vivoJogo(g, s) {
     } else if (rot?.voltas?.length) {
       rotHtml = `<p class="hint">Rotação (últimos ${rot.jogos} jogos): ${rot.voltas.map((v) => `volta ${voltaTxt(v)} → entrar ${entradaTxt(v)}`).join(" · ")}</p>`;
     }
-    if (!vivos.length && !pre.length && !rotHtml) return "";
     const linhas = vivos.map((a) => {
       const p = PERIODO[a.corte];
-      let est = "antes", extra = "";
+      let est = "antes", extra = "", prazo = null;
       if (comecou) {
         const fechado = fechou(status, p);
         const st = contarAte(s.plays, fechado ? p : per)[j.aid];
@@ -193,18 +234,33 @@ function vivoJogo(g, s) {
         const certo = (depois - a.padrao) * (a.real - a.padrao) > 0;
         extra += ` · depois fez ${depois} (achado ${num(a.real)}, padrão ${num(a.padrao)}) ${certo ? "→ foi para o lado do achado" : "→ não foi"}`;
       }
-      if (est === "ativou") ativos.push({ j, a });
+      const f = forca(a);
+      if (est === "ativou") {
+        prazo = prazoEntrada(a, j, s.plays);
+        if (tAgora <= prazo) ativos.push({ j, a, f, prazo, extra });
+      }
       const [rot, cor] = ESTADO[est];
-      return `<li style="${est === "nao" ? "opacity:.55" : ""}"><span class="chip" style="${cor}">${rot}</span>
+      const li = `<li style="${bordaForca(f)}${est === "nao" ? ";opacity:.55" : ""}">${chipForca(f)} <span class="chip" style="${cor}">${rot}</span>
         <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo
-        <small class="muted">(${a.classe}, ${a.n} jogos${extra ? " · " + esc(extra) : ""})</small></li>`;
-    }).join("");
-    const preHtml = pre.map((a) => `<li><span class="chip">pré-jogo</span> <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} <small class="muted">(${a.classe}, ${a.n} jogos; vale o jogo todo se ele seguir fora)</small></li>`).join("");
+        <small class="muted">(${a.classe}, ${a.n} jogos${extra ? " · " + esc(extra) : ""}${prazo != null && tAgora <= prazo ? ` · <b>entrar até ${quandoTxt(prazo)}</b>` : ""})</small></li>`;
+      // sai do quadro: não aconteceu, ou aconteceu e o tempo de entrar já passou (vai para a lista recolhida)
+      if (est === "nao" || (est === "ativou" && tAgora > prazo)) { velhos.push(li.replace("<li ", `<li data-j="${esc(j.nome)}" `).replace("<b>", `<b>${esc(j.nome)}:</b> <b>`)); return { li: "", f }; }
+      return { li, f };
+    }).sort((x, y) => ORDEM_F[x.f] - ORDEM_F[y.f]).map((x) => x.li).join("");
+    // pré-jogo (colega fora hoje): a entrada é antes de o jogo começar
+    const preLis = pre.map((a) => {
+      const f = forca(a);
+      return { f, li: `<li style="${bordaForca(f)}">${chipForca(f)} <span class="chip">pré-jogo</span> <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} <small class="muted">(${a.classe}, ${a.n} jogos; vale o jogo todo se ele seguir fora)</small></li>` };
+    }).sort((x, y) => ORDEM_F[x.f] - ORDEM_F[y.f]);
+    if (comecou) preLis.forEach((x) => velhos.push(x.li.replace("<b>", `<b>${esc(j.nome)}:</b> <b>`)));
+    const preHtml = comecou ? "" : preLis.map((x) => x.li).join("");
+    if (!linhas && !preHtml && !rotHtml) return "";
     return `<article class="panel" style="margin:8px 0"><h3 style="margin:0 0 4px">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>${rotHtml}
       ${preHtml ? `<h4 style="margin:6px 0 2px">Pré-jogo</h4><ul class="regras">${preHtml}</ul>` : ""}
       ${linhas ? `<h4 style="margin:6px 0 2px">Ao vivo</h4><ul class="regras">${linhas}</ul>` : ""}</article>`;
   }).join("");
-  return { ativos, janelas, html: `<section style="margin-top:22px"><div class="sec-head"><h2>${esc(g.fora)} @ ${esc(g.casa)}</h2><span class="muted">${placar} · ${quando}</span></div>${jogs || '<p class="muted">Nenhum achado próprio dos titulares neste jogo.</p>'}</section>` };
+  const velhosHtml = velhos.length ? `<details style="margin-top:8px"><summary class="muted">Fora do quadro: ${velhos.length} (não aconteceu, timing passou ou pré-jogo com o jogo já começado)</summary><ul class="regras">${velhos.join("")}</ul></details>` : "";
+  return { ativos, janelas, html: `<section style="margin-top:22px"><div class="sec-head"><h2>${esc(g.fora)} @ ${esc(g.casa)}</h2><span class="muted">${placar} · ${quando}</span></div>${jogs || '<p class="muted">Nada em aberto neste jogo.</p>'}${velhosHtml}</section>` };
 }
 
 async function atualizarVivo() {
@@ -221,10 +277,11 @@ async function atualizarVivo() {
     const janHtml = janelas.length
       ? `<div class="panel" style="border-color:var(--accent);margin-bottom:10px"><h2 style="margin:0 0 6px">⏱ Janelas de entrada agora (${janelas.length})</h2><ul class="regras">${janelas.map(({ j, v }) => `<li><b>${esc(j.nome)}</b> (${esc(j.time)}) está no banco; costuma voltar ${voltaTxt(v)} (${v.jogos} dos últimos ${j.rotacao.jogos} jogos)</li>`).join("")}</ul></div>`
       : "";
+    ativos.sort((x, y) => ORDEM_F[x.f] - ORDEM_F[y.f] || x.prazo - y.prazo);
     const topo = ativos.length
-      ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Situações que aconteceram (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a }) => `<li><b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small></li>`).join("")}</ul></div>`
-      : `<p class="muted">Nenhuma situação dos achados aconteceu ainda.</p>`;
-    $("#vivo").innerHTML = `${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Em quadra/no banco vem das substituições do lance a lance (aproximado: trocas entre quartos não são registradas). O começo bom/ruim é medido pela régua dele com os minutos típicos; se ele jogou bem mais ou bem menos no período, confira. Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
+      ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Entradas em aberto (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a, f, prazo }) => `<li style="${bordaForca(f)}">${chipForca(f)} <b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small> · <b>entrar até ${quandoTxt(prazo)}</b></li>`).join("")}</ul></div>`
+      : `<p class="muted">Nenhuma entrada em aberto agora.</p>`;
+    $("#vivo").innerHTML = `${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Tempos em minutos decorridos no quarto. Entrada em aberto = a situação aconteceu e ainda dá tempo: até 1 min depois da volta típica dele no quarto seguinte (ou os 3 primeiros minutos, se ele não costuma sentar), e no máximo 1 min depois de ele aparecer de novo no lance a lance. O que não aconteceu ou passou do prazo vai para "Fora do quadro", recolhido no fim de cada jogo. ${LEGENDA_F} Em quadra/no banco vem das substituições (aproximado: trocas entre quartos não são registradas). Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
   } finally { rodando = false; }
 }
 
