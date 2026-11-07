@@ -62,12 +62,19 @@ const chipForca = (f) => `<span class="chip" style="background:${FORCA[f][2]};co
 const bordaForca = (f) => `border-left:4px solid ${FORCA[f][1]};padding-left:8px`;
 const LEGENDA_F = `Força (conta 1 ponto para cada: efeito ≥ 15%, efeito ≥ 30%, 25+ jogos, os dois períodos parecidos): <b style="color:var(--good)">alta</b> = forte com 3+ pontos; <b style="color:var(--warn)">média</b> = outro forte, ou candidato com 3+ pontos; <b style="color:var(--ink-3)">baixa</b> = demais candidatos (no nível do acaso).`;
 
+// Lado do achado: acima do padrão = Over, abaixo = Under. A janela de entrada depende do lado (usuário, 07/11):
+// Over = ~1 min antes da volta do banco (sentado a linha cai; na volta sobe e estabiliza);
+// Under = quando ele senta (a linha atrasa ou cai pouco), valendo até ele voltar (na volta a linha sobe: ainda vale).
+const ladoDe = (a) => (a.real > a.padrao ? "O" : "U");
+const LADO = { O: ["↑ Over", "var(--sig-o)"], U: ["↓ Under", "var(--sig-u)"] };
+const chipLado = (a) => { const [t, c] = LADO[ladoDe(a)]; return `<span class="chip" style="color:${c};border:1px solid ${c};background:transparent">${t}</span>`; };
+
 function achadoHtml(a) {
   const per = a.per.map((v) => sinal(v, 2)).join(" / ");
   const nc = a.no_corte ? ` · nesses jogos, ${a.no_corte.estat === "margem" ? "placar" : ESTAT[a.no_corte.estat]} no ${CORTE[a.corte]}: ${a.no_corte.estat === "margem" ? sinal(a.no_corte.media) : num(a.no_corte.media)} em média` : "";
   const liga = a.liga == null ? "" : ` · liga ${sinal(a.liga, 2)}${a.comum_liga ? " (comum à liga)" : ""}`;
   const f = forca(a);
-  return `<li style="${bordaForca(f)}">${chipForca(f)} <span class="chip" style="${a.classe === "forte" ? "" : "background:var(--warn-bg);color:var(--warn)"}">${a.classe}</span>
+  return `<li style="${bordaForca(f)}">${chipForca(f)} ${chipLado(a)} <span class="chip" style="${a.classe === "forte" ? "" : "background:var(--warn-bg);color:var(--warn)"}">${a.classe}</span>
     <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} do padrão no resto do jogo
     <small class="muted">(${a.n} jogos${nc} · dif. ${sinal(a.d, 2)} · P ${num(a.p, 3)} · períodos ${per}${liga})</small></li>`;
 }
@@ -87,7 +94,7 @@ function jogadorHtml(j) {
       <span class="muted">titular provável (${esc(j.origem)}) · ${base}</span></div>
     ${e ? `<p class="hint">Edgely: ${num(e.min)} min · ${num(e.pts)} pts · ${num(e.reb)} reb · ${num(e.ast)} ast · ${num(e.tpm)} 3PM · PRA ${num(e.pra)}</p>` : ""}
     ${linhasHtml(j)}
-    ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; tempos em minutos decorridos no quarto; entrar ao vivo ~1 min antes da volta, com ele no banco): ${j.rotacao.voltas.map((v) => `sai ${esc(saiuTxt(v.saiu))}, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}
+    ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; tempos em minutos decorridos no quarto; ↑ Over: entrar ~1 min antes da volta; ↓ Under: entrar quando ele senta, vale até ele voltar): ${j.rotacao.voltas.map((v) => `<b>sai ${esc(saiuTxt(v.saiu))}</b>, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>Over: entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}
     ${fp ? `<p class="hint">Fim de jogo parelho (últimos 5 min, até 5 pontos; ${fp.min} min em ${fp.jogos} jogos): ${num(fp.pts36)} × ${num(fp.pts36_resto)} pontos por 36 · parte no volume do time ${num(100 * fp.parte)}% × ${num(100 * fp.parte_resto)}%${fp.posicao ? ` · ${fp.posicao}º maior aumento de ${fp.de}` : ""}</p>` : ""}
     <h4 style="margin:10px 0 4px">Situações do jogo</h4>${reguaHtml(j.regua)}${contagem}
     ${proprios.length ? `<ul class="regras">${proprios.map(achadoHtml).join("")}</ul>` : `<p class="muted">Nada firme dele: em ${j.testes} testes, nenhuma situação passou do critério além do que a liga já faz.</p>`}
@@ -186,6 +193,47 @@ function prazoEntrada(a, j, plays) {
   return prazo;
 }
 
+// Trechos no banco depois do corte (segundos de jogo), pelo lance a lance: [{sai, volta|null}], partindo do estado no fim do corte.
+function bancoDepois(plays, aid, pc, titular) {
+  let quadra = emQuadra((plays || []).filter((p) => (p.period?.number ?? 0) <= pc), aid, titular).quadra, sai = pc * 720;
+  const out = [];
+  for (const p of plays || []) {
+    const per = p.period?.number ?? 0;
+    if (per <= pc) continue;
+    const t = tempoDe(per, p.clock?.displayValue);
+    const ids = (p.participants || []).map((x) => x.athlete?.id);
+    const sub = /substitution/i.test(p.type?.text || "");
+    if (quadra && sub && ids[1] === aid) { quadra = false; sai = t; }
+    else if (!quadra && (sub ? ids[0] === aid : ids.includes(aid) && t > sai)) { quadra = true; out.push({ sai, volta: t }); }
+  }
+  if (!quadra) out.push({ sai, volta: null });
+  return out;
+}
+
+const saiuT = (v) => v.saiu_t ?? v.volta_t - 60 * (v.banco_min || 0);
+
+// Entrada de um achado que aconteceu, conforme o lado: { prazo (segundos de jogo), agora (está na janela), txt }.
+function entradaDe(a, j, plays, stQ, titular, tAgora) {
+  const pc = PERIODO[a.corte], tc = pc * 720;
+  if (ladoDe(a) === "O") {
+    const prazo = prazoEntrada(a, j, plays);
+    const v = j.rotacao?.voltas?.find((x) => x.volta_t > Math.max(tAgora, tc) - 30);
+    const agora = !!(stQ && !stQ.quadra && v && tAgora >= v.volta_t - 150);
+    return { prazo, agora, txt: stQ && !stQ.quadra ? `no banco: entrar ~1 min antes da volta${v ? ` (costuma voltar ${voltaTxt(v)})` : ""}` : "" };
+  }
+  // Under: janela = sentado; vale até 1 min depois de ele voltar
+  const b = bancoDepois(plays, j.aid, pc, titular);
+  if (b[0]?.volta != null) return { prazo: b[0].volta + 60, agora: false, txt: `sentou ${b[0].sai === tc ? `no fim do Q${pc}` : quandoTxt(b[0].sai)}, voltou ${quandoTxt(b[0].volta)}` };
+  if (b[0]) {
+    const v = j.rotacao?.voltas?.find((x) => x.volta_t > Math.max(b[0].sai, tc) + 30);
+    return { prazo: Math.max(tAgora, v?.volta_t ?? 0) + 60, agora: true, txt: `no banco desde ${b[0].sai === tc ? `o fim do Q${pc}` : quandoTxt(b[0].sai)}: vale até ele voltar${v ? ` (costuma voltar ${voltaTxt(v)})` : ""}` };
+  }
+  const v = j.rotacao?.voltas?.find((x) => saiuT(x) > tAgora - 60 && x.volta_t > tc + 30);
+  return v
+    ? { prazo: v.volta_t + 60, agora: false, txt: `em quadra: esperar ele sentar (costuma sair ${quandoTxt(saiuT(v))})` }
+    : { prazo: tc + 180, agora: false, txt: "em quadra e não costuma sentar de novo" };
+}
+
 function vivoJogo(g, s) {
   const comp = s?.header?.competitions?.[0];
   const status = comp?.status;
@@ -202,21 +250,23 @@ function vivoJogo(g, s) {
     const pre = j.achados.filter((a) => a.cond?.includes(" in fora") && !a.comum_liga);
     const stQ = comecou && !acabou ? emQuadra(s.plays, j.aid, titulares.has(j.aid)) : null;
     // Rotação: em quadra ou no banco, e se está na janela (até 2,5 min antes da volta típica neste quarto)
-    let rotHtml = "";
+    let rotHtml = "", janelaO = null;
     const rot = j.rotacao;
     if (rot?.voltas?.length && stQ) {
       const st = stQ;
       const v = rot.voltas.find((x) => x.quarto === Math.min(per, 4) && tAgora <= x.volta_t + 30) || rot.voltas.find((x) => x.volta_t > tAgora);
       const janela = !st.quadra && v && tAgora >= v.volta_t - 150 && tAgora <= v.volta_t + 30;
-      if (janela) janelas.push({ j, v });
-      const onde = st.quadra ? "em quadra" : `no banco desde Q${Math.min(Math.floor(st.desde / 720) + 1, 4)} ${relogioTxt(st.desde)}`;
-      rotHtml = `<p class="hint" style="${janela ? "background:var(--good-bg);color:var(--good);padding:4px 8px;border-radius:6px" : ""}">${janela ? "⏱ <b>janela de entrada agora</b> · " : ""}${onde}${v ? ` · volta típica ${voltaTxt(v)} (entrar ${entradaTxt(v)}, ${v.jogos}/${rot.jogos} jogos)` : ""}</p>`;
+      if (janela) janelaO = { j, v, lado: "O" };
+      const prox = rot.voltas.find((x) => saiuT(x) > tAgora);
+      const onde = st.quadra ? `em quadra${prox ? ` · costuma sentar ${quandoTxt(saiuT(prox))}` : ""}` : `no banco desde Q${Math.min(Math.floor(st.desde / 720) + 1, 4)} ${relogioTxt(st.desde)}`;
+      rotHtml = `<p class="hint" style="${janela ? "background:var(--good-bg);color:var(--good);padding:4px 8px;border-radius:6px" : ""}">${janela ? "⏱ <b>janela Over agora</b> · " : ""}${onde}${v ? ` · volta típica ${voltaTxt(v)} (Over: entrar ${entradaTxt(v)}, ${v.jogos}/${rot.jogos} jogos)` : ""}</p>`;
     } else if (rot?.voltas?.length) {
-      rotHtml = `<p class="hint">Rotação (últimos ${rot.jogos} jogos): ${rot.voltas.map((v) => `volta ${voltaTxt(v)} → entrar ${entradaTxt(v)}`).join(" · ")}</p>`;
+      rotHtml = `<p class="hint">Rotação (últimos ${rot.jogos} jogos): ${rot.voltas.map((v) => `sai ${esc(saiuTxt(v.saiu))}, volta ${voltaTxt(v)} → Over: entrar ${entradaTxt(v)}`).join(" · ")}</p>`;
     }
+    let underAtivo = false;
     const linhas = vivos.map((a) => {
       const p = PERIODO[a.corte];
-      let est = "antes", extra = "", prazo = null;
+      let est = "antes", extra = "", prazo = null, ent = null;
       if (comecou) {
         const fechado = fechou(status, p);
         const st = contarAte(s.plays, fechado ? p : per)[j.aid];
@@ -235,22 +285,29 @@ function vivoJogo(g, s) {
         extra += ` · depois fez ${depois} (achado ${num(a.real)}, padrão ${num(a.padrao)}) ${certo ? "→ foi para o lado do achado" : "→ não foi"}`;
       }
       const f = forca(a);
+      let aberto = false;
       if (est === "ativou") {
-        prazo = prazoEntrada(a, j, s.plays);
-        if (tAgora <= prazo) ativos.push({ j, a, f, prazo, extra });
+        ent = entradaDe(a, j, s.plays, stQ, titulares.has(j.aid), tAgora);
+        prazo = ent.prazo;
+        aberto = !acabou && tAgora <= prazo;
+        if (aberto) {
+          ativos.push({ j, a, f, prazo, extra, ent });
+          if (ent.agora && ladoDe(a) === "U" && !underAtivo) { underAtivo = true; janelas.push({ j, lado: "U", txt: ent.txt }); }
+        }
       }
       const [rot, cor] = ESTADO[est];
-      const li = `<li style="${bordaForca(f)}${est === "nao" ? ";opacity:.55" : ""}">${chipForca(f)} <span class="chip" style="${cor}">${rot}</span>
+      const li = `<li style="${bordaForca(f)}${est === "nao" ? ";opacity:.55" : ""}">${chipForca(f)} ${chipLado(a)} <span class="chip" style="${cor}">${rot}</span>
         <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo
-        <small class="muted">(${a.classe}, ${a.n} jogos${extra ? " · " + esc(extra) : ""}${prazo != null && tAgora <= prazo ? ` · <b>entrar até ${quandoTxt(prazo)}</b>` : ""})</small></li>`;
+        <small class="muted">(${a.classe}, ${a.n} jogos${extra ? " · " + esc(extra) : ""}${aberto ? ` · <b>${ent.agora ? "⏱ janela agora · " : ""}${esc(ent.txt)}${ent.txt ? " · " : ""}entrar até ${quandoTxt(prazo)}</b>` : ""})</small></li>`;
       // sai do quadro: não aconteceu, ou aconteceu e o tempo de entrar já passou (vai para a lista recolhida)
-      if (est === "nao" || (est === "ativou" && tAgora > prazo)) { velhos.push(li.replace("<li ", `<li data-j="${esc(j.nome)}" `).replace("<b>", `<b>${esc(j.nome)}:</b> <b>`)); return { li: "", f }; }
+      if (est === "nao" || (est === "ativou" && !aberto)) { velhos.push(li.replace("<li ", `<li data-j="${esc(j.nome)}" `).replace("<b>", `<b>${esc(j.nome)}:</b> <b>`)); return { li: "", f }; }
       return { li, f };
     }).sort((x, y) => ORDEM_F[x.f] - ORDEM_F[y.f]).map((x) => x.li).join("");
+    if (janelaO && !underAtivo) janelas.push(janelaO); // com Under aberto para ele, a volta não é hora de Over
     // pré-jogo (colega fora hoje): a entrada é antes de o jogo começar
     const preLis = pre.map((a) => {
       const f = forca(a);
-      return { f, li: `<li style="${bordaForca(f)}">${chipForca(f)} <span class="chip">pré-jogo</span> <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} <small class="muted">(${a.classe}, ${a.n} jogos; vale o jogo todo se ele seguir fora)</small></li>` };
+      return { f, li: `<li style="${bordaForca(f)}">${chipForca(f)} ${chipLado(a)} <span class="chip">pré-jogo</span> <b>${esc(a.situacao)}</b> → ${esc(a.metrica)}: <b>${num(a.real)}</b> × ${num(a.padrao)} <small class="muted">(${a.classe}, ${a.n} jogos; vale o jogo todo se ele seguir fora)</small></li>` };
     }).sort((x, y) => ORDEM_F[x.f] - ORDEM_F[y.f]);
     if (comecou) preLis.forEach((x) => velhos.push(x.li.replace("<b>", `<b>${esc(j.nome)}:</b> <b>`)));
     const preHtml = comecou ? "" : preLis.map((x) => x.li).join("");
@@ -275,13 +332,16 @@ async function atualizarVivo() {
     const ativos = partes.flatMap((p) => p.ativos);
     const janelas = partes.flatMap((p) => p.janelas);
     const janHtml = janelas.length
-      ? `<div class="panel" style="border-color:var(--accent);margin-bottom:10px"><h2 style="margin:0 0 6px">⏱ Janelas de entrada agora (${janelas.length})</h2><ul class="regras">${janelas.map(({ j, v }) => `<li><b>${esc(j.nome)}</b> (${esc(j.time)}) está no banco; costuma voltar ${voltaTxt(v)} (${v.jogos} dos últimos ${j.rotacao.jogos} jogos)</li>`).join("")}</ul></div>`
+      ? `<div class="panel" style="border-color:var(--accent);margin-bottom:10px"><h2 style="margin:0 0 6px">⏱ Janelas de entrada agora (${janelas.length})</h2><ul class="regras">${janelas.map((x) => x.lado === "U"
+        ? `<li><span class="chip" style="color:var(--sig-u);border:1px solid var(--sig-u);background:transparent">↓ Under</span> <b>${esc(x.j.nome)}</b> (${esc(x.j.time)}) ${esc(x.txt)}</li>`
+        : `<li><span class="chip" style="color:var(--sig-o);border:1px solid var(--sig-o);background:transparent">↑ Over</span> <b>${esc(x.j.nome)}</b> (${esc(x.j.time)}) está no banco; costuma voltar ${voltaTxt(x.v)} (${x.v.jogos} dos últimos ${x.j.rotacao.jogos} jogos)</li>`).join("")}</ul></div>`
       : "";
-    ativos.sort((x, y) => ORDEM_F[x.f] - ORDEM_F[y.f] || x.prazo - y.prazo);
+    // janela aberta agora primeiro; depois força e prazo
+    ativos.sort((x, y) => (y.ent.agora - x.ent.agora) || ORDEM_F[x.f] - ORDEM_F[y.f] || x.prazo - y.prazo);
     const topo = ativos.length
-      ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Entradas em aberto (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a, f, prazo }) => `<li style="${bordaForca(f)}">${chipForca(f)} <b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small> · <b>entrar até ${quandoTxt(prazo)}</b></li>`).join("")}</ul></div>`
+      ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Entradas em aberto (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a, f, prazo, ent }) => `<li style="${bordaForca(f)}${ent.agora ? ";background:var(--good-bg)" : ""}">${chipForca(f)} ${chipLado(a)} <b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small><br><b>${ent.agora ? "⏱ janela agora · " : ""}${esc(ent.txt)}${ent.txt ? " · " : ""}entrar até ${quandoTxt(prazo)}</b></li>`).join("")}</ul></div>`
       : `<p class="muted">Nenhuma entrada em aberto agora.</p>`;
-    $("#vivo").innerHTML = `${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Tempos em minutos decorridos no quarto. Entrada em aberto = a situação aconteceu e ainda dá tempo: até 1 min depois da volta típica dele no quarto seguinte (ou os 3 primeiros minutos, se ele não costuma sentar), e no máximo 1 min depois de ele aparecer de novo no lance a lance. O que não aconteceu ou passou do prazo vai para "Fora do quadro", recolhido no fim de cada jogo. ${LEGENDA_F} Em quadra/no banco vem das substituições (aproximado: trocas entre quartos não são registradas). Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
+    $("#vivo").innerHTML = `${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Tempos em minutos decorridos no quarto. A janela depende do lado: <b>↑ Over</b> = entrar ~1 min antes de ele voltar do banco (vale até 1 min depois da volta típica no quarto seguinte, ou os 3 primeiros minutos se ele não costuma sentar, e no máximo 1 min depois de ele aparecer de novo no lance a lance); <b>↓ Under</b> = entrar quando ele senta, valendo até 1 min depois de ele voltar (em quadra, fica em aberto esperando ele sentar). Janela aberta agora fica em verde e no topo. O que não aconteceu ou passou do prazo vai para "Fora do quadro", recolhido no fim de cada jogo. ${LEGENDA_F} Em quadra/no banco vem das substituições (aproximado: trocas entre quartos não são registradas). Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
   } finally { rodando = false; }
 }
 
