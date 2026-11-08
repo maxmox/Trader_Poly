@@ -1,5 +1,6 @@
 // Padrões por jogador (padroes.html): lê data/padroes/<dia>.json, gerado no PC por nba_pbp/analise_dia.py.
 import { $, esc } from "./formato.js";
+import { mostrarCenarios } from "./cenarios.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA" };
@@ -121,6 +122,7 @@ async function mostrar(dia) {
     DIA = d;
     resumos.clear();
     if (aba === "vivo") atualizarVivo();
+    if (aba === "cen") mostrarCenarios($("#cen"), DIA);
   } catch (e) {
     $("#jogos").innerHTML = `<p class="erro">Não consegui ler a análise de ${esc(dia)} (${esc(e.message)}).</p>`;
   }
@@ -351,6 +353,8 @@ function trocarAba(nova) {
   $("#jogos").hidden = nova !== "pre";
   $("#criterios").hidden = nova !== "pre";
   $("#vivo").hidden = nova !== "vivo";
+  $("#cen").hidden = nova !== "cen";
+  if (nova === "cen") mostrarCenarios($("#cen"), DIA);
   if (nova === "vivo") { $("#vivo").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; atualizarVivo(); }
 }
 
