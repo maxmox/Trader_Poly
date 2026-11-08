@@ -6,12 +6,19 @@ const FALTA = /foul|charge|personal block|shooting block/i;
 // Estatísticas por atleta somando as jogadas até o fim do período `ate` (1 = fim do Q1, 2 = intervalo, 3 = fim do 3º).
 export function contarAte(plays, ate) {
   const out = {};
-  const de = (id) => (out[id] ??= { pts: 0, fga: 0, reb: 0, ast: 0, tpm: 0, pf: 0, tpa: 0, fta: 0 });
+  const de = (id) => (out[id] ??= { pts: 0, fga: 0, reb: 0, ast: 0, tpm: 0, pf: 0, tpa: 0, fta: 0, tov: 0, stl: 0, blk: 0 });
   for (const p of plays || []) {
     if ((p.period?.number ?? 99) > ate) break;
     const tipo = p.type?.text || "";
     const ids = (p.participants || []).map((x) => x.athlete?.id).filter(Boolean);
     if (!ids.length) continue;
+    // perdas, roubos e tocos (08/11; conferido contra o box: 72/72): perda = 1º participante; roubo e toco = 2º
+    if (/turnover/i.test(tipo)) {
+      de(ids[0]).tov += 1;
+      if (ids[1] && /steals/i.test(p.text || "")) de(ids[1]).stl += 1;
+      continue;
+    }
+    if (p.shootingPlay && !p.scoringPlay && ids[1] && / blocks /.test(p.text || "")) de(ids[1]).blk += 1;
     if (/free throw/i.test(tipo)) {
       de(ids[0]).fta += 1;
       if (p.scoringPlay) de(ids[0]).pts += 1;
@@ -81,14 +88,14 @@ export function condicao(py) {
     .replace(/"([^"]+)" in fora/g, (_, n) => `fora.includes(${JSON.stringify(n)})`)
     .replace(/\band\b/g, "&&").replace(/\bor\b/g, "||").replace(/\bnot\b/g, "!");
   // eslint-disable-next-line no-new-func
-  const f = new Function("v", `const {z_pts, z_fga, z_reb, z_ast, z_tpm, pf, margem, fora} = v; return (${js});`);
+  const f = new Function("v", `const {z_pts, z_fga, z_reb, z_ast, z_tpm, z_tov, z_stl, z_blk, pf, margem, fora} = v; return (${js});`);
   return (v) => { try { return !!f(v); } catch { return false; } };
 }
 
 // Variáveis do corte para um jogador: z de cada estatística pela régua dele (minutos típicos), faltas e placar.
 export function variaveis(st, regua, margem, fora) {
   const v = { pf: st?.pf ?? 0, margem, fora: fora || [] };
-  for (const k of ["pts", "fga", "reb", "ast", "tpm"]) {
+  for (const k of ["pts", "fga", "reb", "ast", "tpm", "tov", "stl", "blk"]) {
     const r = regua?.[k];
     v[`z_${k}`] = r && r.dp > 0 ? ((st?.[k] ?? 0) - r.esperado) / r.dp : 0;
   }

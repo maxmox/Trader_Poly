@@ -3,8 +3,8 @@ import { $, esc } from "./formato.js";
 import { mostrarCenarios } from "./cenarios.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
 
-const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA" };
-const CHAVE = { points: "pts", rebounds: "reb", assists: "ast", threes: "tpm", pra: "pra" };
+const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA", steals: "Roubos", blocks: "Tocos" };
+const CHAVE = { points: "pts", rebounds: "reb", assists: "ast", threes: "tpm", pra: "pra", steals: "stl", blocks: "blk" };
 const num = (v, c = 1) => (v == null ? "–" : Number(v).toFixed(c).replace(".", ","));
 let RUIDO = null; // fração dos testes que passa por acaso (calibrada em analise_dia.py)
 const sinal = (v, c = 1) => (v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(c).replace(".", ","));
@@ -28,7 +28,7 @@ function linhasHtml(j) {
   return `<div class="tbl-wrap"><table><thead><tr><th>Mercado</th><th>Linha DK</th><th>Over</th><th>Edgely</th><th>Últimos ${rec?.n ?? ""}</th><th>Acima</th></tr></thead><tbody>${linhas}</tbody></table></div>`;
 }
 
-const ESTAT = { pts: "pontos", fga: "arremessos", reb: "rebotes", ast: "assistências", tpm: "cestas de 3", margem: "placar do time", pf: "faltas" };
+const ESTAT = { pts: "pontos", fga: "arremessos", reb: "rebotes", ast: "assistências", tpm: "cestas de 3", tov: "perdas", stl: "roubos", blk: "tocos", margem: "placar do time", pf: "faltas" };
 const CORTE = { 12: "fim do 1º quarto", 24: "intervalo", 36: "fim do 3º quarto" };
 
 function reguaHtml(rg) {
@@ -36,7 +36,7 @@ function reguaHtml(rg) {
   const linha = (k, nome) => {
     const r = rg[k];
     if (!r) return "";
-    const it = ["pts", "fga", "reb", "ast", "tpm"].map((s) => `${ESTAT[s]} ${r[s].ruim < 0 ? "–" : "≤ " + r[s].ruim} · ${num(r[s].esperado)} · ≥ ${r[s].bom}`).join(" &nbsp;|&nbsp; ");
+    const it = ["pts", "fga", "reb", "ast", "tpm", "tov", "stl", "blk"].filter((s) => r[s]).map((s) => `${ESTAT[s]} ${r[s].ruim < 0 ? "–" : "≤ " + r[s].ruim} · ${num(r[s].esperado)} · ≥ ${r[s].bom}`).join(" &nbsp;|&nbsp; ");
     return `<li><b>${nome}</b> (jogando ~${num(r.min_tipico)} min): ruim · esperado · bom → ${it}</li>`;
   };
   return `<details><summary class="muted">O que é começo bom ou ruim para ele</summary><ul class="regras">${linha("12", "1º quarto")}${linha("24", "1º tempo")}</ul>
@@ -93,7 +93,7 @@ function jogadorHtml(j) {
   return `<article class="panel" style="margin:10px 0">
     <div class="sec-head"><h3 style="margin:0">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>
       <span class="muted">titular provável (${esc(j.origem)}) · ${base}</span></div>
-    ${e ? `<p class="hint">Edgely: ${num(e.min)} min · ${num(e.pts)} pts · ${num(e.reb)} reb · ${num(e.ast)} ast · ${num(e.tpm)} 3PM · PRA ${num(e.pra)}</p>` : ""}
+    ${e ? `<p class="hint">Edgely: ${num(e.min)} min · ${num(e.pts)} pts · ${num(e.reb)} reb · ${num(e.ast)} ast · ${num(e.tpm)} 3PM · PRA ${num(e.pra)}${e.stl != null ? ` · ${num(e.stl)} roubos · ${num(e.blk)} tocos` : ""}</p>` : ""}
     ${linhasHtml(j)}
     ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; tempos em minutos decorridos no quarto; ↑ Over: entrar ~1 min antes da volta; ↓ Under: entrar quando ele senta, vale até ele voltar): ${j.rotacao.voltas.map((v) => `<b>sai ${esc(saiuTxt(v.saiu))}</b>, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>Over: entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}
     ${fp ? `<p class="hint">Fim de jogo parelho (últimos 5 min, até 5 pontos; ${fp.min} min em ${fp.jogos} jogos): ${num(fp.pts36)} × ${num(fp.pts36_resto)} pontos por 36 · parte no volume do time ${num(100 * fp.parte)}% × ${num(100 * fp.parte_resto)}%${fp.posicao ? ` · ${fp.posicao}º maior aumento de ${fp.de}` : ""}</p>` : ""}
@@ -132,7 +132,7 @@ async function mostrar(dia) {
 const ESPN_NBA = "/apis/site/v2/sports/basketball/nba";
 const ESPN_DIRETO = "https://site.api.espn.com";
 const PERIODO = { 12: 1, 24: 2, 36: 3 };
-const CHAVE_M = { pontos: "pts", arremessos: "fga", rebotes: "reb", "assistências": "ast", "cestas de 3": "tpm", "tentativas de 3": "tpa", "lances livres": "fta" };
+const CHAVE_M = { pontos: "pts", arremessos: "fga", rebotes: "reb", "assistências": "ast", "cestas de 3": "tpm", "tentativas de 3": "tpa", "lances livres": "fta", "perdas de bola": "tov", "roubos": "stl", "tocos": "blk" };
 let DIA = null, aba = "pre", RELAY = null, rodando = false;
 const resumos = new Map(); // jogo → summary já encerrado (não busca de novo)
 
