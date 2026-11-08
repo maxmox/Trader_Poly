@@ -2,56 +2,6 @@
  "gerado_em": "2026-10-15",
  "traders": [
   {
-   "carteira": "0x51c7d30511ed096b39a9392bad97e0dc76c298aa",
-   "nome": "0x51c7d305",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "CS2",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho CS2 · vencedor · pré-jogo. Nicho CS2 · vencedor · pré-jogo: copiando 1 min depois 15,0% em 101 jogos (sem as 3 melhores 9,7%; metades 13,0% / 16,9%; chance de ser sorte 3%). Achado no garimpo de esports.",
-   "stats": {
-    "lucro": 41069.988423,
-    "meses": 14,
-    "meses_positivos": 14,
-    "apostas": 101,
-    "n": 101,
-    "roi_copia_60s": 14.96,
-    "preenche_60s_pct": 96.2,
-    "aposta_tipica": 1484.4526895,
-    "chance_sorte": 0.0255
-   }
-  },
-  {
-   "carteira": "0x4cb03276679d644ec1852f744668f345d41657e0",
-   "nome": "0x4cb03276",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "LoL",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho LoL · vencedor · pré-jogo. Nicho LoL · vencedor · pré-jogo: copiando 1 min depois 41,3% em 59 jogos (sem as 3 melhores 30,0%; metades 42,6% / 40,0%; chance de ser sorte 0%). Achado no garimpo de esports_v2.",
-   "stats": {
-    "lucro": 42107.362852,
-    "meses": 5,
-    "meses_positivos": 4,
-    "apostas": 59,
-    "n": 59,
-    "roi_copia_60s": 41.25,
-    "preenche_60s_pct": 80.8,
-    "aposta_tipica": 1964.08875,
-    "chance_sorte": 0.0
-   }
-  },
-  {
    "carteira": "0x54ce7dd357766fc3255645e55ef41edd51cc9f80",
    "nome": "mde4life1986",
    "nivel": "observar",
@@ -66,7 +16,7 @@
     "meses": 10,
     "meses_positivos": 7,
     "apostas": 308,
-    "roi_copia_5min": 13.0,
+    "roi_copia_5min": 13,
     "roi_dele": 16.15,
     "antecedencia_h": 13.3,
     "por_esporte": {
@@ -74,13 +24,13 @@
       "n": 130,
       "roi_pct": 17.65,
       "meses": 4,
-      "meses_pos_pct": 100.0
+      "meses_pos_pct": 100
      },
      "Futebol": {
       "n": 129,
       "roi_pct": 20.29,
       "meses": 5,
-      "meses_pos_pct": 100.0
+      "meses_pos_pct": 100
      }
     }
    }
@@ -101,13 +51,13 @@
     "apostas": 381,
     "roi_copia_5min": 5.99,
     "roi_dele": 8.22,
-    "antecedencia_h": 3.0,
+    "antecedencia_h": 3,
     "por_esporte": {
      "Futebol Americano": {
       "n": 125,
       "roi_pct": 32.11,
       "meses": 2,
-      "meses_pos_pct": 100.0
+      "meses_pos_pct": 100
      }
     }
    },
@@ -123,218 +73,6 @@
      "momento": "pré-jogo"
     }
    ]
-  },
-  {
-   "carteira": "0x46c5aa9e0e3afea63874dd609414250eb3c73188",
-   "nome": "Wristony",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho Futebol · vencedor · pré-jogo. Nicho Futebol · vencedor · pré-jogo: copiando 1 min depois 36,8% em 32 entradas (sem as 3 melhores 17,2%; metades 30,7% / 43,4%). Indicado pelo FutOdds; aprovado só neste nicho.",
-   "stats": {
-    "lucro": 23479.7,
-    "lucro_sem_top5": null,
-    "meses": 4,
-    "meses_positivos": 4,
-    "apostas": 32,
-    "n": 32,
-    "roi_copia_5min": 35.62,
-    "roi_dele": 28.16,
-    "roi_copia_60s": 36.84,
-    "preenche_60s_pct": 90.6,
-    "vol_mercado_med": 1667755
-   }
-  },
-  {
-   "carteira": "0xfd8ff771a52c22a8a29a3156572d9b3e47fd761d",
-   "nome": "0xfd8ff771",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Futebol Americano",
-     "tipo": "spreads",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho Futebol Americano · handicap · pré-jogo. Nicho Futebol Americano · handicap · pré-jogo: copiando 1 min depois 23,1% em 33 jogos (sem as 3 melhores 15,2%; metades 23,6% / 22,6%; chance de ser sorte 7%). Achado no garimpo de americano.",
-   "stats": {
-    "lucro": 3572.196167,
-    "meses": 5,
-    "meses_positivos": 5,
-    "apostas": 34,
-    "n": 34,
-    "roi_copia_60s": 23.08,
-    "preenche_60s_pct": 65.4,
-    "aposta_tipica": 502.36530500000003,
-    "chance_sorte": 0.066
-   }
-  },
-  {
-   "carteira": "0x3e856790872025b26922999651992ea70bfe788b",
-   "nome": "brunomedm",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Basquete",
-     "tipo": "points",
-     "momento": "pré-jogo"
-    },
-    {
-     "area": "Basquete",
-     "tipo": "rebounds",
-     "momento": "pré-jogo"
-    },
-    {
-     "area": "Basquete",
-     "tipo": "assists",
-     "momento": "pré-jogo"
-    },
-    {
-     "area": "Basquete",
-     "tipo": "threes",
-     "momento": "pré-jogo"
-    }
-   ],
-   "props": {
-    "max_usd": 50
-   },
-   "nota": "Só props de jogador da NBA, pré-jogo. Temporada 2025-26: 108 apostas, ROI dele +20,9%; copiando 1 min depois +25,4% (metades +24,5% / +26,3%; chance de ser sorte 10%), mas só 32% das apostas tinham negócio para copiar até o teto. Mercado raso: valor pequeno e ordem limitada.",
-   "stats": {
-    "lucro": 2954,
-    "meses": 4,
-    "meses_positivos": null,
-    "apostas": 108,
-    "n": 108,
-    "roi_copia_60s": 25.4,
-    "preenche_60s_pct": 32,
-    "aposta_tipica": 87
-   }
-  },
-  {
-   "carteira": "0x6bb33bdb14cea8f53766539efc6019b55e8a758e",
-   "nome": "lockrobster",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Basquete",
-     "tipo": "points",
-     "momento": "pré-jogo"
-    },
-    {
-     "area": "Basquete",
-     "tipo": "rebounds",
-     "momento": "pré-jogo"
-    },
-    {
-     "area": "Basquete",
-     "tipo": "assists",
-     "momento": "pré-jogo"
-    },
-    {
-     "area": "Basquete",
-     "tipo": "threes",
-     "momento": "pré-jogo"
-    }
-   ],
-   "props": {
-    "max_usd": 100
-   },
-   "nota": "Só props de jogador da NBA, pré-jogo (entra ~3 h antes). Temporada 2025-26: 336 apostas, lucro $26,5 mil; copiando 1 min depois +13,6% (chance de ser sorte 5%), mas caiu na segunda metade (+23% -> +4%) e só 40% das apostas tinham negócio para copiar até o teto. Mercado raso: valor pequeno e ordem limitada.",
-   "stats": {
-    "lucro": 26454,
-    "meses": 6,
-    "meses_positivos": null,
-    "apostas": 336,
-    "n": 336,
-    "roi_copia_60s": 13.6,
-    "preenche_60s_pct": 40,
-    "aposta_tipica": 296
-   }
-  },
-  {
-   "carteira": "0xf42d9b66eb8eb074b65c1a1a33dd203934880996",
-   "nome": "0xf42d9b66",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Tenis",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho Tênis · vencedor · pré-jogo. Nicho Tênis · vencedor · pré-jogo: copiando entrada e saída dele 1 min depois 50,5% em 25 jogos (sem as 3 melhores 21,3%; metades 49,7% / 51,2%; chance de ser sorte 1%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 2146.399415,
-    "meses": 5,
-    "meses_positivos": 5,
-    "apostas": 25,
-    "n": 25,
-    "roi_copia_60s": 50.5,
-    "preenche_60s_pct": 69.4,
-    "aposta_tipica": 100.899987,
-    "chance_sorte": 0.0085
-   },
-   "saida": {
-    "pct_sai": 28,
-    "n": 25,
-    "pct_lucro": 86,
-    "lucro_c": 24.5,
-    "pct_perda": 14,
-    "perda_c": -17.0,
-    "min_med": 287,
-    "pct_tudo": 86,
-    "pct_antes_jogo": 0,
-    "roi_saida": 50.5,
-    "roi_segurando": 76.0
-   }
-  },
-  {
-   "carteira": "0x8c8b3c58b60f50f12021d16dd1910e2582877a07",
-   "nome": "0x8c8b3c58",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "CS2",
-     "tipo": "moneyline",
-     "momento": "pré-jogo"
-    }
-   ],
-   "nota": "Só o nicho CS2 · vencedor · pré-jogo. Nicho CS2 · vencedor · pré-jogo: copiando entrada e saída dele 1 min depois 56,4% em 27 jogos (sem as 3 melhores 46,9%; metades 70,3% / 43,6%; chance de ser sorte 0%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 22870.500063000003,
-    "meses": 7,
-    "meses_positivos": 6,
-    "apostas": 27,
-    "n": 27,
-    "roi_copia_60s": 56.4,
-    "preenche_60s_pct": 71.1,
-    "aposta_tipica": 221.056525,
-    "chance_sorte": 0.0
-   },
-   "saida": {
-    "pct_sai": 85,
-    "n": 27,
-    "pct_lucro": 96,
-    "lucro_c": 38.5,
-    "pct_perda": 4,
-    "perda_c": -1.0,
-    "min_med": 254,
-    "pct_tudo": 100,
-    "pct_antes_jogo": 4,
-    "roi_saida": 56.4,
-    "roi_segurando": 59.1
-   }
   }
  ]
 }

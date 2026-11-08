@@ -45,9 +45,12 @@ export function linhaPlacar(d, sinais) {
 }
 
 export function secaoPlacar({ desempenho, registro, traders }) {
-  const D = desempenho?.traders || {};
+  // só os traders atuais contam (08/11/2026: os removidos e as estratégias retiradas saem de todas as contagens)
+  const atuais = new Set(traders.map(({ t }) => t.carteira));
+  const D = Object.fromEntries(Object.entries(desempenho?.traders || {}).filter(([w]) => atuais.has(w)));
+  const reg = (registro || []).filter((s) => atuais.has(s.w));
   const porW = {};
-  for (const s of registro || []) (porW[s.w] ||= []).push(s);
+  for (const s of reg) (porW[s.w] ||= []).push(s);
   const linhas = traders.map(({ t, momento }) => {
     const d = D[t.carteira], s = d?.d30, r = resumoRegistro(porW[t.carteira] || []);
     return `<tr><td>${esc(t.nome)}</td><td>${momento}</td>
@@ -57,13 +60,7 @@ export function secaoPlacar({ desempenho, registro, traders }) {
       <td class="n">${r.enviados ? `${r.acertos}/${r.resolvidos}${r.abertos ? ` +${r.abertos}` : ""}` : "–"}</td><td class="n">${pct(r.roi)}</td></tr>`;
   }).join("");
 
-  // estratégias retiradas em 24/10/2026 (resultado final dos sinais reais, para o histórico)
-  const retiradas = [["under-fut", "Futebol: Under"], ["seguir-bkt", "Basquete: seguir"]].map(([w, nome]) => {
-    const r = resumoRegistro(porW[w] || []);
-    return r.enviados ? `${nome}: ${r.acertos}/${r.resolvidos} acertos, ROI ${pct(r.roi)}` : "";
-  }).filter(Boolean).join(" · ");
-
-  // conferência da nota: 30 dias simulados (todos os traders) + sinais reais
+  // conferência da nota: 30 dias simulados + sinais reais (só traders atuais)
   const agg = {};
   for (const d of Object.values(D)) for (const [rot, v] of Object.entries(d.porNota || {})) {
     const a = (agg[rot] ||= { n: 0, soma: 0, acertos: 0, resolvidas: 0 });
@@ -71,7 +68,7 @@ export function secaoPlacar({ desempenho, registro, traders }) {
     a.acertos += v.acertos; a.resolvidas += v.resolvidas;
   }
   const reaisPorNota = {};
-  for (const s of registro || []) if (s.rt) (reaisPorNota[s.rt] ||= []).push(s);
+  for (const s of reg) if (s.rt) (reaisPorNota[s.rt] ||= []).push(s);
   const notas = ["forte", "boa", "neutra", "fraca"].map((rot) => {
     const a = agg[rot], r = resumoRegistro(reaisPorNota[rot] || []);
     return `<tr><td><span class="nota-pill ${rot}">${rot}</span></td>
@@ -83,7 +80,7 @@ export function secaoPlacar({ desempenho, registro, traders }) {
   return `<div class="sec-head"><h2>Placar</h2><span class="muted">últimos 30 dias atualizados em ${quando} · sinais reais desde o início do registro</span></div>
     <p class="muted lede"><b>30 dias</b>: entradas do trader na especialidade/nicho dele, como se tivessem virado sinal; "cópia" = comprar 1 min depois, na odd negociada, só se ainda estava acima da odd mínima. <b>Sinais reais</b>: o que o Telegram mandou, com o resultado conferido depois do jogo (ROI na odd disponível no envio).</p>
     <div class="tbl-wrap"><table><thead><tr><th>Trader</th><th>Tipo</th><th>Situação</th><th class="n">Acertos 30d</th><th class="n">Odd média</th><th class="n">ROI dele</th><th class="n">ROI cópia 30d</th><th class="n">Cópia 7d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${linhas}</tbody></table></div>
-    <p class="muted">Estratégias de futebol e basquete retiradas dos sinais em 24/10/2026 (sinais reais negativos)${retiradas ? `: ${retiradas}` : ""}.</p>
+    <p class="muted">Só os traders atuais entram nas contagens (limpeza de 08/11/2026: ficam os que têm sinal real positivo com 10+ resolvidos).</p>
     <h3>A nota está acertando?</h3>
     <div class="tbl-wrap"><table class="estreita"><thead><tr><th>Nota</th><th class="n">Acertos 30d</th><th class="n">ROI cópia 30d</th><th class="n">Sinais reais</th><th class="n">ROI sinais</th></tr></thead><tbody>${notas}</tbody></table></div>`;
 }

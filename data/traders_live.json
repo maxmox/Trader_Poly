@@ -2,40 +2,13 @@
  "gerado_em": "2026-10-15",
  "criterios": {
   "n": 40,
-  "roi60": 5.0,
-  "preenche60": 60.0,
-  "desl_max": 1.0,
+  "roi60": 5,
+  "preenche60": 60,
+  "desl_max": 1,
   "vol_merc": 100000,
-  "pescadas_max": 30.0
+  "pescadas_max": 30
  },
  "traders": [
-  {
-   "carteira": "0x581abb13f6c2c768c868260d6dec2ee96df8e40d",
-   "nome": "0x581abb13",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "LoL",
-     "tipo": "child_moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando 1 min depois 21,5% em 69 jogos (sem as 3 melhores 13,8%; metades 28,3% / 14,8%; chance de ser sorte 3%). Achado no garimpo de esports.",
-   "stats": {
-    "lucro": 16242.216137,
-    "meses": 4,
-    "meses_positivos": 4,
-    "apostas": 92,
-    "n": 92,
-    "roi_copia_60s": 21.54,
-    "preenche_60s_pct": 80.0,
-    "aposta_tipica": 963.6345,
-    "chance_sorte": 0.0335
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
   {
    "carteira": "0xe21cff72d4004e36d6047e837c198e33fe99b754",
    "nome": "0xe21cff72",
@@ -56,36 +29,9 @@
     "apostas": 134,
     "n": 134,
     "roi_copia_60s": 14.63,
-    "preenche_60s_pct": 67.0,
+    "preenche_60s_pct": 67,
     "aposta_tipica": 254.375,
     "chance_sorte": 0.01075
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
-   "carteira": "0x5e5175106a7dbbd92b10f1b56458fc8c1bdd42ce",
-   "nome": "0x5E51…42ce",
-   "nivel": "copiar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "LoL",
-     "tipo": "child_moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho LoL · vencedor do mapa · ao vivo. Nicho LoL · vencedor do mapa · ao vivo: copiando 1 min depois 18,7% em 53 jogos (sem as 3 melhores 12,4%; metades 9,0% / 28,3%; chance de ser sorte 4%). Achado no garimpo de ranking_nichos.",
-   "stats": {
-    "lucro": 104444,
-    "meses": 16,
-    "meses_positivos": 13,
-    "apostas": 99,
-    "n": 99,
-    "roi_copia_60s": 18.73,
-    "preenche_60s_pct": 68.3,
-    "aposta_tipica": 392.75260000000003,
-    "chance_sorte": 0.04225
    },
    "janelaSeg": 60,
    "minUsd": 0
@@ -150,49 +96,13 @@
     "roi_copia_60s": 17.27,
     "roi_copia_120s": 19.95,
     "roi_copia_60s_sem_teto": 14.06,
-    "preenche_60s_pct": 82.0,
+    "preenche_60s_pct": 82,
     "vol_mercado_med": 437769,
     "entrada_med_usd": 804,
     "deslocamento_med_c": -1.31,
     "roi_copia_60s_sem_top3": 7.272467335470858,
     "roi_copia_60s_metade_recente": 15.624719041825202,
     "roi_copia_60s_metade_antiga": 18.91575937465592
-   },
-   "nichosFortes": [
-    {
-     "area": "Tenis",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ]
-  },
-  {
-   "carteira": "0x9bf7b81568ae59dafcb6a233a1d4cdeb593ce41f",
-   "nome": "bronzer6",
-   "nivel": "observar",
-   "esportes": [
-    "Tenis"
-   ],
-   "janelaSeg": 120,
-   "minUsd": 0,
-   "nota": "Copiando 1 min depois: 46,0% em 65 entradas ao vivo (metade recente 49,0%, metade antiga 43,6%, sem as 3 melhores 28,6%). 3 meses de histórico. Entrada mediana de $1.166, em mercados com $684.812 de volume. Nicho Tênis · vencedor · ao vivo: copiando 1 min depois 46,0% em 64 entradas (sem as 3 melhores 28,6%; metades 49,0% / 43,6%).",
-   "stats": {
-    "lucro": 33142,
-    "meses": 3,
-    "meses_positivos": 2,
-    "n": 65,
-    "roi_dele": 29.91,
-    "roi_copia_30s": 37.25,
-    "roi_copia_60s": 46.04,
-    "roi_copia_120s": 28.93,
-    "roi_copia_60s_sem_teto": 32.44,
-    "preenche_60s_pct": 78.5,
-    "vol_mercado_med": 684812,
-    "entrada_med_usd": 1166,
-    "deslocamento_med_c": 0.69,
-    "roi_copia_60s_sem_top3": 28.557163373932635,
-    "roi_copia_60s_metade_recente": 49.02309438306316,
-    "roi_copia_60s_metade_antiga": 43.581770708515535
    },
    "nichosFortes": [
     {
@@ -262,7 +172,7 @@
     "apostas": 93,
     "n": 93,
     "roi_copia_60s": 16.4,
-    "preenche_60s_pct": 66.0,
+    "preenche_60s_pct": 66,
     "aposta_tipica": 348.4805,
     "chance_sorte": 0.012
    },
@@ -278,46 +188,6 @@
     "pct_antes_jogo": 0,
     "roi_saida": 16.4,
     "roi_segurando": 20.2
-   },
-   "janelaSeg": 60,
-   "minUsd": 0
-  },
-  {
-   "carteira": "0x61a8d4b326218a2fd2abd32b0670b16ba2f41ad4",
-   "nome": "0x61a8d4b3",
-   "nivel": "observar",
-   "esportes": [],
-   "nichos": [
-    {
-     "area": "Tenis",
-     "tipo": "moneyline",
-     "momento": "ao vivo"
-    }
-   ],
-   "nota": "Só o nicho Tênis · vencedor · ao vivo. Nicho Tênis · vencedor · ao vivo: copiando entrada e saída dele 1 min depois 17,5% em 48 jogos (sem as 3 melhores 2,0%; metades 21,1% / 13,8%; chance de ser sorte 8%). Achado no garimpo de saidas.",
-   "stats": {
-    "lucro": 9465.110422999995,
-    "meses": 3,
-    "meses_positivos": 3,
-    "apostas": 48,
-    "n": 48,
-    "roi_copia_60s": 17.5,
-    "preenche_60s_pct": 59.3,
-    "aposta_tipica": 226.893494,
-    "chance_sorte": 0.08425
-   },
-   "saida": {
-    "pct_sai": 58,
-    "n": 48,
-    "pct_lucro": 86,
-    "lucro_c": 15.0,
-    "pct_perda": 11,
-    "perda_c": -21.5,
-    "min_med": 41,
-    "pct_tudo": 100,
-    "pct_antes_jogo": 0,
-    "roi_saida": 17.5,
-    "roi_segurando": 29.3
    },
    "janelaSeg": 60,
    "minUsd": 0
