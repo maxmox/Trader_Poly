@@ -148,6 +148,61 @@ const DIMTXT = { blowout: "chance de blowout", clutch: "chance de clutch apertad
 const CORTETXT = { 12: "fim do Q1", 24: "intervalo", 36: "fim do Q3" };
 const insTxt = (x) => `começo ${x.ini} + ${DIMTXT[x.dim]} ${x.nivel} (medido no ${CORTETXT[x.corte]}): termina ${x.u > 0 ? "+" : "−"}${num(Math.abs(x.u))} em relação à linha justa (${x.z > 0 ? "+" : "−"}${num(Math.abs(x.z), 2)} desvio; mesmo sinal em 3 testes, ${x.n + x.nC} casos)`;
 
+// Sinais para a aba Ao vivo (09/11): insight ativo agora × o histórico do jogador nesse tipo de insight
+// (nba_pbp/insights_jogador.py). Pontos, PRA e 3PM usam o jogador (separou fora da amostra: quem seguiu na 1ª metade
+// dos jogos seguiu na 2ª); rebotes e assistências usam a liga. Efeito dele = efeito do insight × (encolhido dele ÷ liga);
+// vira sinal com 0,12+ desvio. Linha alvo = linha justa + efeito dele (comparar com a linha ao vivo da casa).
+export function sinaisJogo(g, s, d) {
+  const comp = s?.header?.competitions?.[0];
+  const st = comp?.status;
+  if (st?.type?.state !== "in" || !d?.ins?.insights) return [];
+  const rel = relogio(st);
+  const box = lerBox(s);
+  const placar = Object.fromEntries((comp.competitors || []).map((c) => [c.team.abbreviation, Number(c.score) || 0]));
+  const margemDe = (t) => placar[t] - (Object.entries(placar).find(([k]) => k !== t)?.[1] ?? 0);
+  const hTime = (t) => (g.handicap == null ? null : t === g.casa ? g.handicap : -g.handicap);
+  const out = [];
+  for (const j of g.jogadores) {
+    const b = box[j.aid];
+    if (!b || b.dnp || b.pf >= 6) continue;
+    const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
+    const mg = margemDe(j.time);
+    const x = estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]));
+    const ch = chanceAgora(d.cm, rel, mg, hTime(j.time));
+    for (const [k, nome] of ESTATS) {
+      const ins = insightDe(d.ins, k, x.est[k], rel, ch);
+      if (!ins) continue;
+      const meta = d.jog?.por_k?.[k];
+      const pj = d.jog?.jogadores?.[j.aid]?.[k];
+      const fator = meta?.usa_jogador && pj && meta.liga > 0 ? pj[2] / meta.liga : 1;
+      const ef = ins.z * fator, uj = ins.u * fator;
+      if (Math.abs(ef) < 0.15 || fator < 0.5 || Math.abs(uj) < MIN_UNID[k]) continue;
+      out.push({ j, k, nome, ins, fator, ef, uj, n: pj?.[0] ?? 0, usa: !!(meta?.usa_jogador && pj), justa: x.est[k].justa, feito: x.est[k].feito,
+        quadra: emQuadra(s.plays || [], String(j.aid), b.starter).quadra, quando: quandoTxt(st), jogo: `${g.fora} @ ${g.casa}` });
+    }
+  }
+  // jogador com Over numa estatística e Under em outra (pontos/rebotes/assist./PRA se sobrepõem): sem sinal dele
+  const lados = {};
+  for (const x of out) if (x.k !== "tpm") (lados[x.j.aid] ||= new Set()).add(Math.sign(x.ef));
+  return out.filter((x) => x.k === "tpm" || lados[x.j.aid].size === 1);
+}
+const MIN_UNID = { pts: 1, pra: 1.2, reb: 0.5, ast: 0.5, tpm: 0.3 }; // efeito mínimo na unidade da estatística para virar sinal
+
+export function sinaisHtml(sinais) {
+  if (!sinais.length) return `<p class="muted">Nenhum sinal do Painel agora (insight ativo com 0,12+ desvio para o jogador).</p>`;
+  sinais.sort((a, b) => Math.abs(b.ef) - Math.abs(a.ef));
+  return `<div class="panel" style="border-color:var(--accent);margin-bottom:10px"><h2 style="margin:0 0 6px">Sinais do Painel agora (${sinais.length})</h2><ul class="regras">${sinais.map((x) => {
+    const cor = x.ef > 0 ? COR_O : COR_U;
+    const alvo = x.justa + x.uj;
+    const lado = x.ef > 0 ? `Over se a casa estiver abaixo de ~${num(alvo)}` : `Under se a casa estiver acima de ~${num(alvo)}`;
+    const dele = x.usa ? `ele segue esse tipo de insight ${num(x.fator, 1)}× a liga (${x.n} casos)` : x.k === "reb" || x.k === "ast" ? "efeito da liga (em rebotes e assistências o histórico por jogador não separou)" : "sem histórico dele: efeito da liga";
+    return `<li style="border-left:4px solid ${cor};padding-left:8px${Math.abs(x.ef) >= 0.2 ? ";font-weight:600" : ""}"><span class="chip" style="color:${cor};border:1px solid ${cor};background:transparent">${x.ef > 0 ? "↑ Over" : "↓ Under"}</span>
+      <b>${esc(x.j.nome)}</b> ${x.nome} <small class="muted">(${esc(x.jogo)}, ${esc(x.quando)}${x.quadra == null ? "" : x.quadra ? ", em quadra" : ", no banco"})</small><br>
+      tem ${x.feito}; linha justa ${num(x.justa)} → <b>${num(alvo)}</b> com o insight · <b>${lado}</b><br>
+      <small>${esc(insTxt(x.ins))}; ${esc(dele)} → ${x.ef > 0 ? "+" : "−"}${num(Math.abs(x.ef), 2)} desvio para ele.</small></li>`;
+  }).join("")}</ul><p class="hint" style="margin:6px 0 0">Insight do Painel (começo × chance de blowout/clutch, mesmo sinal em 3 testes) ajustado pelo histórico do jogador nesses insights (pontos, PRA e 3PM: quem seguiu na 1ª metade dos jogos seguiu na 2ª; rebotes e assistências: liga). Só aparece com 0,12+ desvio. Medido contra a linha de antes do jogo, não contra a linha ao vivo das casas.</p></div>`;
+}
+
 // ---------- tela ----------
 const COR_O = "var(--sig-o)", COR_U = "var(--sig-u)";
 let PAINEL = { sel: null, sb: null, sum: null, pol: null, carregando: false };

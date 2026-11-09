@@ -1,7 +1,7 @@
 // Padrões por jogador (padroes.html): lê data/padroes/<dia>.json, gerado no PC por nba_pbp/analise_dia.py.
 import { $, esc } from "./formato.js";
 import { mostrarCenarios } from "./cenarios.js";
-import { mostrarPainel } from "./painel.js";
+import { mostrarPainel, sinaisJogo, sinaisHtml } from "./painel.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA", steals: "Roubos", blocks: "Tocos" };
@@ -135,7 +135,7 @@ const ESPN_NBA = "/apis/site/v2/sports/basketball/nba";
 const ESPN_DIRETO = "https://site.api.espn.com";
 const PERIODO = { 12: 1, 24: 2, 36: 3 };
 const CHAVE_M = { pontos: "pts", arremessos: "fga", rebotes: "reb", "assistências": "ast", "cestas de 3": "tpm", "tentativas de 3": "tpa", "lances livres": "fta", "perdas de bola": "tov", "roubos": "stl", "tocos": "blk" };
-let DIA = null, aba = "pre", RELAY = null, rodando = false;
+let DIA = null, aba = "pre", RELAY = null, rodando = false, DADOS_PAINEL = null;
 const resumos = new Map(); // jogo → summary já encerrado (não busca de novo)
 
 async function espn(caminho) {
@@ -333,6 +333,15 @@ async function atualizarVivo() {
       try { resumos.set(g.id, await espn(`/summary?event=${g.id}`)); } catch { /* fica com o anterior */ }
     }));
     const partes = DIA.jogos.map((g) => vivoJogo(g, resumos.get(g.id)));
+    // sinais do Painel (insight começo × chance de blowout/clutch, ajustado pelo histórico do jogador)
+    if (!DADOS_PAINEL) {
+      const ler = (u) => fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+      const [cm, ins, jog, pol] = await Promise.all(["chance_minuto", "insights_painel", "insights_jogador", "cenarios"].map((n) => ler(`data/padroes/${n}.json`)));
+      DADOS_PAINEL = { cm, ins, jog, pol };
+    }
+    const sinais = DIA.jogos.flatMap((g) => { try { return sinaisJogo(g, resumos.get(g.id), DADOS_PAINEL); } catch { return []; } });
+    const algumVivo = DIA.jogos.some((g) => resumos.get(g.id)?.header?.competitions?.[0]?.status?.type?.state === "in");
+    const sinaisH = algumVivo ? sinaisHtml(sinais) : "";
     const ativos = partes.flatMap((p) => p.ativos);
     const janelas = partes.flatMap((p) => p.janelas);
     const janHtml = janelas.length
@@ -345,7 +354,7 @@ async function atualizarVivo() {
     const topo = ativos.length
       ? `<div class="panel" style="border-color:var(--good)"><h2 style="margin:0 0 6px">Entradas em aberto (${ativos.length})</h2><ul class="regras">${ativos.map(({ j, a, f, prazo, ent }) => `<li style="${bordaForca(f)}${ent.agora ? ";background:var(--good-bg)" : ""}">${chipForca(f)} ${chipLado(a)} <b>${esc(j.nome)}</b> (${esc(j.time)}): ${esc(a.situacao)} → ${esc(a.metrica)} <b>${num(a.real)}</b> × ${num(a.padrao)} no resto do jogo <small class="muted">(${a.classe}, ${a.n} jogos)</small><br><b>${ent.agora ? "⏱ janela agora · " : ""}${esc(ent.txt)}${ent.txt ? " · " : ""}entrar até ${quandoTxt(prazo)}</b></li>`).join("")}</ul></div>`
       : `<p class="muted">Nenhuma entrada em aberto agora.</p>`;
-    $("#vivo").innerHTML = `${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Tempos em minutos decorridos no quarto. A janela depende do lado: <b>↑ Over</b> = entrar ~1 min antes de ele voltar do banco (vale até 1 min depois da volta típica no quarto seguinte, ou os 3 primeiros minutos se ele não costuma sentar, e no máximo 1 min depois de ele aparecer de novo no lance a lance); <b>↓ Under</b> = entrar quando ele senta, valendo até 1 min depois de ele voltar (em quadra, fica em aberto esperando ele sentar). Janela aberta agora fica em verde e no topo. O que não aconteceu ou passou do prazo vai para "Fora do quadro", recolhido no fim de cada jogo. ${LEGENDA_F} Em quadra/no banco vem das substituições (aproximado: trocas entre quartos não são registradas). Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
+    $("#vivo").innerHTML = `${sinaisH}${janHtml}<p class="hint">Atualiza a cada 60 s com a aba aberta (atualizado às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}). Tempos em minutos decorridos no quarto. A janela depende do lado: <b>↑ Over</b> = entrar ~1 min antes de ele voltar do banco (vale até 1 min depois da volta típica no quarto seguinte, ou os 3 primeiros minutos se ele não costuma sentar, e no máximo 1 min depois de ele aparecer de novo no lance a lance); <b>↓ Under</b> = entrar quando ele senta, valendo até 1 min depois de ele voltar (em quadra, fica em aberto esperando ele sentar). Janela aberta agora fica em verde e no topo. O que não aconteceu ou passou do prazo vai para "Fora do quadro", recolhido no fim de cada jogo. ${LEGENDA_F} Em quadra/no banco vem das substituições (aproximado: trocas entre quartos não são registradas). Só achados próprios do jogador (sem os comuns à liga).</p>${topo}${partes.map((p) => p.html).join("")}`;
   } finally { rodando = false; }
 }
 
