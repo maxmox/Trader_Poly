@@ -3,7 +3,7 @@
 // Atualiza a cada 30 s pelo box score da ESPN. Base: linha da DraftKings da análise do dia (sem linha: projeção do
 // Edgely) ÷ minutos projetados. Estimativa simples e NÃO calibrada contra linhas ao vivo.
 import { esc } from "./formato.js";
-import { emQuadra } from "./jogada.js";
+import { emQuadra, segundosPorPeriodo } from "./jogada.js";
 
 export const ESTATS = [["pts", "PTS", "points"], ["reb", "REB", "rebounds"], ["ast", "AST", "assists"], ["tpm", "3PM", "threes"], ["pra", "PRA", "pra"]];
 const JOGO_S = 2880;
@@ -21,9 +21,6 @@ export function relogio(st) {
   if (p <= 4) { const t = (p - 1) * 720 + 720 - resta; return { t, resta: JOGO_S - t, p, fim: false }; }
   return { t: JOGO_S + (p - 5) * 300 + 300 - resta, resta, p, fim: false };
 }
-
-// Quanto do 4º quarto ainda vai ser jogado nos segundos que restam (0 na prorrogação).
-const q4Restante = (rel) => (rel.p > 4 ? 0 : Math.min(720, rel.resta));
 
 // Multiplicador dos minutos dele no Q4: blowout (16+) tira os titulares (política do time quando houver, senão a liga)
 // e dá minutos aos reservas; jogo parelho no Q4 (até 5) dá mais minutos a quem joga 30+.
@@ -52,15 +49,31 @@ export function linhaPre(j, k) {
   return e != null ? { v: e, fonte: "proj" } : null;
 }
 
+// Minutos esperados por quarto antes do jogo: total do Edgely repartido como a rotação dele nos últimos 10 jogos no
+// time atual (rotacao.min_q); sem rotação, 1/4 em cada quarto.
+export function minutosQuarto(j) {
+  const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
+  const mq = j.rotacao?.min_q;
+  const soma = mq ? mq.reduce((a, b) => a + b, 0) : 0;
+  return [0, 1, 2, 3].map((q) => (soma > 0 ? (minEsp * mq[q]) / soma : minEsp / 4));
+}
+
 // Estimativa de um jogador: feito, deveria (ritmo normal × minutos jogados) e linha justa ao fim.
 export function estimar(j, box, rel, ajQ4) {
   const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
   const min = box?.min || 0;
   const fora = (box?.pf ?? 0) >= 6;
-  const restoS = rel.fim || fora ? 0 : rel.resta;
-  const q4 = Math.min(restoS, q4Restante(rel));
-  // minutos que ainda deve jogar: a fatia normal dele do tempo que resta, com o Q4 ajustado pelo placar
-  const minResto = minEsp ? (minEsp / JOGO_S) * (restoS - q4 + q4 * ajQ4) : 0;
+  const espQ = minutosQuarto(j);
+  // minutos que ainda deve jogar: o esperado dos quartos que faltam (o atual pela parte que falta), Q4 ajustado pelo placar
+  let minResto = 0;
+  if (!rel.fim && !fora && minEsp) {
+    if (rel.p > 4) minResto = (minEsp / JOGO_S) * rel.resta * 1.2; // prorrogação: quem joga muito fica
+    else {
+      const cur = Math.max(1, rel.p);
+      const fracCur = rel.p ? (720 * cur - rel.t) / 720 : 1;
+      for (let q = cur; q <= 4; q++) minResto += espQ[q - 1] * (q === cur ? fracCur : 1) * (q === 4 ? ajQ4 : 1);
+    }
+  }
   const minAgora = minEsp * Math.min(1, rel.t / JOGO_S);
   const w = min > 0 ? min / (min + PESO_HOJE) : 0;
   const est = {};
@@ -72,7 +85,7 @@ export function estimar(j, box, rel, ajQ4) {
     const taxa = (1 - w) * taxa0 + (min > 0 ? w * (feito / min) : 0);
     est[k] = { feito, deveria: taxa0 * min, justa: feito + taxa * minResto, pre: L.v, fonte: L.fonte };
   }
-  return { minEsp, minAgora, minResto, est };
+  return { minEsp, minAgora, minResto, espQ, est };
 }
 
 // Box score da ESPN → { id: {min, pts, reb, ast, tpm, pra, pf, starter, sigla, nome} }
@@ -126,8 +139,19 @@ function celula(e) {
     <div class="pc-fim">${seta}<b>${num(e.justa)}</b> <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div></td>`;
 }
 
-function tabelaTime(sigla, linhas, semBase) {
-  const corpo = linhas.map(({ j, b, x, quadra }) => {
+// minutos de um quarto: real / esperado antes do jogo; quarto encerrado com 2+ min de diferença ganha cor; o atual tem borda
+function celQuarto(real, esp, q, rel) {
+  const atual = q === rel.p && !rel.fim;
+  const futuro = !rel.fim && (rel.p === 0 || q > rel.p);
+  if (futuro) return `<td class="pq0"><span class="muted">${num(esp)}</span></td>`;
+  const d = (real ?? 0) - (esp ?? 0);
+  const cor = atual || esp == null ? "var(--ink)" : d >= 2 ? COR_O : d <= -2 ? COR_U : "var(--ink)";
+  return `<td class="pq0${atual ? " atual" : ""}"><b style="color:${cor}">${num(real)}</b><small>/ ${num(esp)}</small></td>`;
+}
+
+function tabelaTime(sigla, linhas, semBase, rel) {
+  const pr = rel.p > 4;
+  const corpo = linhas.map(({ j, b, x, quadra, mq }) => {
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
     const md = b ? b.min - x.minAgora : 0;
@@ -135,10 +159,11 @@ function tabelaTime(sigla, linhas, semBase) {
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     return `<tr><td class="pj">${dot}<b>${esc(j.nome)}</b><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}</small></td>
+      ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k])).join("")}</tr>`;
   }).join("");
   const extra = semBase.length ? `<p class="hint" style="margin:6px 0 0">Sem projeção na análise do dia: ${semBase.map((b) => `${esc(b.nome)} ${b.min} min, ${b.pts} pts, ${b.reb} reb, ${b.ast} ast`).join(" · ")}</p>` : "";
-  return `<h3 class="ptime">${esc(sigla)}</h3><div class="tbl-wrap"><table class="painel"><thead><tr><th>Jogador</th><th>Min</th>${ESTATS.map(([, n]) => `<th>${n}</th>`).join("")}</tr></thead><tbody>${corpo}</tbody></table></div>${extra}`;
+  return `<h3 class="ptime">${esc(sigla)}</h3><div class="tbl-wrap"><table class="painel"><thead><tr><th>Jogador</th><th>Min</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>${pr ? "<th>Pr</th>" : ""}${ESTATS.map(([, n]) => `<th>${n}</th>`).join("")}</tr></thead><tbody>${corpo}</tbody></table></div>${extra}`;
 }
 
 function jogoHtml(g, s) {
@@ -160,7 +185,9 @@ function jogoHtml(g, s) {
     const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
     const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]));
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
-    (porTime[j.time] ||= []).push({ j, b, x, quadra });
+    // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
+    const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
+    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq });
   }
   const semBase = Object.entries(box).filter(([id, b]) => !vistos.has(id) && !b.dnp && b.min > 0).map(([, b]) => b);
   const siglas = [g.fora, g.casa];
@@ -170,7 +197,7 @@ function jogoHtml(g, s) {
     : rel.p >= 4 && Math.abs(marg) <= 5 ? `<span class="chip" style="background:var(--accent-soft);color:var(--accent)">parelho: titulares jogam mais o Q4</span>` : "";
   return `<div class="placar-vivo"><span class="pt">${esc(g.fora)} <b>${placar[g.fora] ?? "–"}</b></span><span class="px">×</span><span class="pt"><b>${placar[g.casa] ?? "–"}</b> ${esc(g.casa)}</span>
     <span class="pq">${quandoTxt(st)}</span>${aviso}</div>
-    ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t))).join("")}`;
+    ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t), rel)).join("")}`;
 }
 
 function seletor(dia) {
@@ -185,7 +212,7 @@ function seletor(dia) {
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = a fatia normal dele do tempo que resta, com o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>`;
+const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = o esperado dos quartos que faltam, com o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total do Edgely repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
   if (!dia || PAINEL.carregando || document.hidden) return;

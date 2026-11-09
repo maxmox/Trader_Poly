@@ -101,3 +101,40 @@ export function variaveis(st, regua, margem, fora) {
   }
   return v;
 }
+
+// Segundos em quadra em cada período (índice 0 = Q1; prorrogações depois do Q4), pelas substituições do lance a lance.
+// Entre períodos a ESPN não registra trocas: ele começa o período em quadra se a 1ª jogada dele no período não for a
+// entrada (aparece numa jogada ou sai antes de entrar). Sem nenhuma jogada no período = não jogou o período.
+// `agora` = {p, resta}: o período em andamento conta só até o relógio atual.
+export function segundosPorPeriodo(plays, id, agora) {
+  const dur = (p) => (p > 4 ? 300 : 720);
+  const porP = new Map();
+  for (const x of plays || []) {
+    const p = x.period?.number ?? 1;
+    if (!porP.has(p)) porP.set(p, []);
+    porP.get(p).push(x);
+  }
+  const out = [];
+  const ultimo = agora?.p || Math.max(0, ...porP.keys());
+  for (let p = 1; p <= ultimo; p++) {
+    const L = porP.get(p) || [];
+    const fim = p === agora?.p ? dur(p) - agora.resta : dur(p);
+    let quadra = null, desde = 0, soma = 0;
+    for (const x of L) {
+      const ids = (x.participants || []).map((y) => y.athlete?.id);
+      if (!ids.includes(id)) continue;
+      const t = dur(p) - relogioS(x.clock?.displayValue);
+      const sub = /substitution/i.test(x.type?.text || "");
+      if (quadra === null) { quadra = !(sub && ids[0] === id); desde = 0; }
+      if (sub && ids[0] === id && !quadra) { quadra = true; desde = t; }
+      else if (sub && ids[1] === id && quadra) { soma += t - desde; quadra = false; }
+    }
+    if (quadra) soma += Math.max(0, fim - desde);
+    out.push(Math.max(0, soma));
+  }
+  return out;
+}
+const relogioS = (txt) => {
+  const s = String(txt || "0:00");
+  return s.includes(":") ? s.split(":").reduce((m, x) => (Number(m) || 0) * 60 + (Number(x) || 0)) : Number(s) || 0;
+};
