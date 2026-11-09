@@ -443,3 +443,7 @@ table.painel td.pq0.atual { box-shadow: inset 0 0 0 2px var(--accent); }
 .reg-form { margin: 14px 0 10px; }
 table.painel td.pc { cursor: pointer; }
 table.painel td.pc:hover { background: var(--accent-soft); }
+
+/* botão de tema (js/tema.js) */
+.tema-btn { border: 0; cursor: pointer; font-family: var(--body); line-height: 1.5; }
+.tema-btn:hover { filter: brightness(1.1); }
