@@ -94,6 +94,7 @@ function jogadorHtml(j) {
   return `<article class="panel" style="margin:10px 0">
     <div class="sec-head"><h3 style="margin:0">${esc(j.nome)} <small class="muted">${esc(j.time)}</small></h3>
       <span class="muted">titular provável (${esc(j.origem)}) · ${base}</span></div>
+    ${j.min_proj != null ? `<p class="hint"><b>Minutos projetados (nossa conta): ${num(j.min_proj)}</b>${e?.min != null ? ` · Edgely ${num(e.min)}` : ""}</p>` : ""}
     ${e ? `<p class="hint">Edgely: ${num(e.min)} min · ${num(e.pts)} pts · ${num(e.reb)} reb · ${num(e.ast)} ast · ${num(e.tpm)} 3PM · PRA ${num(e.pra)}${e.stl != null ? ` · ${num(e.stl)} roubos · ${num(e.blk)} tocos` : ""}</p>` : ""}
     ${linhasHtml(j)}
     ${j.rotacao?.voltas?.length ? `<p class="hint"><b>Rotação</b> (últimos ${j.rotacao.jogos} jogos; tempos em minutos decorridos no quarto; ↑ Over: entrar ~1 min antes da volta; ↓ Under: entrar quando ele senta, vale até ele voltar): ${j.rotacao.voltas.map((v) => `<b>sai ${esc(saiuTxt(v.saiu))}</b>, volta ${voltaTxt(v)} (${v.jogos}/${j.rotacao.jogos} jogos, ${num(v.banco_min)} min sentado) → <b>Over: entrar ${entradaTxt(v)}</b>`).join(" · ")}</p>` : ""}

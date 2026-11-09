@@ -50,10 +50,14 @@ export function linhaPre(j, k) {
   return e != null ? { v: e, fonte: "proj" } : null;
 }
 
-// Minutos esperados por quarto antes do jogo: total do Edgely repartido como a rotação dele nos últimos 10 jogos no
+// Minutos esperados antes do jogo: nossa projeção (minutos.py, erra menos que o Edgely: 6,4 × 7,1 min no teste de 09/11),
+// senão Edgely, senão a média recente.
+export const minEspDe = (j) => j.min_proj ?? (j.edgely?.min || j.recente?.media?.min || 0);
+
+// Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
 // time atual (rotacao.min_q); sem rotação, 1/4 em cada quarto.
 export function minutosQuarto(j) {
-  const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
+  const minEsp = minEspDe(j);
   const mq = j.rotacao?.min_q;
   const soma = mq ? mq.reduce((a, b) => a + b, 0) : 0;
   return [0, 1, 2, 3].map((q) => (soma > 0 ? (minEsp * mq[q]) / soma : minEsp / 4));
@@ -61,7 +65,7 @@ export function minutosQuarto(j) {
 
 // Estimativa de um jogador: feito, deveria (ritmo normal × minutos jogados) e linha justa ao fim.
 export function estimar(j, box, rel, ajQ4) {
-  const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
+  const minEsp = minEspDe(j);
   const min = box?.min || 0;
   const fora = (box?.pf ?? 0) >= 6;
   const espQ = minutosQuarto(j);
@@ -196,7 +200,7 @@ export function sinaisJogo(g, s, d) {
   for (const j of g.jogadores) {
     const b = box[j.aid];
     if (!b || b.dnp || b.pf >= 6) continue;
-    const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
+    const minEsp = minEspDe(j);
     const mg = margemDe(j.time);
     js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time])) });
   }
@@ -318,7 +322,7 @@ function jogoHtml(g, s) {
     // fora do jogo: sem jogar (DNP), ou jogo começado e ele nem aparece no box (inativo), ou Out no relatório
     if (b?.dnp || (!b && (Object.keys(box).length || out.includes(j.nome)) && st.type?.state !== "pre")) continue;
     const margem = placar[j.time] != null ? placar[j.time] - (Object.entries(placar).find(([k]) => k !== j.time)?.[1] ?? 0) : null;
-    const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
+    const minEsp = minEspDe(j);
     const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]));
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
@@ -382,7 +386,7 @@ function seletor(dia) {
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = o esperado dos quartos que faltam, com o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total do Edgely repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = o esperado dos quartos que faltam, com o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
 <p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Insights</b> (↑/↓ na célula, ● = 0,15+ desvio): começo do jogador (feito ÷ deveria: muito frio &lt; 0,6, frio &lt; 0,85, média até 1,15, quente até 1,4, muito quente acima) × nível da chance de blowout (&lt; 20%, 20–40%, 40%+) e de clutch (&lt; 30%, 30–50%, 50%+) da liga, medido no fim do Q1 (vale no Q2), no intervalo (Q3) e no fim do Q3 (Q4); o valor é quanto o final ficou acima ou abaixo da linha justa. Só entram os que tiveram o mesmo sinal em 3 testes (linha 2025-27, linha 2024-25 e jogos sem linha): de 357 cruzamentos, 182 repetiram (~89 seria acaso), então parte ainda é ruído. Não medido contra a linha ao vivo das casas.</p>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
