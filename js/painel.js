@@ -147,12 +147,41 @@ export function insightDe(ins, k, e, rel, ch) {
 }
 const DIMTXT = { blowout: "chance de blowout", clutch: "chance de clutch apertado" };
 const CORTETXT = { 12: "fim do Q1", 24: "intervalo", 36: "fim do Q3" };
-const insTxt = (x) => `começo ${x.ini} + ${DIMTXT[x.dim]} ${x.nivel} (medido no ${CORTETXT[x.corte]}): termina ${x.u > 0 ? "+" : "−"}${num(Math.abs(x.u))} em relação à linha justa (${x.z > 0 ? "+" : "−"}${num(Math.abs(x.z), 2)} desvio; mesmo sinal em 3 testes, ${x.n + x.nC} casos)`;
+const insTxt = (x) => `${x.tipo === "time" ? `quente em pontos (${x.faixa}) com o time ${x.est} (${Math.round(100 * x.frac)}% dos companheiros abaixo do ritmo)` : `começo ${x.ini} + ${DIMTXT[x.dim]} ${x.nivel}`} (medido no ${CORTETXT[x.corte]}): termina ${x.u > 0 ? "+" : "−"}${num(Math.abs(x.u))} em relação à linha justa (${x.z > 0 ? "+" : "−"}${num(Math.abs(x.z), 2)} desvio; mesmo sinal em 3 testes, ${x.n + x.nC} casos)`;
 
 // Sinais para a aba Ao vivo (09/11): insight ativo agora × o histórico do jogador nesse tipo de insight
 // (nba_pbp/insights_jogador.py). Pontos, PRA e 3PM usam o jogador (separou fora da amostra: quem seguiu na 1ª metade
 // dos jogos seguiu na 2ª); rebotes e assistências usam a liga. Efeito dele = efeito do insight × (encolhido dele ÷ liga);
 // vira sinal com 0,12+ desvio. Linha alvo = linha justa + efeito dele (comparar com a linha ao vivo da casa).
+// Cenário "time frio, 1–2 quentes" (09/11, nba_pbp/cenario_time.py → insights_time.json): quem está quente em pontos
+// (≥ 1,15 do esperado; no máximo 2 quentes no time, 4+ jogadores com base) e o estado dos companheiros (frio = 60%+ abaixo
+// de 0,85 do esperado em pontos; meio = 40–60%). Devolve por atleta os insights validados e os minutos a mais.
+export function cenarioTime(tim, rel, lista) {
+  const corte = corteDe(rel);
+  const out = {};
+  if (!tim?.insights || !corte) return out;
+  const q0 = tim.quente?.[0] ?? 1.15, q1 = tim.quente?.[1] ?? 1.4, fr = tim.frio ?? 0.85;
+  const porTime = {};
+  for (const p of lista) if (p.est?.pts?.deveria >= 1) (porTime[p.time] ||= []).push({ ...p, r: p.est.pts.feito / p.est.pts.deveria });
+  for (const com of Object.values(porTime)) {
+    const nq = com.filter((p) => p.r >= q0).length;
+    if (com.length < 4 || nq === 0 || nq > 2) continue;
+    for (const p of com.filter((x) => x.r >= q0)) {
+      const outros = com.filter((x) => x.aid !== p.aid);
+      const frac = outros.filter((x) => x.r < fr).length / outros.length;
+      const est = frac >= 0.6 ? "frio" : frac >= 0.4 ? "meio" : "normal";
+      const faixa = p.r >= q1 ? "muito quente" : "quente";
+      const ins = {};
+      for (const x of tim.insights) if (x.corte === corte && x.faixa === faixa && x.est === est) ins[x.k] = { ...x, tipo: "time", frac };
+      const m = (tim.minutos || []).find((x) => x.corte === corte && x.est === est && x.papel === (p.tit ? "titular" : "reserva"));
+      out[p.aid] = { est, faixa, frac, ins, min: m?.dif ?? null };
+    }
+  }
+  return out;
+}
+// dois insights na mesma estatística: de acordo → o mais forte; em conflito → nenhum
+const juntar = (a, b) => (!a ? b || null : !b ? a : Math.sign(a.z) !== Math.sign(b.z) ? null : Math.abs(a.z) >= Math.abs(b.z) ? a : b);
+
 export function sinaisJogo(g, s, d) {
   const comp = s?.header?.competitions?.[0];
   const st = comp?.status;
@@ -163,18 +192,22 @@ export function sinaisJogo(g, s, d) {
   const margemDe = (t) => placar[t] - (Object.entries(placar).find(([k]) => k !== t)?.[1] ?? 0);
   const hTime = (t) => (g.handicap == null ? null : t === g.casa ? g.handicap : -g.handicap);
   const out = [];
+  const js = [];
   for (const j of g.jogadores) {
     const b = box[j.aid];
     if (!b || b.dnp || b.pf >= 6) continue;
     const minEsp = j.edgely?.min || j.recente?.media?.min || 0;
     const mg = margemDe(j.time);
-    const x = estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]));
+    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time])) });
+  }
+  const cen = cenarioTime(d.tim, rel, js.map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
+  for (const { j, b, mg, x } of js) {
     const ch = chanceAgora(d.cm, rel, mg, hTime(j.time));
     for (const [k, nome] of ESTATS) {
-      const ins = insightDe(d.ins, k, x.est[k], rel, ch);
+      const ins = juntar(insightDe(d.ins, k, x.est[k], rel, ch), cen[j.aid]?.ins?.[k]);
       if (!ins) continue;
       const meta = d.jog?.por_k?.[k];
-      const pj = d.jog?.jogadores?.[j.aid]?.[k];
+      const pj = ins.tipo === "time" ? null : d.jog?.jogadores?.[j.aid]?.[k]; // o histórico por jogador foi medido nos insights começo × chance
       const fator = meta?.usa_jogador && pj && meta.liga > 0 ? pj[2] / meta.liga : 1;
       const ef = ins.z * fator, uj = ins.u * fator;
       if (Math.abs(ef) < 0.15 || fator < 0.5 || Math.abs(uj) < MIN_UNID[k]) continue;
@@ -249,14 +282,15 @@ function celQuarto(real, esp, q, rel) {
 
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq, ins }) => {
+  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin }) => {
+    const notaMin = cmin ? `<small style="color:${COR_O}" title="${esc(`quente em pontos (${cmin.faixa}) com o time ${cmin.est}: o técnico costuma deixar em quadra; ${b?.starter ? "titular" : "reserva"} nessa situação joga em média ${num(cmin.min)} min a mais que os companheiros (mesmo sinal em 3 testes)`)}">+${num(cmin.min)} min (quente, time ${cmin.est})</small>` : "";
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
     const md = b ? b.min - x.minAgora : 0;
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     return `<tr><td class="pj">${dot}<b>${esc(j.nome)}</b><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
-      <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}</small></td>
+      <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
   }).join("");
@@ -290,13 +324,20 @@ function jogoHtml(g, s) {
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
     const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
-    for (const [k, nome] of ESTATS) if (ins[k]) lista.push({ j, nome, x: ins[k] });
     (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins });
+  }
+  // cenário do time (quente com os companheiros frios): junta aos insights e marca os minutos a mais
+  const cen = cenarioTime(PAINEL.tim, rel, Object.values(porTime).flat().filter((p) => p.b).map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
+  for (const p of Object.values(porTime).flat()) {
+    const c = cen[p.j.aid];
+    if (c) for (const [k] of ESTATS) p.ins[k] = juntar(p.ins[k], c.ins[k]);
+    p.cmin = c?.min ? c : null;
+    for (const [k, nome] of ESTATS) if (p.ins[k]) lista.push({ j: p.j, nome, x: p.ins[k] });
   }
   const semBase = Object.entries(box).filter(([id, b]) => !vistos.has(id) && !b.dnp && b.min > 0).map(([, b]) => b);
   // contexto para o registro das entradas (o que o Painel mostrava na hora)
   let sinais = [];
-  try { sinais = sinaisJogo(g, s, { cm: PAINEL.cm, ins: PAINEL.ins, jog: PAINEL.jog, pol: PAINEL.pol }); } catch { /* sem sinais */ }
+  try { sinais = sinaisJogo(g, s, { cm: PAINEL.cm, ins: PAINEL.ins, jog: PAINEL.jog, pol: PAINEL.pol, tim: PAINEL.tim }); } catch { /* sem sinais */ }
   PAINEL.ctx = {
     data: new Date().toISOString().slice(0, 10), jogo_id: g.id, jogo: `${g.fora} @ ${g.casa}`, quando: quandoTxt(st), t: Math.round(rel.t), chance,
     sinais: Object.fromEntries(sinais.map((x) => [`${x.j.aid}|${x.k}`, x])),
@@ -352,6 +393,7 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
     if (!PAINEL.cm) PAINEL.cm = await fetch("data/padroes/chance_minuto.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     if (!PAINEL.ins) PAINEL.ins = await fetch("data/padroes/insights_painel.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     if (!PAINEL.jog) PAINEL.jog = await fetch("data/padroes/insights_jogador.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+    if (!PAINEL.tim) PAINEL.tim = await fetch("data/padroes/insights_time.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     // duas áreas: a do jogo (refeita a cada 30 s) e a do registro (o formulário não é apagado enquanto se digita)
     if (!el.querySelector("#pn-vivo")) {
       el.innerHTML = `<div id="pn-vivo"><p class="muted">buscando o jogo…</p></div><div id="pn-reg"></div>`;

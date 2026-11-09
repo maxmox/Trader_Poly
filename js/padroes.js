@@ -336,8 +336,8 @@ async function atualizarVivo() {
     // sinais do Painel (insight começo × chance de blowout/clutch, ajustado pelo histórico do jogador)
     if (!DADOS_PAINEL) {
       const ler = (u) => fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
-      const [cm, ins, jog, pol] = await Promise.all(["chance_minuto", "insights_painel", "insights_jogador", "cenarios"].map((n) => ler(`data/padroes/${n}.json`)));
-      DADOS_PAINEL = { cm, ins, jog, pol };
+      const [cm, ins, jog, pol, tim] = await Promise.all(["chance_minuto", "insights_painel", "insights_jogador", "cenarios", "insights_time"].map((n) => ler(`data/padroes/${n}.json`)));
+      DADOS_PAINEL = { cm, ins, jog, pol, tim };
     }
     const sinais = DIA.jogos.flatMap((g) => { try { return sinaisJogo(g, resumos.get(g.id), DADOS_PAINEL); } catch { return []; } });
     const algumVivo = DIA.jogos.some((g) => resumos.get(g.id)?.header?.competitions?.[0]?.status?.type?.state === "in");
