@@ -401,3 +401,32 @@ tr.cand-caiu td { color: var(--ink-3); }
 .campeon-tab tr.suspeita td { color: var(--ink-3); }
 .campeon-tab tr.conferir td { background: var(--warn-bg); }
 .campeon-tab small.aviso { color: var(--warn); font-family: inherit; }
+
+/* Painel da partida (padroes.html, aba Painel, 09/11) */
+.painel-jogos button[aria-pressed="true"] { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.painel-jogos button.ao-vivo:not([aria-pressed="true"]) { border-color: var(--good); color: var(--good); }
+.placar-vivo { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 4px; font-family: "Archivo", sans-serif; font-size: 20px; }
+.placar-vivo .pt b { font-size: 28px; font-weight: 800; }
+.placar-vivo .px { color: var(--ink-3); }
+.placar-vivo .pq { font-family: var(--mono); font-size: 14px; color: var(--ink-2); }
+.ptime { margin: 14px 0 6px; font-size: 15px; }
+table.painel { min-width: 680px; }
+table.painel th { text-align: center; }
+table.painel th:first-child { text-align: left; }
+table.painel td { vertical-align: middle; padding: 6px 6px; }
+table.painel td.pj { white-space: nowrap; }
+table.painel td.pj small, table.painel td.pmin small { display: block; font-size: 11px; color: var(--ink-3); }
+table.painel td.pmin { text-align: center; font-family: var(--mono); }
+table.painel td.pmin b { font-size: 16px; }
+.pc { text-align: center; min-width: 86px; border-left: 1px solid var(--line); }
+.pc.forte { box-shadow: inset 0 0 0 2px var(--cor); }
+.pc-top { font-family: var(--mono); white-space: nowrap; }
+.pc-feito { font-size: 18px; font-weight: 800; }
+.pc-dev { font-size: 12px; color: var(--ink-3); margin-left: 3px; }
+.pbar { position: relative; height: 6px; border-radius: 3px; background: var(--line); margin: 4px 6px; overflow: hidden; }
+.pbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.pbar em { position: absolute; left: 50%; top: -1px; bottom: -1px; width: 2px; background: var(--ink-2); }
+.pc-fim { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.pc-fim small { font-size: 11px; color: var(--ink-3); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line); margin-right: 6px; vertical-align: middle; }
+.dot.on { background: var(--good); }

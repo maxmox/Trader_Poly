@@ -1,6 +1,7 @@
 // Padrões por jogador (padroes.html): lê data/padroes/<dia>.json, gerado no PC por nba_pbp/analise_dia.py.
 import { $, esc } from "./formato.js";
 import { mostrarCenarios } from "./cenarios.js";
+import { mostrarPainel } from "./painel.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA", steals: "Roubos", blocks: "Tocos" };
@@ -123,6 +124,7 @@ async function mostrar(dia) {
     resumos.clear();
     if (aba === "vivo") atualizarVivo();
     if (aba === "cen") mostrarCenarios($("#cen"), DIA);
+    if (aba === "painel") mostrarPainel($("#painel"), DIA, espn, true);
   } catch (e) {
     $("#jogos").innerHTML = `<p class="erro">Não consegui ler a análise de ${esc(dia)} (${esc(e.message)}).</p>`;
   }
@@ -354,14 +356,21 @@ function trocarAba(nova) {
   $("#criterios").hidden = nova !== "pre";
   $("#vivo").hidden = nova !== "vivo";
   $("#cen").hidden = nova !== "cen";
+  $("#painel").hidden = nova !== "painel";
   if (nova === "cen") mostrarCenarios($("#cen"), DIA);
+  if (nova === "painel") { $("#painel").innerHTML ||= `<p class="muted">buscando o jogo…</p>`; mostrarPainel($("#painel"), DIA, espn); }
   if (nova === "vivo") { $("#vivo").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; atualizarVivo(); }
 }
 
 (async () => {
   for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => trocarAba(b.dataset.aba);
   setInterval(() => { if (aba === "vivo") atualizarVivo(); }, 60e3);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && aba === "vivo") atualizarVivo(); });
+  setInterval(() => { if (aba === "painel") mostrarPainel($("#painel"), DIA, espn); }, 30e3);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    if (aba === "vivo") atualizarVivo();
+    if (aba === "painel") mostrarPainel($("#painel"), DIA, espn);
+  });
   let datas = [];
   try { datas = (await json("data/padroes/indice.json")).datas; } catch { /* sem índice ainda */ }
   const sel = $("#data");
