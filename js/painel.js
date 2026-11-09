@@ -108,6 +108,46 @@ export function lerBox(s) {
   return out;
 }
 
+// ---------- chance de blowout/clutch e insights (09/11; nba_pbp/blowout_minuto.py e insights_painel.py) ----------
+// Chance agora pela tabela da liga (minuto × placar do time), com o placar projetado pelo handicap do dia
+// (placar − peso × handicap do time × minutos que faltam ÷ 48; peso 1 no blowout, 0,75 no clutch). Valores em %.
+export function chanceAgora(cm, rel, margem, hTime) {
+  if (!cm?.liga) return null;
+  const m = Math.min(47, Math.max(1, Math.floor(rel.t / 60)));
+  const pega = (peso) => {
+    const x = (margem ?? 0) - (hTime == null ? 0 : (peso * hTime * (48 - m)) / 48);
+    for (let v = Math.max(-30, Math.min(30, Math.round(x))), i = 0; i < 31; i++, v -= Math.sign(v)) {
+      const r = cm.liga[`${m}|${v}`];
+      if (r) return r;
+      if (v === 0) break;
+    }
+    return null;
+  };
+  const b = pega(cm.peso_handicap?.B ?? 1), c = pega(cm.peso_handicap?.C ?? 0.75);
+  if (!b || !c) return null;
+  return { bmais: b[0], bmenos: b[1], b5mais: b[3], b5menos: b[4], clutch: c[2] };
+}
+
+const INI = ["muito frio", "frio", "média", "quente", "muito quente"];
+export const faixaIni = (r) => (r < 0.6 ? 0 : r < 0.85 ? 1 : r < 1.15 ? 2 : r < 1.4 ? 3 : 4);
+const corteDe = (rel) => (rel.fim || rel.p === 0 ? null : rel.t >= 2160 ? 36 : rel.t >= 1440 ? 24 : rel.t >= 720 ? 12 : null);
+
+// Insight validado para a estatística: começo dele × nível da chance de blowout e de clutch (chance da liga, como no teste).
+// Os dois de acordo → o de maior efeito; em conflito → nenhum.
+export function insightDe(ins, k, e, rel, ch) {
+  const corte = corteDe(rel);
+  if (!ins?.insights || !corte || !ch || e.deveria == null || e.deveria < 1) return null;
+  const ini = INI[faixaIni(e.feito / e.deveria)];
+  const nb = (ch.bmais + ch.bmenos) / 100, nc = ch.clutch / 100;
+  const nivel = { blowout: nb < 0.2 ? "baixa" : nb < 0.4 ? "média" : "alta", clutch: nc < 0.3 ? "baixa" : nc < 0.5 ? "média" : "alta" };
+  const ach = ins.insights.filter((x) => x.k === k && x.corte === corte && x.ini === ini && x.nivel === nivel[x.dim]);
+  if (!ach.length || (ach.length > 1 && Math.sign(ach[0].z) !== Math.sign(ach[1].z))) return null;
+  return ach.sort((a, b) => Math.abs(b.z) - Math.abs(a.z))[0];
+}
+const DIMTXT = { blowout: "chance de blowout", clutch: "chance de clutch apertado" };
+const CORTETXT = { 12: "fim do Q1", 24: "intervalo", 36: "fim do Q3" };
+const insTxt = (x) => `começo ${x.ini} + ${DIMTXT[x.dim]} ${x.nivel} (medido no ${CORTETXT[x.corte]}): termina ${x.u > 0 ? "+" : "−"}${num(Math.abs(x.u))} em relação à linha justa (${x.z > 0 ? "+" : "−"}${num(Math.abs(x.z), 2)} desvio; mesmo sinal em 3 testes, ${x.n + x.nC} casos)`;
+
 // ---------- tela ----------
 const COR_O = "var(--sig-o)", COR_U = "var(--sig-u)";
 let PAINEL = { sel: null, sb: null, sum: null, pol: null, carregando: false };
@@ -125,8 +165,9 @@ function quandoTxt(st) {
 }
 
 // célula de uma estatística: feito grande, deveria pequeno, barra do ritmo e a linha justa × pré-jogo
-function celula(e) {
+function celula(e, ins) {
   if (e.deveria == null) return `<td class="pc"><b class="pc-feito">${e.feito}</b></td>`;
+  const insH = ins ? `<div class="pc-ins" style="color:${ins.z > 0 ? COR_O : COR_U}" title="${esc(insTxt(ins))}">${ins.z > 0 ? "↑" : "↓"} ${ins.u > 0 ? "+" : "−"}${num(Math.abs(ins.u))}${Math.abs(ins.z) >= 0.15 ? " ●" : ""}</div>` : "";
   const r = e.deveria >= 0.5 ? e.feito / e.deveria : null; // começo: pouca base, sem cor
   const cor = r == null ? "var(--ink-3)" : r >= 1.15 ? COR_O : r <= 0.85 ? COR_U : "var(--ink-3)";
   const forte = r != null && (r >= 1.4 || r <= 0.6);
@@ -136,7 +177,7 @@ function celula(e) {
   return `<td class="pc${forte ? " forte" : ""}" style="--cor:${cor}">
     <div class="pc-top"><b class="pc-feito" style="color:${r == null ? "var(--ink)" : cor}">${e.feito}</b><span class="pc-dev">/ ${num(e.deveria)}</span></div>
     <div class="pbar" title="feito ÷ deveria: ${r == null ? "–" : num(r, 2)}"><i style="width:${larg}%;background:${cor}"></i><em></em></div>
-    <div class="pc-fim">${seta}<b>${num(e.justa)}</b> <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div></td>`;
+    <div class="pc-fim">${seta}<b>${num(e.justa)}</b> <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div>${insH}</td>`;
 }
 
 // minutos de um quarto: real / esperado antes do jogo; quarto encerrado com 2+ min de diferença ganha cor; o atual tem borda
@@ -151,7 +192,7 @@ function celQuarto(real, esp, q, rel) {
 
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq }) => {
+  const corpo = linhas.map(({ j, b, x, quadra, mq, ins }) => {
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
     const md = b ? b.min - x.minAgora : 0;
@@ -160,7 +201,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     return `<tr><td class="pj">${dot}<b>${esc(j.nome)}</b><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}</small></td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
-      ${ESTATS.map(([k]) => celula(x.est[k])).join("")}</tr>`;
+      ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k])).join("")}</tr>`;
   }).join("");
   const extra = semBase.length ? `<p class="hint" style="margin:6px 0 0">Sem projeção na análise do dia: ${semBase.map((b) => `${esc(b.nome)} ${b.min} min, ${b.pts} pts, ${b.reb} reb, ${b.ast} ast`).join(" · ")}</p>` : "";
   return `<h3 class="ptime">${esc(sigla)}</h3><div class="tbl-wrap"><table class="painel"><thead><tr><th>Jogador</th><th>Min</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>${pr ? "<th>Pr</th>" : ""}${ESTATS.map(([, n]) => `<th>${n}</th>`).join("")}</tr></thead><tbody>${corpo}</tbody></table></div>${extra}`;
@@ -176,6 +217,10 @@ function jogoHtml(g, s) {
   const out = (g.lesoes ? Object.values(g.lesoes).flat() : []).filter((x) => /\(Out\)/.test(x)).map((x) => x.replace(/ \(.*$/, ""));
   const porTime = {};
   const vistos = new Set();
+  const hTime = (t) => (g.handicap == null ? null : t === g.casa ? g.handicap : -g.handicap); // handicap do mandante: negativo = favorito
+  const margemDe = (t) => (placar[t] != null ? placar[t] - (Object.entries(placar).find(([k]) => k !== t)?.[1] ?? 0) : 0);
+  const chance = Object.fromEntries([g.fora, g.casa].map((t) => [t, chanceAgora(PAINEL.cm, rel, margemDe(t), hTime(t))]));
+  const lista = [];
   for (const j of g.jogadores) {
     const b = box[j.aid];
     vistos.add(String(j.aid));
@@ -187,7 +232,9 @@ function jogoHtml(g, s) {
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
-    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq });
+    const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
+    for (const [k, nome] of ESTATS) if (ins[k]) lista.push({ j, nome, x: ins[k] });
+    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins });
   }
   const semBase = Object.entries(box).filter(([id, b]) => !vistos.has(id) && !b.dnp && b.min > 0).map(([, b]) => b);
   const siglas = [g.fora, g.casa];
@@ -195,8 +242,22 @@ function jogoHtml(g, s) {
   const marg = (placar[g.casa] ?? 0) - (placar[g.fora] ?? 0);
   const aviso = rel.p >= 3 && Math.abs(marg) >= 16 ? `<span class="chip" style="background:var(--warn-bg);color:var(--warn)">blowout: minutos do Q4 ajustados</span>`
     : rel.p >= 4 && Math.abs(marg) <= 5 ? `<span class="chip" style="background:var(--accent-soft);color:var(--accent)">parelho: titulares jogam mais o Q4</span>` : "";
+  // chance de cada time, com o fator do técnico (tira titulares mais ou menos que a liga com o mesmo placar)
+  const fat = (t) => PAINEL.cm?.times?.[t] || { fator: 1, fator_clutch: 1 };
+  const lim = (v) => Math.min(95, Math.round(v));
+  const chanceH = rel.fim ? "" : `<div class="chance-vivo">${[g.fora, g.casa].map((t) => {
+    const c = chance[t];
+    if (!c) return "";
+    const f = fat(t);
+    return `<div><b>${esc(t)}</b> blowout a favor <b>${lim(c.bmais * f.fator)}%</b> <small>(5+ min ${lim(c.b5mais * f.fator)}%)</small> · contra <b>${lim(c.bmenos * f.fator)}%</b> <small>(5+ min ${lim(c.b5menos * f.fator)}%)</small> · clutch apertado <b>${lim(c.clutch * f.fator_clutch)}%</b> <small title="fator do técnico: blowout × ${num(f.fator, 2)}, clutch × ${num(f.fator_clutch, 2)}">técnico ×${num(f.fator, 2)}</small></div>`;
+  }).join("")}</div>`;
+  // no topo só os de efeito maior (0,12+ desvio); os menores ficam só na célula (quadro limpo)
+  const fortes = lista.filter(({ x }) => Math.abs(x.z) >= 0.12).sort((a, c) => Math.abs(c.x.z) - Math.abs(a.x.z));
+  const corIns = (x) => (x.z > 0 ? COR_O : COR_U);
+  const insH = fortes.length ? `<div class="panel ins-vivo"><h2 style="margin:0 0 6px">Insights agora (${fortes.length})</h2><ul class="regras">${fortes.slice(0, 10).map(({ j, nome, x }) =>
+    `<li style="border-left:4px solid ${corIns(x)};padding-left:8px${Math.abs(x.z) >= 0.15 ? ";font-weight:600" : ""}"><span class="chip" style="color:${corIns(x)};border:1px solid ${corIns(x)};background:transparent">${x.z > 0 ? "↑ Over" : "↓ Under"}</span> <b>${esc(j.nome)}</b> ${nome}: ${esc(insTxt(x))}</li>`).join("")}</ul>${fortes.length > 10 ? `<p class="muted">+${fortes.length - 10} nas células</p>` : ""}</div>` : "";
   return `<div class="placar-vivo"><span class="pt">${esc(g.fora)} <b>${placar[g.fora] ?? "–"}</b></span><span class="px">×</span><span class="pt"><b>${placar[g.casa] ?? "–"}</b> ${esc(g.casa)}</span>
-    <span class="pq">${quandoTxt(st)}</span>${aviso}</div>
+    <span class="pq">${quandoTxt(st)}</span>${aviso}</div>${chanceH}${insH}
     ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t), rel)).join("")}`;
 }
 
@@ -212,13 +273,16 @@ function seletor(dia) {
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = o esperado dos quartos que faltam, com o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total do Edgely repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>`;
+const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = o esperado dos quartos que faltam, com o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total do Edgely repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+<p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Insights</b> (↑/↓ na célula, ● = 0,15+ desvio): começo do jogador (feito ÷ deveria: muito frio &lt; 0,6, frio &lt; 0,85, média até 1,15, quente até 1,4, muito quente acima) × nível da chance de blowout (&lt; 20%, 20–40%, 40%+) e de clutch (&lt; 30%, 30–50%, 50%+) da liga, medido no fim do Q1 (vale no Q2), no intervalo (Q3) e no fim do Q3 (Q4); o valor é quanto o final ficou acima ou abaixo da linha justa. Só entram os que tiveram o mesmo sinal em 3 testes (linha 2025-27, linha 2024-25 e jogos sem linha): de 357 cruzamentos, 182 repetiram (~89 seria acaso), então parte ainda é ruído. Não medido contra a linha ao vivo das casas.</p>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
   if (!dia || PAINEL.carregando || document.hidden) return;
   PAINEL.carregando = true;
   try {
     if (!PAINEL.pol) PAINEL.pol = await fetch("data/padroes/cenarios.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+    if (!PAINEL.cm) PAINEL.cm = await fetch("data/padroes/chance_minuto.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+    if (!PAINEL.ins) PAINEL.ins = await fetch("data/padroes/insights_painel.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     try { PAINEL.sb = await espn(`/scoreboard?dates=${dia.data.replaceAll("-", "")}`); } catch { /* fica com o anterior */ }
     const ids = dia.jogos.map((g) => g.id);
     if (!ids.includes(PAINEL.sel)) {
