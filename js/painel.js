@@ -4,6 +4,7 @@
 // Edgely) ÷ minutos projetados. Estimativa simples e NÃO calibrada contra linhas ao vivo.
 import { esc } from "./formato.js";
 import { emQuadra, segundosPorPeriodo } from "./jogada.js";
+import { atualizarRegistro, preencher, resolverPendentes } from "./registro.js";
 
 export const ESTATS = [["pts", "PTS", "points"], ["reb", "REB", "rebounds"], ["ast", "AST", "assists"], ["tpm", "3PM", "threes"], ["pra", "PRA", "pra"]];
 const JOGO_S = 2880;
@@ -220,8 +221,9 @@ function quandoTxt(st) {
 }
 
 // célula de uma estatística: feito grande, deveria pequeno, barra do ritmo e a linha justa × pré-jogo
-function celula(e, ins) {
-  if (e.deveria == null) return `<td class="pc"><b class="pc-feito">${e.feito}</b></td>`;
+function celula(e, ins, aid, k) {
+  const alvo = `data-aid="${aid}" data-k="${k}" title="clique para registrar uma entrada"`;
+  if (e.deveria == null) return `<td class="pc" ${alvo}><b class="pc-feito">${e.feito}</b></td>`;
   const insH = ins ? `<div class="pc-ins" style="color:${ins.z > 0 ? COR_O : COR_U}" title="${esc(insTxt(ins))}">${ins.z > 0 ? "↑" : "↓"} ${ins.u > 0 ? "+" : "−"}${num(Math.abs(ins.u))}${Math.abs(ins.z) >= 0.15 ? " ●" : ""}</div>` : "";
   const r = e.deveria >= 0.5 ? e.feito / e.deveria : null; // começo: pouca base, sem cor
   const cor = r == null ? "var(--ink-3)" : r >= 1.15 ? COR_O : r <= 0.85 ? COR_U : "var(--ink-3)";
@@ -229,7 +231,7 @@ function celula(e, ins) {
   const larg = Math.min(100, Math.round(((r ?? 0) / 2) * 100));
   const d = e.justa - e.pre;
   const seta = Math.abs(d) < Math.max(0.5, 0.04 * e.pre) ? "" : d > 0 ? `<span style="color:${COR_O}">▲</span>` : `<span style="color:${COR_U}">▼</span>`;
-  return `<td class="pc${forte ? " forte" : ""}" style="--cor:${cor}">
+  return `<td class="pc${forte ? " forte" : ""}" style="--cor:${cor}" ${alvo}>
     <div class="pc-top"><b class="pc-feito" style="color:${r == null ? "var(--ink)" : cor}">${e.feito}</b><span class="pc-dev">/ ${num(e.deveria)}</span></div>
     <div class="pbar" title="feito ÷ deveria: ${r == null ? "–" : num(r, 2)}"><i style="width:${larg}%;background:${cor}"></i><em></em></div>
     <div class="pc-fim">${seta}<b>${num(e.justa)}</b> <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div>${insH}</td>`;
@@ -256,7 +258,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     return `<tr><td class="pj">${dot}<b>${esc(j.nome)}</b><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}</small></td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
-      ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k])).join("")}</tr>`;
+      ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
   }).join("");
   const extra = semBase.length ? `<p class="hint" style="margin:6px 0 0">Sem projeção na análise do dia: ${semBase.map((b) => `${esc(b.nome)} ${b.min} min, ${b.pts} pts, ${b.reb} reb, ${b.ast} ast`).join(" · ")}</p>` : "";
   return `<h3 class="ptime">${esc(sigla)}</h3><div class="tbl-wrap"><table class="painel"><thead><tr><th>Jogador</th><th>Min</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>${pr ? "<th>Pr</th>" : ""}${ESTATS.map(([, n]) => `<th>${n}</th>`).join("")}</tr></thead><tbody>${corpo}</tbody></table></div>${extra}`;
@@ -292,6 +294,17 @@ function jogoHtml(g, s) {
     (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins });
   }
   const semBase = Object.entries(box).filter(([id, b]) => !vistos.has(id) && !b.dnp && b.min > 0).map(([, b]) => b);
+  // contexto para o registro das entradas (o que o Painel mostrava na hora)
+  let sinais = [];
+  try { sinais = sinaisJogo(g, s, { cm: PAINEL.cm, ins: PAINEL.ins, jog: PAINEL.jog, pol: PAINEL.pol }); } catch { /* sem sinais */ }
+  PAINEL.ctx = {
+    data: new Date().toISOString().slice(0, 10), jogo_id: g.id, jogo: `${g.fora} @ ${g.casa}`, quando: quandoTxt(st), t: Math.round(rel.t), chance,
+    sinais: Object.fromEntries(sinais.map((x) => [`${x.j.aid}|${x.k}`, x])),
+    jogadores: Object.fromEntries(Object.values(porTime).flat().map(({ j, b, x, ins }) => [j.aid, {
+      nome: j.nome, time: j.time, min: b?.min ?? 0, margem: margemDe(j.time), ins,
+      est: Object.fromEntries(ESTATS.map(([k]) => [k, { feito: x.est[k].feito, justa: x.est[k].justa == null ? null : +x.est[k].justa.toFixed(2), pre: x.est[k].pre ?? null }])),
+    }])),
+  };
   const siglas = [g.fora, g.casa];
   for (const t of siglas) (porTime[t] || []).sort((a, c) => (c.b?.starter - a.b?.starter) || (c.x.minEsp - a.x.minEsp));
   const marg = (placar[g.casa] ?? 0) - (placar[g.fora] ?? 0);
@@ -338,6 +351,16 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
     if (!PAINEL.pol) PAINEL.pol = await fetch("data/padroes/cenarios.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     if (!PAINEL.cm) PAINEL.cm = await fetch("data/padroes/chance_minuto.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     if (!PAINEL.ins) PAINEL.ins = await fetch("data/padroes/insights_painel.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+    if (!PAINEL.jog) PAINEL.jog = await fetch("data/padroes/insights_jogador.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+    // duas áreas: a do jogo (refeita a cada 30 s) e a do registro (o formulário não é apagado enquanto se digita)
+    if (!el.querySelector("#pn-vivo")) {
+      el.innerHTML = `<div id="pn-vivo"><p class="muted">buscando o jogo…</p></div><div id="pn-reg"></div>`;
+      el.querySelector("#pn-vivo").addEventListener("click", (ev) => {
+        const td = ev.target.closest("td[data-aid]");
+        if (td) preencher(el.querySelector("#pn-reg"), td.dataset.aid, td.dataset.k);
+      });
+    }
+    const vivo = el.querySelector("#pn-vivo"), reg = el.querySelector("#pn-reg");
     try { PAINEL.sb = await espn(`/scoreboard?dates=${dia.data.replaceAll("-", "")}`); } catch { /* fica com o anterior */ }
     const ids = dia.jogos.map((g) => g.id);
     if (!ids.includes(PAINEL.sel)) {
@@ -349,13 +372,16 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
       try { PAINEL.sum = await espn(`/summary?event=${g.id}`); } catch { if (PAINEL.sum?.header?.id !== g.id) PAINEL.sum = null; }
     }
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    el.innerHTML = `${seletor(dia)}<p class="muted" style="margin:6px 0">atualizado às ${hora}</p>${jogoHtml(g, PAINEL.sum?.header?.id === g.id ? PAINEL.sum : null)}${LEGENDA}`;
-    for (const b of el.querySelectorAll("[data-jogo]")) b.onclick = () => {
+    vivo.innerHTML = `${seletor(dia)}<p class="muted" style="margin:6px 0">atualizado às ${hora}</p>${jogoHtml(g, PAINEL.sum?.header?.id === g.id ? PAINEL.sum : null)}${LEGENDA}`;
+    for (const b of vivo.querySelectorAll("[data-jogo]")) b.onclick = () => {
       PAINEL.sel = b.dataset.jogo;
       try { localStorage.setItem("traderpoly.painel", PAINEL.sel); } catch { /* sem armazenamento */ }
       PAINEL.carregando = false;
-      el.querySelector(".placar-vivo")?.insertAdjacentHTML("afterend", `<p class="muted">carregando…</p>`);
+      vivo.querySelector(".placar-vivo")?.insertAdjacentHTML("afterend", `<p class="muted">carregando…</p>`);
       mostrarPainel(el, dia, espn, true);
     };
+    if (PAINEL.ctx) PAINEL.ctx.data = dia.data; // data do jogo (dia da análise), não a do registro
+    try { await resolverPendentes(espn, PAINEL.sum); } catch { /* tenta na próxima */ }
+    atualizarRegistro(reg, PAINEL.ctx);
   } finally { PAINEL.carregando = false; }
 }

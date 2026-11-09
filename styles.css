@@ -437,3 +437,9 @@ table.painel td.pq0.atual { box-shadow: inset 0 0 0 2px var(--accent); }
 .chance-vivo small { color: var(--ink-3); }
 .ins-vivo { margin-bottom: 10px; }
 .pc-ins { font-family: var(--mono); font-size: 12px; font-weight: 700; margin-top: 2px; cursor: help; }
+.reg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.reg-grid label { display: grid; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.reg-grid input, .reg-grid select { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+.reg-form { margin: 14px 0 10px; }
+table.painel td.pc { cursor: pointer; }
+table.painel td.pc:hover { background: var(--accent-soft); }
