@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Props NBA</title>
-<meta name="description" content="Movimento das linhas da NBA na DraftKings, por jogo, desde a abertura: vencedor, handicap, totais do jogo, 1º tempo e quartos, e props de pontos, rebotes, assistências, cestas de 3 e PRA, com as lesões.">
+<meta name="description" content="Movimento das linhas da NBA na DraftKings, por jogo, desde a abertura: vencedor, handicap, totais do jogo, 1º tempo e quartos, e props de pontos, rebotes, assistências, cestas de 3 e PRA, com as projeções e o edge real.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -18,7 +18,6 @@
     <div class="brand"><b>Trader Poly</b><span>props da NBA</span></div>
     <div class="bar-right">
       <a class="pill" href="./">← Sinais</a>
-      <a class="pill" href="cs2.html">CS2 ao vivo</a>
       <a class="pill" href="padroes.html">Padrões por jogador</a>
       <span id="fonte" class="pill">carregando…</span>
       <button id="btn-atualizar" type="button">Atualizar</button>
@@ -31,41 +30,18 @@
     <div class="sec-head"><h1>Props da NBA</h1><span id="atualizado" class="muted"></span></div>
     <div class="tabs" role="tablist" aria-label="Visão">
       <button type="button" role="tab" data-aba="mov" aria-selected="true">Movimento das linhas</button>
-      <button type="button" role="tab" data-aba="edge" aria-selected="false">Edge (Edgely × DraftKings)</button>
-      <button type="button" role="tab" data-aba="filtros" aria-selected="false">Filtros</button>
-      <button type="button" role="tab" data-aba="acomp" aria-selected="false">Acompanhamento</button>
       <button type="button" role="tab" data-aba="campeon" aria-selected="false">Casas × DK</button>
     </div>
-    <p class="muted lede" data-so="edge" hidden>Projeção de cada jogador no <b>Edgely</b> comparada com a linha e as odds <b>atuais da DraftKings</b>. "Dif." é a projeção menos a linha (o edge do Edgely). "Chance pela projeção" transforma a projeção em chance de Over/Under na linha da DraftKings; "valor esperado" é quanto a aposta rende por unidade se essa chance estiver certa. Ordenado pelo valor esperado. Clique numa linha para ver o gráfico.</p>
-    <p class="muted lede" data-so="filtros" hidden>Para cada linha de hoje, o <b>movimento</b> e a <b>projeção × linha</b>, respondidos pela temporada só no mesmo mercado: de que lado o dinheiro ganhou mais (ou perdeu menos) nas linhas parecidas. Use para escolher onde pôr a lupa: a análise da entrada continua sua.</p>
-    <p class="muted lede" data-so="acomp" hidden>Todo dia às <b>12 h de Brasília</b> e de novo <b>~30 min antes de cada jogo</b> (com a projeção e as linhas mais recentes, inclusive jogadores que a casa abriu depois) o servidor registra, em cada prop da DraftKings dos jogos de hoje, uma aposta no lado de <b>maior valor esperado</b> pela projeção do Edgely (só quando ele é positivo), com a linha e as odds Over/Under daquele momento. Depois do jogo, o box score da ESPN diz se foi green ou red. Stake de 1 unidade; "anulada" = o jogador não entrou (a casa devolve). Além disso, ~10 min antes de cada jogo entram as <b>estratégias de mercado</b> (seguir o movimento da linha, projeção confirmada ou contrariada pela linha, controle Under), cada uma com placar próprio. <b>Tudo é separado por mercado</b> (pontos, rebotes, total do jogo, handicap…): o placar de cada estratégia em cada mercado, como as linhas de cada mercado se comportaram da abertura ao fechamento e, jogo a jogo, o que a linha fez e o que aconteceu.</p>
-    <div class="edgely-barra" data-so="edge" hidden>
-      <button id="btn-edgely" type="button">Buscar projeções no Edgely</button>
-      <span id="edgely-info" class="muted"></span>
-    </div>
-    <p class="muted lede" data-so="mov">Linhas da <b>DraftKings</b> em cada jogo da NBA de hoje e amanhã, com a abertura, o agora e as lesões: <b>mercados do jogo</b> (vencedor, handicap, total do jogo, do 1º tempo e de cada quarto) e <b>props</b> de pontos, rebotes, assistências, cestas de 3 e PRA (pontos + rebotes + assistências), com quem mais se mexeu primeiro. "Over sem margem" é a chance do Over tirando a margem da casa. Clique numa linha para ver o gráfico. O jogo some quando termina.</p>
+    <p class="muted lede" data-so="mov">Linhas da <b>DraftKings</b> nos jogos de hoje e amanhã: abertura → agora, lesões, mercados do jogo e as props de cada jogador num bloco só, com as <b>projeções</b> (Edgely, nossa, DARKO) e o <b>edge real</b>. Clique numa estatística para ver o gráfico.</p>
+    <p id="info-proj" class="muted" data-so="mov"></p>
     <div class="props-filtros" role="group" aria-label="Filtros">
-      <label data-so="mov edge filtros campeon">Estatística
+      <label data-so="mov campeon">Estatística
         <select id="f-tipo"><option value="">todas</option><option value="points">pontos</option><option value="rebounds">rebotes</option><option value="assists">assistências</option><option value="threes">cestas de 3</option><option value="pra">PRA (pts+reb+ast)</option><option value="pa">pontos + assist.</option><option value="pr">pontos + rebotes</option><option value="ra">rebotes + assist.</option><option value="steals">roubos</option><option value="blocks">tocos</option><option value="stocks">roubos + tocos</option><option value="jogo">mercados do jogo</option></select></label>
       <label data-so="mov">Movimento desde
         <select id="f-desde"><option value="abertura">a abertura</option><option value="24h">24 h atrás</option><option value="3h">3 h atrás</option></select></label>
       <label data-so="mov">Mostrar
-        <select id="f-min"><option value="0">todas as linhas</option><option value="0.03">movimento ≥ 3 pp</option><option value="0.05">movimento ≥ 5 pp</option><option value="0.10">movimento ≥ 10 pp</option></select></label>
-      <label data-so="filtros" hidden>Amostra mínima do filtro
-        <select id="f-amostra"><option value="10">10 apostas</option><option value="30">30 apostas</option><option value="60">60 apostas</option><option value="100">100 apostas</option></select></label>
-      <label data-so="filtros" hidden>Força mínima do sinal
-        <select id="f-conf"><option value="20">20</option><option value="40">40</option><option value="60">60</option><option value="80">80</option></select></label>
-      <label data-so="filtros" hidden>Estratégia
-        <select id="f-cand"><option value="">todas as linhas</option><option value="todas">só candidatas a sinal</option><option value="e12-pra">Edgely 12 h → Under · PRA</option><option value="e12-points">Edgely 12 h → Under · pontos</option><option value="e12-pa">Edgely 12 h · P+A</option><option value="par-ra">Jogo parelho → Under · R+A</option><option value="par-reb">Jogo parelho → Under · rebotes</option><option value="tarde-pa">Caiu à tarde → Under · P+A</option><option value="est-ast">Linha alta → Under · assistências</option><option value="mov-3pm">Andou p/ Under → Under · cestas de 3</option><option value="mov-pra">Andou p/ Under → Under · PRA</option><option value="manha-ast">Seguir a manhã · assistências</option></select></label>
-      <label data-so="filtros" hidden>Mostrar
-        <select id="f-conc"><option value="0">todas as linhas</option><option value="1">1+ sinal forte</option><option value="2">os 2 sinais no mesmo lado</option></select></label>
-      <label data-so="acomp" hidden>Mercado
-        <select id="f-merc"><option value="">todos (cada um separado)</option><option value="points">pontos</option><option value="rebounds">rebotes</option><option value="assists">assistências</option><option value="threes">cestas de 3</option><option value="pra">PRA (pts+reb+ast)</option><option value="pa">pontos + assist.</option><option value="pr">pontos + rebotes</option><option value="ra">rebotes + assist.</option><option value="steals">roubos</option><option value="blocks">tocos</option><option value="stocks">roubos + tocos</option><option value="jogo-total">total do jogo</option><option value="jogo-spread">handicap</option><option value="jogo-ml">vencedor</option><option value="jogo-parcial">1º tempo e quartos</option></select></label>
-      <label data-so="acomp" hidden>Registro
-        <select id="f-mom"><option value="">todos (só o placar)</option><option value="mov">seguir o movimento da linha</option><option value="conf">projeção confirmada pela linha</option><option value="contra">linha contra a projeção</option><option value="mudou">projeção mudou e a linha acompanhou</option><option value="mov-under">linha andou p/ Under → Under</option><option value="linha-volta">linha andou e a odd voltou</option><option value="contra-mudou">projeção mudou sozinha → contra ela</option><option value="tarde-under">linha caiu à tarde → Under</option><option value="estrela-under">linha alta (estrela) → Under</option><option value="parelho-under">jogo parelho, titular → Under</option><option value="under">controle: Under em tudo</option><option value="12h">Edgely 12 h</option><option value="30m">Edgely ~30 min antes</option></select></label>
-      <label data-so="edge" hidden>Mostrar
-        <select id="f-ev"><option value="">todas as linhas</option><option value="0">valor esperado ≥ 0</option><option value="0.05">valor esperado ≥ 5%</option><option value="0.10">valor esperado ≥ 10%</option></select></label>
-      <label data-so="mov edge filtros campeon">Jogador<input id="f-busca" type="search" placeholder="nome…" autocomplete="off"></label>
+        <select id="f-min"><option value="0">todas as linhas</option><option value="edge">só com edge ≥ 3%</option><option value="0.03">movimento ≥ 3 pp</option><option value="0.05">movimento ≥ 5 pp</option><option value="0.10">movimento ≥ 10 pp</option></select></label>
+      <label data-so="mov campeon">Jogador<input id="f-busca" type="search" placeholder="nome…" autocomplete="off"></label>
     </div>
     <div id="aviso-hist" class="banner" data-so="mov" hidden><b>Ainda sem histórico da DraftKings.</b><span>"24 h" e "3 h" usam o histórico gravado a cada ~10 min. Enquanto ele não cobre o período, a comparação é com a abertura.</span></div>
     <div id="status" class="muted"></div>
@@ -77,9 +53,10 @@
     <h2>Como ler</h2>
     <ul>
       <li><b>Fonte:</b> DraftKings, pela API pública da ESPN, com linha e odd de abertura e atuais. O histórico entre a abertura e agora é gravado no nosso servidor a cada ~10 min.</li>
-      <li><b>Movimento:</b> "≈ +X pp" é quanto a chance do Over mudou <b>na linha de abertura</b>, juntando a mudança de linha e a de odd (pp = pontos percentuais). Embaixo, o que a casa fez de fato (ex.: +1 na linha · −13 pp). Como a chance cai quando a linha sobe, cada ponto de linha vale ~6,5 pp em pontos, ~14 pp em rebotes, ~17 pp em assistências, ~25 pp em cestas de 3 e ~5 pp no PRA (aproximação pela dispersão típica de cada estatística). ▲ Over = a casa foi para o Over.</li>
-      <li><b>Mercados do jogo:</b> no vencedor e no handicap, a chance e o movimento são do time visitante (o 1º nome); a linha do handicap é a dele. Nos totais, do Over. No total, cada ponto de linha vale ~2,2 pp no jogo, ~3,2 pp no 1º tempo e ~4,7 pp num quarto; no handicap, ~3,1 pp. Total do jogo andando e os quartos parados é um sinal a olhar.</li>
-      <li><b>Edge:</b> projeções do <b>Edgely</b> (edgely.bet), buscadas pelo nosso servidor: 1 vez por dia a partir das 9 h de Nova York (10 h de Brasília; o Edgely carrega a projeção do dia ~8h30 ET e não muda depois), ou quando você aperta "Buscar projeções" (no máximo 1 busca a cada 10 min, para não sobrecarregar o site deles). A linha e as odds são as da DraftKings agora, não as que o Edgely mostra. A chance pela projeção é uma aproximação: pontos e PRA como normal com desvio ≈ 1,4 × √projeção (25 pts → ~7); rebotes, assistências e cestas de 3 como contagem com variância 1,25 × a média. Ela ainda não foi calibrada com resultados reais: use o valor esperado para ordenar, não como garantia.</li>
+      <li><b>Movimento:</b> "≈ +X pp" é quanto a chance do Over mudou <b>na linha de abertura</b>, juntando a mudança de linha e a de odd (pp = pontos percentuais). ▲ = a casa foi para o Over.</li>
+      <li><b>Projeções:</b> E = Edgely, N = nossa (minutos previstos × produção por minuto nos últimos 15 jogos), D = DARKO (não desconta quem está fora). Os minutos de cada uma aparecem ao lado do nome do jogador. A nossa e a DARKO só existem para os jogadores da análise do dia.</li>
+      <li><b>Edge real:</b> a chance pela projeção sozinha perdeu da DraftKings em todas as estatísticas (20 noites de teste) e era confiante demais. A chance usada é a da DK sem margem, puxada só o quanto cada projeção acrescentou no histórico (Edgely ~15–25%, nossa 15–35%, DARKO 10–25%; rebotes do Edgely ~0), com a dispersão de cada jogador. Aparece o lado de maior valor esperado e a fonte; verde a partir de 3%. Só pontos, rebotes, assistências, cestas de 3 e PRA (as outras ainda não foram calibradas).</li>
+      <li><b>Mercados do jogo:</b> no vencedor e no handicap, a chance e o movimento são do time visitante (o 1º nome); a linha do handicap é a dele. Nos totais, do Over.</li>
       <li><b>Lesões:</b> relatório do jogo na ESPN (Out, Day-To-Day…). A etiqueta aparece ao lado do jogador.</li>
     </ul>
     <p class="hint">Dados públicos da ESPN (DraftKings), atualizados a cada 5 min com a página aberta. Isto não é recomendação de aposta.</p>

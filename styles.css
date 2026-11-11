@@ -268,6 +268,12 @@ table.estreita { min-width: 0; max-width: 560px; }
 .props-tab td.mov.forte b { font-size: 14px; }
 .props-tab td.mov.forte { box-shadow: inset 3px 0 0 var(--accent); }
 .props-tab tr.det td { padding: 8px 4px 14px; background: var(--panel); }
+/* props de um jogador agrupadas (12/11/2026): cabeçalho com nome, lesão e minutos; edge real em verde */
+.props-tab tr.grupo td { padding-top: 12px; border-top: 2px solid var(--line); background: var(--bg); }
+.props-tab tr.grupo td small { display: inline; margin-left: 8px; }
+.props-tab td.edge b { color: var(--ink-2); }
+.props-tab td.edge.forte { box-shadow: inset 3px 0 0 var(--good); }
+.props-tab td.edge.forte b { color: var(--good); }
 .spark { display: block; }
 .spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 .graf { position: relative; max-width: 720px; }
