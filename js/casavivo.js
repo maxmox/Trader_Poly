@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -61,8 +61,8 @@ function linhasDaColeta(coletas, dia) {
 
 async function carregarDados() {
   if (ST.dados) return ST.dados;
-  const ler = (u) => fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
-  const [cm, ins, jog, pol, tim, cal] = await Promise.all(["chance_minuto", "insights_painel", "insights_jogador", "cenarios", "insights_time", "calibra_justa"].map((n) => ler(`data/padroes/${n}.json`)));
+  const ler = (u) => (u.includes("/-.json") ? Promise.resolve({}) : fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}))); // insights antigos desligados (11/11)
+  const [cm, ins, jog, pol, tim, cal] = await Promise.all(["chance_minuto", "-", "-", "cenarios", "-", "calibra_justa"].map((n) => ler(`data/padroes/${n}.json`)));
   return (ST.dados = { cm, ins, jog, pol, tim, cal });
 }
 
@@ -81,9 +81,10 @@ function jogoHtml(g, s, linhas, d) {
   const placar = Object.fromEntries((comp?.competitors || []).map((c) => [c.team.abbreviation, Number(c.score) || 0]));
   const margem = (t) => (comp ? placar[t] - (Object.entries(placar).find(([x]) => x !== t)?.[1] ?? 0) : null);
   const est = new Map();
+  const quentes = quentesDoJogo(g, box);
   for (const j of g.jogadores) {
     const b = box[j.aid];
-    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), rank: estrelasDe(g)[j.aid] }) });
+    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
   }
   let sinais = [];
   try { sinais = sinaisJogo(g, s, d); } catch { /* sem sinais */ }
