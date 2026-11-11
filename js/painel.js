@@ -111,13 +111,31 @@ export function agoraDe(plays, aid, b, rel, st) {
   return { quadra: e.quadra, dur: Math.max(0, rel.t - (e.desde || 0)), jogou: jogou || b.min || 0 };
 }
 
+// Calibração da linha justa (11/11/2026, nba_pbp/calibrar_justa.py → data/padroes/calibra_justa.json): fator de minutos e
+// de ritmo por momento × placar projetado do time (placar + handicap pelo tempo que falta) × papel (minutos esperados),
+// peso do ritmo de hoje por estatística (K) e nível do ritmo contra a linha da DK. Ajustado em metade dos jogos e
+// medido na outra: viés médio por situação pontos 0,42 → 0,28, PRA 0,56 → 0,37, rebotes 0,12 → 0,08.
+export function placarProj(g, time, mg, rel) {
+  if (mg == null) return null;
+  const h = g.handicap == null ? 0 : time === g.casa ? g.handicap : -g.handicap; // negativo = favorito
+  return mg - (h * Math.max(0, JOGO_S - rel.t)) / JOGO_S;
+}
+function celulaCal(cal, t, pm, me) {
+  const tb = cal.tempo.findIndex(([a, b]) => a <= t && t < b);
+  const mb = cal.placar.filter((x) => pm > x).length;
+  const rb = cal.papel.filter((x) => me >= x).length;
+  return tb < 0 ? null : [tb, mb, rb];
+}
+
 // Estimativa de um jogador: feito, deveria (ritmo normal × minutos jogados) e linha justa ao fim.
-// `agora` (agoraDe) liga a conta dos minutos que faltam pela rotação; sem ela, conta por quarto.
-export function estimar(j, box, rel, ajQ4, agora = null) {
+// `agora` (agoraDe) liga a conta dos minutos que faltam pela rotação; `cal` = {tab: calibra_justa.json, pm: placarProj}
+// troca o ajuste antigo do Q4 pelos fatores calibrados. Sem eles, a conta antiga.
+export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
   const minEsp = minEspDe(j);
   const min = box?.min || 0;
   const fora = (box?.pf ?? 0) >= 6;
   const espQ = minutosQuarto(j);
+  const c = cal?.tab?.minutos && cal.pm != null && rel.p >= 1 && rel.p <= 4 && !rel.fim ? celulaCal(cal.tab, rel.t, cal.pm, minEsp) : null;
   // minutos que ainda deve jogar: o esperado dos quartos que faltam (o atual pela parte que falta), Q4 ajustado pelo placar
   let minResto = 0, rot = null;
   if (!rel.fim && !fora && minEsp) {
@@ -133,22 +151,28 @@ export function estimar(j, box, rel, ajQ4, agora = null) {
       }
       rot = minRestoRotacao(j, rel, agora, minEsp, base);
       const m0 = rot ? rot.min : base;
-      // placar no Q4 (blowout/parelho) só sobre a parte do Q4
-      minResto = base > 0 ? m0 * (1 + (q4 / base) * (ajQ4 - 1)) : 0;
+      if (c) minResto = Math.min(m0 * cal.tab.minutos[c[0]][c[1]][c[2]], (JOGO_S - rel.t) / 60);
+      else minResto = base > 0 ? m0 * (1 + (q4 / base) * (ajQ4 - 1)) : 0; // placar no Q4 só sobre a parte do Q4
     }
   }
   const minAgora = minEsp * Math.min(1, rel.t / JOGO_S);
-  const w = min > 0 ? min / (min + PESO_HOJE) : 0;
   const est = {};
   for (const [k] of ESTATS) {
     const L = linhaPre(j, k);
     const feito = box?.[k] ?? 0;
     if (!L || !minEsp) { est[k] = { feito }; continue; }
     const taxa0 = L.v / minEsp;
-    const taxa = (1 - w) * taxa0 + (min > 0 ? w * (feito / min) : 0);
+    const K = c && k !== "pra" ? (cal.tab.K?.[k] ?? 1e9) : PESO_HOJE;
+    const w = min > 0 ? min / (min + K) : 0;
+    let taxa = (1 - w) * taxa0 + (min > 0 ? w * (feito / min) : 0);
+    if (c && k !== "pra") taxa *= (cal.tab.nivel?.[k] ?? 1) * (cal.tab.ritmo?.[k]?.[c[0]]?.[c[1]]?.[c[2]] ?? 1);
     est[k] = { feito, deveria: taxa0 * min, justa: feito + taxa * minResto, pre: L.v, fonte: L.fonte };
   }
-  return { minEsp, minAgora, minResto, espQ, est, rot, agora };
+  // PRA calibrado = soma das três (foi assim que se mediu)
+  if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
+    est.pra.justa = est.pts.justa + est.reb.justa + est.ast.justa;
+  }
+  return { minEsp, minAgora, minResto, espQ, est, rot, agora, calibrada: !!c };
 }
 
 // Box score da ESPN → { id: {min, pts, reb, ast, tpm, pra, pf, starter, sigla, nome} }
@@ -264,7 +288,7 @@ export function sinaisJogo(g, s, d) {
     if (!b || b.dnp || b.pf >= 6) continue;
     const minEsp = minEspDe(j);
     const mg = margemDe(j.time);
-    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]), agoraDe(s.plays || [], j.aid, b, rel, st)) });
+    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]), agoraDe(s.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, mg, rel) }) });
   }
   const cen = cenarioTime(d.tim, rel, js.map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
   for (const { j, b, mg, x } of js) {
@@ -385,7 +409,7 @@ function jogoHtml(g, s) {
     if (b?.dnp || (!b && (Object.keys(box).length || out.includes(j.nome)) && st.type?.state !== "pre")) continue;
     const margem = placar[j.time] != null ? placar[j.time] - (Object.entries(placar).find(([k]) => k !== j.time)?.[1] ?? 0) : null;
     const minEsp = minEspDe(j);
-    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), agoraDe(plays, j.aid, b, rel, st));
+    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), agoraDe(plays, j.aid, b, rel, st), { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel) });
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
@@ -448,7 +472,7 @@ function seletor(dia) {
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele misturado com o de hoje (peso de hoje = min ÷ (min + 60): 12 min → 17%, 24 → 29%); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e o Q4 ajustado pelo placar (16+: titulares saem pela política do time, reservas +30%; parelho no Q4: quem joga 30+ ganha 20%). Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
 <p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Insights</b> (↑/↓ na célula, ● = 0,15+ desvio): começo do jogador (feito ÷ deveria: muito frio &lt; 0,6, frio &lt; 0,85, média até 1,15, quente até 1,4, muito quente acima) × nível da chance de blowout (&lt; 20%, 20–40%, 40%+) e de clutch (&lt; 30%, 30–50%, 50%+) da liga, medido no fim do Q1 (vale no Q2), no intervalo (Q3) e no fim do Q3 (Q4); o valor é quanto o final ficou acima ou abaixo da linha justa. Só entram os que tiveram o mesmo sinal em 3 testes (linha 2025-27, linha 2024-25 e jogos sem linha): de 357 cruzamentos, 182 repetiram (~89 seria acaso), então parte ainda é ruído. Não medido contra a linha ao vivo das casas.</p>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
@@ -460,6 +484,7 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
     if (!PAINEL.ins) PAINEL.ins = await fetch("data/padroes/insights_painel.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     if (!PAINEL.jog) PAINEL.jog = await fetch("data/padroes/insights_jogador.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     if (!PAINEL.tim) PAINEL.tim = await fetch("data/padroes/insights_time.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+    if (!PAINEL.cal) PAINEL.cal = await fetch("data/padroes/calibra_justa.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
     // duas áreas: a do jogo (refeita a cada 30 s) e a do registro (o formulário não é apagado enquanto se digita)
     if (!el.querySelector("#pn-vivo")) {
       el.innerHTML = `<div id="pn-vivo"><p class="muted">buscando o jogo…</p></div><div id="pn-reg"></div>`;

@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -62,8 +62,8 @@ function linhasDaColeta(coletas, dia) {
 async function carregarDados() {
   if (ST.dados) return ST.dados;
   const ler = (u) => fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
-  const [cm, ins, jog, pol, tim] = await Promise.all(["chance_minuto", "insights_painel", "insights_jogador", "cenarios", "insights_time"].map((n) => ler(`data/padroes/${n}.json`)));
-  return (ST.dados = { cm, ins, jog, pol, tim });
+  const [cm, ins, jog, pol, tim, cal] = await Promise.all(["chance_minuto", "insights_painel", "insights_jogador", "cenarios", "insights_time", "calibra_justa"].map((n) => ler(`data/padroes/${n}.json`)));
+  return (ST.dados = { cm, ins, jog, pol, tim, cal });
 }
 
 function placarHtml(g, s) {
@@ -83,7 +83,7 @@ function jogoHtml(g, s, linhas, d) {
   const est = new Map();
   for (const j of g.jogadores) {
     const b = box[j.aid];
-    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st)) });
+    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel) }) });
   }
   let sinais = [];
   try { sinais = sinaisJogo(g, s, d); } catch { /* sem sinais */ }
