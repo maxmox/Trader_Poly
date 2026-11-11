@@ -120,6 +120,19 @@ export function placarProj(g, time, mg, rel) {
   const h = g.handicap == null ? 0 : time === g.casa ? g.handicap : -g.handicap; // negativo = favorito
   return mg - (h * Math.max(0, JOGO_S - rel.t)) / JOGO_S;
 }
+// Estrela nº 1 e nº 2 de cada time (calibração das estrelas, 11/11, hipótese do usuário: no jogo apertado a estrela
+// pontua mais desde o Q3 e os outros somem): maiores linhas de pontos do dia (sem linha, média recente). {aid: 0|1}
+export function estrelasDe(g) {
+  const out = {};
+  const por = {};
+  for (const j of g.jogadores || []) (por[j.time] ||= []).push(j);
+  for (const js of Object.values(por)) {
+    const pts = (j) => j.linhas?.points?.l ?? j.recente?.media?.pts ?? j.edgely?.pts ?? 0;
+    js.slice().sort((a, b) => pts(b) - pts(a)).slice(0, 2).forEach((j, i) => { out[j.aid] = i; });
+  }
+  return out;
+}
+
 function celulaCal(cal, t, pm, me) {
   const tb = cal.tempo.findIndex(([a, b]) => a <= t && t < b);
   const mb = cal.placar.filter((x) => pm > x).length;
@@ -167,6 +180,12 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
     let taxa = (1 - w) * taxa0 + (min > 0 ? w * (feito / min) : 0);
     if (c && k !== "pra") taxa *= (cal.tab.nivel?.[k] ?? 1) * (cal.tab.ritmo?.[k]?.[c[0]]?.[c[1]]?.[c[2]] ?? 1);
     est[k] = { feito, deveria: taxa0 * min, justa: feito + taxa * minResto, pre: L.v, fonte: L.fonte };
+  }
+  // estrela nº 1/nº 2: fator por cima do que falta (no parelho do Q3 em diante ~1,07–1,15; no blowout ~0,7–0,85)
+  const fe = c && cal.rank != null ? cal.tab.estrelas?.[cal.rank] : null;
+  if (fe) for (const k of ["pts", "reb", "ast", "tpm"]) {
+    const e = est[k], f = fe[k]?.[c[0]]?.[c[1]];
+    if (e?.justa != null && f) e.justa = e.feito + (e.justa - e.feito) * f;
   }
   // PRA calibrado = soma das três (foi assim que se mediu)
   if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
@@ -288,7 +307,7 @@ export function sinaisJogo(g, s, d) {
     if (!b || b.dnp || b.pf >= 6) continue;
     const minEsp = minEspDe(j);
     const mg = margemDe(j.time);
-    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]), agoraDe(s.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, mg, rel) }) });
+    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]), agoraDe(s.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, mg, rel), rank: estrelasDe(g)[j.aid] }) });
   }
   const cen = cenarioTime(d.tim, rel, js.map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
   for (const { j, b, mg, x } of js) {
@@ -409,7 +428,7 @@ function jogoHtml(g, s) {
     if (b?.dnp || (!b && (Object.keys(box).length || out.includes(j.nome)) && st.type?.state !== "pre")) continue;
     const margem = placar[j.time] != null ? placar[j.time] - (Object.entries(placar).find(([k]) => k !== j.time)?.[1] ?? 0) : null;
     const minEsp = minEspDe(j);
-    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), agoraDe(plays, j.aid, b, rel, st), { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel) });
+    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), agoraDe(plays, j.aid, b, rel, st), { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), rank: estrelasDe(g)[j.aid] });
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
