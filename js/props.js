@@ -9,6 +9,7 @@ import { $, esc, hora, dataHora } from "./formato.js";
 import { carregarAcomp, renderAcomp, acompVelho } from "./acompanhamento.js";
 import { carregarFiltros, renderFiltros, filtrosVelho } from "./filtros.js";
 import { ouvirCampeon, renderCampeon } from "./campeon.js";
+import { edgeReal, K_EDGE } from "./edgereal.js";
 
 const TIPOS = { ...TIPOS_PROP, pra: "PRA (pts+reb+ast)" };
 const NOVA_MS = 2 * 3600e3; // linha que apareceu há menos de 2 h ganha destaque
@@ -23,6 +24,9 @@ let SITE = `https://site.api.espn.com${ESPN_NBA}`;
 let configurado = false, RELAY = "", jogos = [], erro = null, carregadoEm = null, rodando = false;
 let edgely = null, forma = null, pedidoMsg = ""; // forma = data/forma_times.json (últimos jogos de cada time) // data/edgely.json e a resposta do último "Buscar projeções"
 const abertos = new Set(); // linhas com o gráfico aberto
+// edge real (11/11): dispersão (calibra_justa.json), pesos de cada fonte (edge_real.json) e a análise do dia
+// (padroes/<dia>.json: nossa projeção e a DARKO por id do atleta na ESPN)
+let calJ = null, pesosEdge = null, analise = new Map();
 
 // ---------- filtros (salvos só neste navegador) ----------
 const PADRAO_F = { aba: "mov", tipo: "", desde: "abertura", min: "0", ev: "", mom: "", merc: "", amostra: "30", conf: "40", conc: "1", cand: "", busca: "" };
@@ -140,13 +144,29 @@ function movimento(x) {
 // ---------- dados ----------
 // ---------- Edge (projeção do Edgely × DraftKings; conta em core.js: chanceOver/edgeProp) ----------
 // lado com o maior valor esperado nas odds atuais da DraftKings
-function edgeDe(x) {
+// Props de pontos/rebotes/assist./3PM/PRA (11/11): EDGE REAL (edgereal.js) de cada fonte — Edgely (pesos "30m" a menos de
+// 1 h do jogo, senão "12h"), nossa projeção e DARKO (só pontos e assist. têm peso validado); fica a de maior EV e todas
+// aparecem na linha. Outras props (combinações, roubos, tocos) e mercados do jogo: cálculo antigo, sem calibração.
+function projsDe(x) {
+  const k = K_EDGE[x.tipo], d = x.an?.darko;
+  return { edgely: x.proj, nossa: k ? x.an?.nossa?.[k] ?? null : null, darko: !k || !d ? null : k === "pra" ? +(d.pts + d.reb + d.ast).toFixed(1) : d[k] ?? null };
+}
+function edgeDe(x, j) {
   if (x.k) { // mercado do jogo
     const e = edgeJogo(x.k, x.proj, x.dk.linha, x.dk.over, x.dk.under);
-    return e && { ...e, dif: x.k === "total" ? x.proj - x.dk.linha : null, ladoTxt: e.lado === "O" ? x.rotA : x.rotB };
+    return e && { ...e, antiga: true, dif: x.k === "total" ? x.proj - x.dk.linha : null, ladoTxt: e.lado === "O" ? x.rotA : x.rotB };
   }
-  const e = edgeProp(x.tipo, x.proj, x.dk.linha, x.dk.over, x.dk.under);
-  return e && { ...e, ladoTxt: e.lado };
+  if (!K_EDGE[x.tipo] || !pesosEdge || !calJ) {
+    const e = edgeProp(x.tipo, x.proj, x.dk.linha, x.dk.over, x.dk.under);
+    return e && { ...e, antiga: true, ladoTxt: e.lado };
+  }
+  const p = projsDe(x), perto = j && j.inicio - Date.now() < 3600e3;
+  const fontes = [[perto ? "Edgely 30m" : "Edgely 12h", "Edgely", p.edgely], ["nossa", "nossa", p.nossa], ["DARKO", "DARKO", p.darko]]
+    .map(([chave, nome, v]) => { const e = edgeReal(calJ, pesosEdge, chave, x.tipo, x.aid, v, x.dk.linha, x.dk.over, x.dk.under); return e && { ...e, nome, proj: v }; })
+    .filter(Boolean);
+  if (!fontes.length) return null;
+  const m = fontes.reduce((a, b) => (b.ev > a.ev ? b : a));
+  return { ...m, ladoTxt: m.lado, fontes, dif: m.proj - x.dk.linha };
 }
 const hojeEt = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 // projeções por jogo da ESPN + nome (o Edgely traz o id do jogo na ESPN): projeção de outro dia não casa
@@ -196,6 +216,7 @@ async function carregarJogo(ev, historico, projs) {
       id: `${ev.id}|${dk.atleta}|${dk.tipo}`, jogador, sigla: siglaDe[dk.atleta] || "", tipo: dk.tipo, dk,
       rotA: "Over", rotB: "Under", porLinha: POR_LINHA[dk.tipo], dirLinha: 1, temLinha: true,
       lesao: lesoes[normal(jogador)] || null, hist: hist?.h?.[`${dk.atleta}|${dk.tipo}`] || [], proj: pe?.proj?.[dk.tipo] ?? null, projMin: pe?.proj?.min ?? null,
+      aid: String(dk.atleta), an: analise.get(String(dk.atleta)) || null,
       vistoEm: vistoEm(hist, `${dk.atleta}|${dk.tipo}`),
     };
   });
@@ -225,8 +246,10 @@ async function carregar() {
     const vivos = evs.filter((e) => e.status?.type?.state !== "post"); // jogo encerrado some da página
     // histórico gravado pela Action (mesmo site; a ESPN recusa o Worker)
     const lerData = (nome) => fetch(`data/${nome}?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    const [historico, ed, fm] = await Promise.all([lerData("linhas_dk.json"), lerData("edgely.json"), lerData("forma_times.json")]);
-    edgely = ed; forma = fm;
+    const [historico, ed, fm, cj, pe, an] = await Promise.all([lerData("linhas_dk.json"), lerData("edgely.json"), lerData("forma_times.json"),
+      lerData("padroes/calibra_justa.json"), lerData("padroes/edge_real.json"), lerData(`padroes/${hojeEt()}.json`)]);
+    edgely = ed; forma = fm; calJ = cj; pesosEdge = pe?.pesos || null;
+    analise = new Map((an?.jogos || []).flatMap((g) => g.jogadores || []).map((j) => [String(j.aid), j]));
     const projs = projecoes(edgely);
     const novos = [];
     let feitos = 0;
@@ -452,12 +475,12 @@ function renderEdge() {
   for (const j of jogos) {
     for (const x of j.linhas) {
       if ((f.tipo && x.tipo !== f.tipo) || (busca && !normal(x.jogador).includes(busca))) continue;
-      const e = edgeDe(x);
+      const e = edgeDe(x, j);
       if (e && e.ev >= min) L.push({ j, x, e });
     }
     if (!f.tipo || f.tipo === "jogo") for (const x of j.mercados) { // total, handicap e vencedor com a projeção de jogo do Edgely
       if (x.proj == null || (busca && !normal(j.titulo).includes(busca))) continue;
-      const e = edgeDe(x);
+      const e = edgeDe(x, j);
       if (e && e.ev >= min) L.push({ j, x, e });
     }
   }
@@ -469,31 +492,39 @@ function renderEdge() {
   }
   // divergência extrema (≥ 30 pp entre a chance pela projeção e a da DraftKings): quase sempre minutos/papel
   // diferentes na projeção (troca de time, volta de lesão, começo de temporada); ficam numa lista à parte
-  const extrema = (e) => e.mercado != null && Math.abs(e.chance - e.mercado) >= 0.30;
-  const normais = L.filter(({ e }) => !extrema(e)), extremas = L.filter(({ e }) => extrema(e));
+  // (edge real: compara a chance da projeção SOZINHA com a da DK)
+  const extrema = (e) => !e.antiga && e.mercado != null && Math.abs(e.modelo - e.mercado) >= 0.30;
+  const reais = L.filter(({ e }) => !e.antiga && !extrema(e)), extremas = L.filter(({ e }) => extrema(e)), antigas = L.filter(({ e }) => e.antiga);
   $("#jogos").innerHTML = [
-    normais.length ? tabelaEdge(normais, `${normais.length} linhas`) : "",
+    `<p class="muted">Edge real (11/11): a chance pela projeção sozinha perdeu da DraftKings em todas as estatísticas (20 noites) e era confiante demais. Agora a chance é a da DK sem margem puxada só um pouco na direção da projeção — o quanto a projeção acrescentou no histórico (Edgely ~15–25%, nossa 15–35%, DARKO 10–25%; rebotes do Edgely ~0) —, com a dispersão medida de cada jogador. Por isso quase nada passa de 3–5% de EV: é o tamanho real da vantagem.</p>`,
+    reais.length ? tabelaEdge(reais, `Pontos, rebotes, assistências, cestas de 3 e PRA · ${reais.length} linhas`) : "",
     extremas.length ? tabelaEdge(extremas, `Divergências extremas · ${extremas.length} linhas`, "A projeção e a DraftKings discordam em 30 pp ou mais. Quase sempre a projeção usa minutos diferentes (veja os minutos projetados): troca de time, volta de lesão, rotação nova. Confira antes de confiar.") : "",
+    antigas.length ? tabelaEdge(antigas, `Outras linhas · cálculo antigo, sem calibração · ${antigas.length}`, "Combinações (P+A, P+R, R+A), roubos, tocos e mercados do jogo ainda usam a conta antiga (só a projeção do Edgely, dispersão aproximada). O EV aqui é inflado: não compare com a tabela de cima.") : "",
   ].join("");
 }
 function tabelaEdge(L, titulo, nota = "") {
   return `<section class="panel"><h2>${esc(titulo)}</h2>${nota ? `<p class="muted">${nota}</p>` : ""}<div class="tbl-wrap"><table class="props-tab edge-tab"><thead><tr>
-      <th>Jogador</th><th>Jogo</th><th>Estatística</th><th class="n">Projeção</th><th class="n">Linha DK</th><th class="n">Dif.</th><th class="n">Aposta</th><th class="n">Chance pela projeção</th><th class="n">Chance DK sem margem</th><th class="n">Valor esperado</th></tr></thead>
+      <th>Jogador</th><th>Jogo</th><th>Estatística</th><th class="n">Projeções</th><th class="n">Linha DK</th><th class="n">Dif.</th><th class="n">Aposta</th><th class="n">Chance${L[0]?.e.antiga ? " pela projeção" : " real"}</th><th class="n">Chance DK sem margem</th><th class="n">Valor esperado</th></tr></thead>
     <tbody>${L.map(({ j, x, e }) => {
       const aberto = abertos.has(x.id);
       const les = x.lesao ? ` <span class="tag-les" title="${esc(x.lesao.motivo)}">${esc(x.lesao.status)}</span>` : "";
-      const projTxt = x.k ? (x.k === "total" ? lin(x.proj) : `${esc(x.proj < 0 ? x.rotA : x.rotB)} por ${lin(Math.abs(x.proj))}`) : lin(x.proj);
+      const r1 = (v) => (v == null ? "–" : lin(Math.round(10 * v) / 10));
+      const negrito = (n, t) => (n === e.nome ? `<b>${t}</b>` : t);
+      const projTxt = x.k ? (x.k === "total" ? lin(x.proj) : `${esc(x.proj < 0 ? x.rotA : x.rotB)} por ${lin(Math.abs(x.proj))}`)
+        : e.antiga ? lin(x.proj) : Object.entries(projsDe(x)).filter(([, v]) => v != null).map(([n, v]) => { const nome = { edgely: "Edgely", nossa: "nossa", darko: "DARKO" }[n]; return negrito(nome, `${nome} ${r1(v)}`); }).join("<br>");
+      const minTxt = [x.projMin != null && `Edgely ${lin(x.projMin)}`, x.an?.min_final != null && `nossa ${lin(x.an.min_final)}`, x.an?.darko?.min != null && `DARKO ${lin(x.an.darko.min)}`].filter(Boolean).join(" · ");
+      const evFontes = !e.fontes ? "" : e.fontes.length > 1 ? `<small>${e.fontes.map((q) => `${q.nome} ${q.lado === e.lado ? "" : `${q.lado} `}${pctSinal(q.ev)}`).join(" · ")}</small>` : `<small>${esc(e.nome)}</small>`;
       return `<tr class="mk${aberto ? " aberto" : ""}${ehNova(x) ? " nova" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-expanded="${aberto}">
         <td><b>${esc(x.k ? x.nome : x.jogador)}</b>${les}${tagNova(x)}<small>${esc(x.k ? "mercado do jogo" : x.sigla)}</small></td>
         <td>${esc(j.titulo)}<small>${j.estado === "in" ? "ao vivo" : hora(j.inicio)}</small></td>
         <td>${x.k ? "Jogo" : TIPOS[x.tipo]}</td>
-        <td class="n">${projTxt}${x.projMin != null ? `<small>${lin(x.projMin)} min</small>` : ""}</td>
+        <td class="n">${projTxt}${minTxt ? `<small>min: ${minTxt}</small>` : ""}</td>
         <td class="n">${x.k === "ml" ? "–" : seta(x.dk.linhaAb, x.dk.linha, lin)}</td>
         <td class="n">${e.dif == null ? "–" : `${e.dif >= 0 ? "+" : "−"}${lin(Math.round(10 * Math.abs(e.dif)) / 10)}`}</td>
         <td class="n"><b>${esc(e.ladoTxt)}</b> ${dec(e.odd)}</td>
-        <td class="n">${prob(e.chance)}</td>
+        <td class="n">${prob(e.chance)}${e.antiga ? "" : `<small>só a projeção: ${prob(e.modelo)}</small>`}</td>
         <td class="n">${prob(e.mercado)}</td>
-        <td class="n mov${e.ev >= 0.10 ? " forte" : ""}"><b>${pctSinal(e.ev)}</b></td></tr>
+        <td class="n mov${(e.antiga ? e.ev >= 0.10 : e.ev >= 0.03) ? " forte" : ""}"><b>${pctSinal(e.ev)}</b>${evFontes}</td></tr>
       ${aberto ? `<tr class="det"><td colspan="10">${detalhe(j, x)}</td></tr>` : ""}`;
     }).join("")}</tbody></table></div></section>`;
 }
