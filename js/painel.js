@@ -201,6 +201,15 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
       if (e?.justa != null && f) e.justa = e.feito + (e.justa - e.feito) * f;
     }
   }
+  // formato individual de pontos (11/11, pedido do usuário; nba_pbp/calibrar_individual.py): o que ELE faz do quarto
+  // atual até o fim e conforme o placar, além da liga (já com estrelas e faltas); só 80+ jogos, encolhido pelo que
+  // repetiu entre metades dos jogos (correlação ~0,2), produto travado em 0,75–1,30. Rebotes/assistências/3PM não ganharam.
+  const fi = c ? cal.tab.individual?.jogadores?.[j.aid]?.pts : null;
+  if (fi && est.pts?.justa != null) {
+    const q = Math.min(3, Math.floor(rel.t / 720)), a = Math.abs(cal.pm);
+    const f = Math.min(1.3, Math.max(0.75, (fi[0]?.[q] ?? 1) * (fi[1]?.[a <= 5.5 ? 0 : a <= 15.5 ? 1 : 2] ?? 1)));
+    est.pts.justa = est.pts.feito + (est.pts.justa - est.pts.feito) * f;
+  }
   // PRA calibrado = soma das três (foi assim que se mediu)
   if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
     est.pra.justa = est.pts.justa + est.reb.justa + est.ast.justa;
