@@ -1,0 +1,1 @@
+{"gerado": "minutos_mercado.py (11/11/2026)", "modelo": "+ fonte", "pesos": [3.2048, 0.8928, 0.2893, 0.3944, -0.0043, -0.0101, -0.0182, 0.2599, 0.1818], "desvio": {"pts": 1.4, "pra": 1.6, "reb": 1.25, "ast": 1.25}, "ordem": "1, proj, mercado−proj, hist−proj, |h|·(proj≥28), |h|·(20–28), |h|·(<20), tem_h, (mercado−proj)·fech"}
