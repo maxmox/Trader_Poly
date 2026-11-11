@@ -41,7 +41,8 @@ export function ajusteQ4(minEsp, margem, rel, pol) {
 // Linha pré-jogo de uma estatística: DraftKings da análise do dia; sem ela, projeção do Edgely; PRA sem linha = soma.
 export function linhaPre(j, k) {
   const mk = ESTATS.find((e) => e[0] === k)[2];
-  if (j.linhas?.[mk]?.l != null) return { v: j.linhas[mk].l, fonte: "DK" };
+  // 11/11 (usuário): a projeção da linha é a MÉDIA com a odd sem margem (Over 8,5 a 1,50 ≈ 10; a 2,00 ≈ 8,6), não a linha
+  if (j.linhas?.[mk]?.l != null) return { v: j.linhas[mk].m ?? j.linhas[mk].l, fonte: "DK", linha: j.linhas[mk].l };
   if (k === "pra") {
     const ps = ["pts", "reb", "ast"].map((s) => linhaPre(j, s));
     if (ps.every((x) => x)) return { v: ps.reduce((t, x) => t + x.v, 0), fonte: ps.every((x) => x.fonte === "DK") ? "DK" : "proj" };
