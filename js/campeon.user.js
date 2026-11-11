@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.16
+// @version      1.17
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil, 99play e VelvetSpin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casas × DK" do Trader Poly. Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.16";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.17";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : null);
   // VelvetSpin (v1.16, 30/10/2026, pelos prints): quadros "individual total" (= pontos), "Três pontos. individual total",
@@ -191,7 +191,7 @@
     const mercados = new Set(j.pares.map((p) => p[0].replace(/\s*\(incluindo.*$/i, "")));
     avisa(grava(c) ? `Capturado em ${j.nome}: ${j.pares.length} linhas (${novas} novas) em ${mercados.size} mercados${mercados.size <= 6 ? ` — ${[...mercados].join(", ")}` : ""}.\nContinue capturando; no fim, "Abrir a comparação".` : "Não consegui guardar neste navegador.", peloMenu);
   }
-  async function acaoAbrir(peloMenu) {
+  async function acaoAbrir(peloMenu, destino) {
     // formato compacto que a aba lê: mercado = "título | jogador" (na JogaBrasil o jogador já está no título), odds = Mais de L / Menos de L
     const eventos = Object.values(ler()).map((j) => ({ id: j.nome, nome: j.nome, inicio: null, em: j.em,
       mercados: Object.values(j.pares).map(([titulo, jogador, L, O, U]) => [jogador ? `${titulo} | ${jogador}` : titulo, L, [[`Mais de ${L}`, O, L], [`Menos de ${L}`, U, L]]]) }));
@@ -201,7 +201,7 @@
     const buf = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
     let bin = "";
     for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-    const url = `${SITE}/props.html?aba=campeon#campeon=${btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
+    const url = `${SITE}/${destino === "painel" ? "padroes.html?aba=casa" : "props.html?aba=campeon"}#campeon=${btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
     if (typeof GM_openInTab === "function") GM_openInTab(url, { active: true });
     else if (aba) aba.location.href = url; else location.href = url;
   }
@@ -313,6 +313,7 @@
     botao("Capturar esta tela (D)", acaoCapturar);
     if (ALTENAR) { botao("Expandir quadros (E)", seguro(acaoExpandir)); botao("Trocar time (T)", seguro((m) => acaoTrocar(m))); botao("Tudo: 2 times", seguro(acaoTudo)); }
     botao("Abrir a comparação", acaoAbrir);
+    botao("Abrir no Painel", (m) => acaoAbrir(m, "painel"));
     botao("Limpar", acaoLimpar);
     botao("Diagnóstico", acaoDiagnostico);
     mostrar(COMO);
@@ -342,6 +343,7 @@
       GM_registerMenuCommand("Tudo: expandir e capturar os 2 times", () => seguro(acaoTudo)(true));
     }
     GM_registerMenuCommand("Abrir a comparação", () => acaoAbrir(true));
+    GM_registerMenuCommand("Abrir no Painel (ao vivo)", () => acaoAbrir(true, "painel"));
     GM_registerMenuCommand("Limpar capturas", () => acaoLimpar(true));
     GM_registerMenuCommand("Diagnóstico", () => acaoDiagnostico());
   }

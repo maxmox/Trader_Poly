@@ -2,6 +2,8 @@
 import { $, esc } from "./formato.js";
 import { mostrarCenarios } from "./cenarios.js";
 import { mostrarPainel, sinaisJogo, sinaisHtml } from "./painel.js";
+import { mostrarCasaVivo } from "./casavivo.js";
+import { ouvirCampeon } from "./campeon.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA", steals: "Roubos", blocks: "Tocos" };
@@ -126,6 +128,7 @@ async function mostrar(dia) {
     if (aba === "vivo") atualizarVivo();
     if (aba === "cen") mostrarCenarios($("#cen"), DIA);
     if (aba === "painel") mostrarPainel($("#painel"), DIA, espn, true);
+    if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn);
   } catch (e) {
     $("#jogos").innerHTML = `<p class="erro">Não consegui ler a análise de ${esc(dia)} (${esc(e.message)}).</p>`;
   }
@@ -367,6 +370,8 @@ function trocarAba(nova) {
   $("#vivo").hidden = nova !== "vivo";
   $("#cen").hidden = nova !== "cen";
   $("#painel").hidden = nova !== "painel";
+  $("#casa").hidden = nova !== "casa";
+  if (nova === "casa") { $("#casa").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; mostrarCasaVivo($("#casa"), DIA, espn); }
   if (nova === "cen") mostrarCenarios($("#cen"), DIA);
   if (nova === "painel") { $("#painel").innerHTML ||= `<p class="muted">buscando o jogo…</p>`; mostrarPainel($("#painel"), DIA, espn); }
   if (nova === "vivo") { $("#vivo").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; atualizarVivo(); }
@@ -376,10 +381,17 @@ function trocarAba(nova) {
   for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => trocarAba(b.dataset.aba);
   setInterval(() => { if (aba === "vivo") atualizarVivo(); }, 60e3);
   setInterval(() => { if (aba === "painel") mostrarPainel($("#painel"), DIA, espn); }, 30e3);
+  setInterval(() => { if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); }, 30e3);
+  // aba Casa × Painel (11/11): captura chegando pelo endereço (#campeon=…, coletor 1.17 "Abrir no Painel") ou gravada
+  // pela aba de props em outra janela (evento storage) → mostra na hora
+  ouvirCampeon(() => trocarAba("casa"));
+  addEventListener("storage", (e) => { if (e.key === "casas-coleta" && aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); });
+  if (new URLSearchParams(location.search).get("aba") === "casa") trocarAba("casa");
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     if (aba === "vivo") atualizarVivo();
     if (aba === "painel") mostrarPainel($("#painel"), DIA, espn);
+    if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn);
   });
   let datas = [];
   try { datas = (await json("data/padroes/indice.json")).datas; } catch { /* sem índice ainda */ }
