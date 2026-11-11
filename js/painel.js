@@ -179,6 +179,26 @@ export function chanceLinha(tab, aid, t, partes, feito, L) {
   return { over, under: Math.max(0, 1 - over - push), push, dp: Math.sqrt(varr) };
 }
 
+// Antes do jogo (11/11, nba_pbp/pre_jogo_chance.py): a chance pela dispersão com a linha como média PERDE da odd sem
+// margem da DK (101 mil linhas; EV ≥ 5% do modelo: rebotes Under −7,6%, pontos −0,6%) — a linha é ~mediana e a DK já
+// precifica a forma. Então, pré-jogo, a chance vem da DK: na mesma linha = odd sem margem dela; noutra linha = média que
+// reproduz a chance da DK na linha dela, levada à linha da casa com a dispersão.
+export function chanceLinhaPre(tab, aid, k, Ldk, pOverDk, L) {
+  const falta = (x) => Math.floor(x) + 1;
+  const phi = (mu) => phiDe(tab, k, 0, mu, aid);
+  if (Ldk == null || pOverDk == null || !(pOverDk > 0 && pOverDk < 1)) return null;
+  let lo = 0.05, hi = Math.max(5, 3 * Ldk + 5);
+  for (let it = 0; it < 50; it++) {
+    const mid = (lo + hi) / 2;
+    if (chanceAcima(mid, phi(mid), falta(Ldk)) < pOverDk) lo = mid; else hi = mid;
+  }
+  const mu = (lo + hi) / 2, ph = phi(mu);
+  if (Math.abs(L - Ldk) < 1e-9) return { over: pOverDk, under: 1 - pOverDk, push: 0, dp: Math.sqrt(ph * mu), mu, dk: true };
+  const over = chanceAcima(mu, ph, falta(L));
+  const push = Number.isInteger(L) ? Math.max(0, chanceAcima(mu, ph, L) - over) : 0;
+  return { over, under: Math.max(0, 1 - over - push), push, dp: Math.sqrt(ph * mu), mu, dk: true };
+}
+
 // Situação dele agora: em quadra ou no banco, há quanto tempo (s) e quantos minutos já jogou (tempo normal).
 export function agoraDe(plays, aid, b, rel, st) {
   if (st?.type?.state !== "in" || !b || rel.p > 4) return null;

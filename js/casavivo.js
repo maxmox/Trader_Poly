@@ -1,13 +1,13 @@
 // Aba "Casa × Painel" de padroes.html (11/11/2026, pedido do usuário): as odds AO VIVO que o coletor (js/campeon.user.js)
 // capturou na CampeonBet (e nas outras casas do coletor) comparadas com a linha justa do Painel naquele momento.
-// A coleta chega pelo endereço (#campeon=…, botão "Abrir no Painel" do coletor v1.17) ou pela aba Casas × DK de
+// A coleta chega pelo endereço (#campeon=…, botão "Abrir a comparação" do coletor v1.18) ou pela aba Casas × DK de
 // props.html (mesmo localStorage "casas-coleta"; esta aba percebe a gravação na hora pelo evento "storage").
 // Mostra só a linha justa do Painel (feito + ritmo × minutos que faltam, `estimar`) − a linha da casa (usuário, 11/11: "é só
 // isso"; a 1ª versão com chance/EV/desvio era informação demais). Combos P+A/P+R/R+A = soma das justas. NÃO calibrado.
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -73,13 +73,14 @@ function placarHtml(g, s) {
   return `<b>${esc(g.fora)} ${sc[g.fora] ?? ""} × ${sc[g.casa] ?? ""} ${esc(g.casa)}</b> <span class="muted">${esc(comp.status?.type?.shortDetail || "")}</span>`;
 }
 
-// lado de maior valor esperado: chance de acerto (dispersão dele) e EV com a odd da casa
+// lado de maior valor esperado: chance de acerto (ao vivo: dispersão dele; antes do jogo: odd da DK) e EV com a odd da casa
 function chanceHtml(ch, evO, evU) {
+  if (ch.semDK) return `<span class="muted" title="antes do jogo a chance vem da DraftKings; sem linha dela não há como estimar vantagem">sem DK</span>`;
   const over = (evO ?? -9) >= (evU ?? -9);
   const p = over ? ch.over : ch.under, ev = over ? evO : evU;
   if (ev == null) return "–";
   const cor = over ? "var(--sig-o)" : "var(--sig-u)";
-  return `<span style="color:${cor}">${over ? "Mais" : "Menos"} ${Math.round(100 * p)}%</span> · <b style="color:${ev > 0 ? cor : "var(--ink-3)"}">EV ${ev > 0 ? "+" : "−"}${Math.round(Math.abs(100 * ev))}%</b>`;
+  return `<span style="color:${cor}">${over ? "Mais" : "Menos"} ${Math.round(100 * p)}%</span> · <b style="color:${ev > 0 ? cor : "var(--ink-3)"}">EV ${ev > 0 ? "+" : "−"}${Math.round(Math.abs(100 * ev))}%</b>${ch.dk ? ` <span class="muted" title="antes do jogo a chance vem da odd sem margem da DraftKings">DK</span>` : ""}`;
 }
 
 function jogoHtml(g, s, linhas, d) {
@@ -110,8 +111,14 @@ function jogoHtml(g, s, linhas, d) {
     // chance de acerto pela dispersão (dele e da liga) em volta da linha justa; PRA usa a dispersão própria do PRA
     const ks = r.k === "pra" ? ["pra"] : r.ks;
     const mus = r.k === "pra" ? [["pra", justa - feito]] : r.ks.map((k) => [k, x.est[k].justa - x.est[k].feito]);
-    const ch = chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L);
-    const evO = r.O ? ch.over * r.O + ch.push - 1 : null, evU = r.U ? ch.under * r.U + ch.push - 1 : null;
+    // antes do jogo: chance pela odd sem margem da DK (a dispersão sozinha perde da DK pré-jogo); ao vivo: dispersão
+    const MK = { pts: "points", reb: "rebounds", ast: "assists", tpm: "threes", pra: "pra" };
+    const dk = r.ks.length === 1 || r.k === "pra" ? r.j.linhas?.[MK[r.k]] : null;
+    const antes = st?.type?.state !== "in" && st?.type?.state !== "post";
+    const pre = antes && dk ? chanceLinhaPre(d.cal, r.j.aid, r.k, dk.l, dk.over, r.L) : null;
+    // antes do jogo sem linha da DK não há como estimar vantagem (a dispersão sozinha perdeu da DK): sem chance
+    const ch = antes ? pre || { semDK: true, dp: chanceLinha(d.cal, r.j.aid, 0, mus, feito, r.L).dp } : chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L);
+    const evO = r.O && !ch.semDK ? ch.over * r.O + ch.push - 1 : null, evU = r.U && !ch.semDK ? ch.under * r.U + ch.push - 1 : null;
     return { r, feito, justa, sn, ch, evO, evU, ks };
   });
   // 11/11 (usuário): só o que importa — linha justa do Painel − linha da casa; ordem = maior diferença
@@ -148,7 +155,7 @@ export async function mostrarCasaVivo(el, dia, espn) {
     const resumo = casas.map(([c, co]) => `<b>${esc(CASAS[c] || c)}</b>: captura das ${hhmm(co.em)} · ${co.eventos.length} jogo(s) · ${linhas.filter((r) => r.casa === c).length} linhas casadas com o Painel`).join(" · ");
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     el.innerHTML = `<section class="panel"><h2>Casa × Painel</h2>
-      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo; ordem = maior diferença. <b>± desvio</b> e <b>chance</b>: o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas; EV = chance × odd − 1. Seta com alvo = sinal do Painel. Na casa: capture (D) e clique em <b>"Abrir no Painel"</b> (coletor 1.17).</p>
+      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo; ordem = maior diferença. <b>± desvio</b> e <b>chance</b>: ao vivo, o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas. <b>Antes do jogo</b> a chance vem da odd sem margem da DraftKings (marca "DK"): no teste de 11/11 a nossa dispersão com a linha como média perdeu da DK antes do jogo. EV = chance × odd − 1. Na casa: capture (D) e clique em <b>"Abrir a comparação"</b> (coletor 1.18).</p>
       ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · <a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
       ${jogos.map((g) => jogoHtml(g, ST.resumos.get(g.id), linhas.filter((r) => r.g.id === g.id), d)).join("")}
       ${sem.length ? `<details><summary class="muted">${sem.length} mercados sem par (jogador fora da análise do dia, estatística sem projeção ou mercado parcial)</summary><p class="muted">${sem.slice(0, 150).map(esc).join(" · ")}</p></details>` : ""}
