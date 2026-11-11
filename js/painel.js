@@ -55,7 +55,7 @@ export function linhaPre(j, k) {
 // senão Edgely, senão a média recente.
 // 11/11: primeiro a previsão combinada (nossa projeção + média recente + minutos que a linha da DK precifica;
 // nba_pbp/minutos_mercado.py: erro 4,50 min × 4,90 da nossa projeção sozinha nos jogadores com linha).
-export const minEspDe = (j) => j.min_final ?? j.min_proj ?? (j.edgely?.min || j.recente?.media?.min || 0);
+export const minEspDe = (j) => j.min_final ?? j.min_proj ?? (j.darko?.min || j.edgely?.min || j.recente?.media?.min || 0);  // 11/11: DARKO antes do Edgely (usuário)
 
 // Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
 // time atual (rotacao.min_q); sem rotação, 1/4 em cada quarto.
