@@ -565,6 +565,43 @@ function tabelaTime(sigla, linhas, semBase, rel) {
   return `<h3 class="ptime">${esc(sigla)}</h3><div class="tbl-wrap"><table class="painel"><thead><tr><th>Jogador</th><th>Min</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>${pr ? "<th>Pr</th>" : ""}${ESTATS.map(([, n]) => `<th>${n}</th>`).join("")}</tr></thead><tbody>${corpo}</tbody></table></div>${extra}`;
 }
 
+// ---------- quadro de blowout e clutch (12/11/2026, usuário: "informações cruciais, claras e destacadas"; substitui a aba
+// Blowout e clutch): cenário provável do jogo em destaque, medidores por time (blowout a favor/contra, clutch apertado,
+// com o fator do técnico), a política do técnico (cenarios.json) e quem perde/ganha minutos no blowout e quem assume
+// ou some no clutch. Blowout alto ≥ 40%, clutch alto ≥ 50% (mesmos níveis dos insights).
+const nomeCurto = (n) => esc(String(n).split(" ").filter((w) => !/^(Jr\.?|Sr\.?|II|III|IV)$/.test(w)).slice(-1)[0] || n);
+function polChip(p) {
+  if (!p) return "";
+  const v = p.vs_liga;
+  const [t, c] = v < 0.85 ? ["tira cedo", "var(--sig-u)"] : v > 1.15 ? ["mantém", "var(--sig-o)"] : ["padrão", "var(--ink-3)"];
+  return `<span class="chip" title="${num(p.min)} min no Q4 dos titulares × ${num(p.normal)} em jogo normal (${p.n} jogos); ${num(v, 2)} × a liga" style="color:${c};border:1px solid ${c};background:transparent">${t}</span>`;
+}
+function medidor(rot, v, cor, extra = "") {
+  return `<div class="bc-linha"><span class="bc-rot">${rot}</span><span class="bc-barra"><span style="width:${Math.min(100, v)}%;background:${cor}"></span></span><b class="bc-val" style="color:${cor}">${v}%</b>${extra ? `<small>${extra}</small>` : ""}</div>`;
+}
+function blowoutClutchHtml(g, chance, fat, lim, rel) {
+  const times = [g.fora, g.casa].filter((t) => chance[t]);
+  if (!times.length) return "";
+  const v = Object.fromEntries(times.map((t) => { const c = chance[t], f = fat(t); return [t, { mais: lim(c.bmais * f.fator), menos: lim(c.bmenos * f.fator), mais5: lim(c.b5mais * f.fator), menos5: lim(c.b5menos * f.fator), clutch: lim(c.clutch * f.fator_clutch), f }]; }));
+  const lider = times.reduce((a, b) => (v[b].mais > v[a].mais ? b : a));
+  const bMax = v[lider].mais, cMed = Math.round(times.reduce((s, t) => s + v[t].clutch, 0) / times.length);
+  const [cls, titulo, sub] = bMax >= 40 ? ["blow", `⚠ Blowout provável · ${bMax}%`, `${esc(lider)} tirar os titulares ganhando (5+ min antes do fim: ${v[lider].mais5}%). Titulares dos dois lados perdem minutos no Q4; reservas ganham.`]
+    : cMed >= 50 ? ["clutch", `🔥 Fim apertado provável · ${cMed}%`, "Titulares até o fim e placar até 6 a 2:00 do fim: estrelas rendem mais, assistências caem."]
+    : ["aberto", "Jogo em aberto", `blowout ${bMax}% · fim apertado ${cMed}%`];
+  const papel = (t) => (g.handicap == null || g.handicap === 0 ? "" : (t === g.casa) === (g.handicap < 0) ? `favorito por ${num(Math.abs(g.handicap))}` : "azarão");
+  const cards = times.map((t) => {
+    const x = v[t], T = PAINEL.pol?.times?.[t];
+    const pol = T ? `ganhando 16+: ${polChip(T.ganhando_atual || T.ganhando) || "<span class=\"muted\">poucos jogos</span>"} · perdendo 16+: ${polChip(T.perdendo_atual || T.perdendo) || "<span class=\"muted\">poucos jogos</span>"}` : "";
+    const blow = Math.max(x.mais, x.menos) >= 25 && T ? `<p class="bc-quem"><b>No blowout</b> perdem minutos: ${(T.perdem || []).slice(0, 3).map((j) => `${nomeCurto(j.nome)} <small>${num(j.normal)}→${num(j.blowout)}</small>`).join(", ") || "–"} · ganham: ${(T.ganham || []).slice(0, 3).map((j) => `${nomeCurto(j.nome)} <small>${num(j.normal)}→${num(j.blowout)}</small>`).join(", ") || "–"}</p>` : "";
+    const assume = (T?.clutch || []).filter((j) => j.uso >= 1.12 || j.pts >= 1.1).slice(0, 3), some = (T?.clutch || []).filter((j) => j.uso <= 0.88).slice(0, 2);
+    const clu = x.clutch >= 30 && (assume.length || some.length) ? `<p class="bc-quem"><b>No fim apertado</b> assumem: ${assume.map((j) => `${nomeCurto(j.nome)} <small>uso ${Math.round(100 * j.parte_antes)}→${Math.round(100 * j.parte)}%</small>`).join(", ") || "–"}${some.length ? ` · somem: ${some.map((j) => nomeCurto(j.nome)).join(", ")}` : ""}</p>` : "";
+    return `<div class="bc-time"><div class="bc-top"><b>${esc(t)}</b> <span class="muted">${papel(t)}</span> <small class="muted" title="fator do técnico sobre a liga">técnico ×${num(x.f.fator, 2)}</small></div>
+      ${medidor("Blowout a favor", x.mais, "var(--warn)", `5+ min ${x.mais5}%`)}${medidor("Blowout contra", x.menos, "var(--warn)", `5+ min ${x.menos5}%`)}${medidor("Fim apertado", x.clutch, "var(--accent)")}
+      ${pol ? `<p class="bc-quem">${pol}</p>` : ""}${blow}${clu}</div>`;
+  }).join("");
+  return `<div class="bc-vivo"><div class="bc-cenario ${cls}"><b>${titulo}</b><span>${sub}</span><small>${rel.p === 0 || rel.t < 60 ? "antes do jogo, pelo handicap do dia" : "agora, pelo placar e o tempo que falta (placar projetado pelo handicap)"}</small></div><div class="bc-grid">${cards}</div></div>`;
+}
+
 function jogoHtml(g, s) {
   const comp = s?.header?.competitions?.[0];
   const st = comp?.status || { type: { state: "pre" } };
@@ -622,12 +659,7 @@ function jogoHtml(g, s) {
   // chance de cada time, com o fator do técnico (tira titulares mais ou menos que a liga com o mesmo placar)
   const fat = (t) => PAINEL.cm?.times?.[t] || { fator: 1, fator_clutch: 1 };
   const lim = (v) => Math.min(95, Math.round(v));
-  const chanceH = rel.fim ? "" : `<div class="chance-vivo">${[g.fora, g.casa].map((t) => {
-    const c = chance[t];
-    if (!c) return "";
-    const f = fat(t);
-    return `<div><b>${esc(t)}</b> blowout a favor <b>${lim(c.bmais * f.fator)}%</b> <small>(5+ min ${lim(c.b5mais * f.fator)}%)</small> · contra <b>${lim(c.bmenos * f.fator)}%</b> <small>(5+ min ${lim(c.b5menos * f.fator)}%)</small> · clutch apertado <b>${lim(c.clutch * f.fator_clutch)}%</b> <small title="fator do técnico: blowout × ${num(f.fator, 2)}, clutch × ${num(f.fator_clutch, 2)}">técnico ×${num(f.fator, 2)}</small></div>`;
-  }).join("")}</div>`;
+  const chanceH = rel.fim ? "" : blowoutClutchHtml(g, chance, fat, lim, rel);
   // no topo só os de efeito maior (0,12+ desvio); os menores ficam só na célula (quadro limpo)
   const fortes = lista.filter(({ x }) => Math.abs(x.z) >= 0.12).sort((a, c) => Math.abs(c.x.z) - Math.abs(a.x.z));
   const corIns = (x) => (x.z > 0 ? COR_O : COR_U);

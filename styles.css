@@ -268,6 +268,35 @@ table.estreita { min-width: 0; max-width: 560px; }
 .props-tab td.mov.forte b { font-size: 14px; }
 .props-tab td.mov.forte { box-shadow: inset 3px 0 0 var(--accent); }
 .props-tab tr.det td { padding: 8px 4px 14px; background: var(--panel); }
+/* Painel: quadro de blowout e clutch (12/11/2026) */
+.bc-vivo { margin: 10px 0 14px; }
+.bc-cenario { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); }
+.bc-cenario b { font-family: var(--display); font-size: 20px; }
+.bc-cenario small { flex-basis: 100%; color: var(--ink-3); }
+.bc-cenario.blow { border-color: var(--warn); background: var(--warn-bg); }
+.bc-cenario.blow b { color: var(--warn); }
+.bc-cenario.clutch { border-color: var(--accent); background: var(--accent-soft); }
+.bc-cenario.clutch b { color: var(--accent); }
+.bc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 10px; margin-top: 10px; }
+.bc-time { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+.bc-top { margin-bottom: 6px; }
+.bc-linha { display: grid; grid-template-columns: 120px 1fr 44px auto; align-items: center; gap: 8px; font-size: 13px; margin: 3px 0; }
+.bc-barra { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.bc-barra > span { display: block; height: 100%; border-radius: 5px; }
+.bc-val { text-align: right; font-family: var(--mono); }
+.bc-linha small, .bc-quem small { color: var(--ink-3); }
+.bc-quem { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+/* padroes.html, aba Jogadores (12/11/2026) */
+.jg-tab td { vertical-align: top; }
+.jg-min { font-family: var(--display); font-size: 18px; }
+.jg-pad { border-left: 3px solid var(--line); padding: 2px 0 2px 8px; margin: 2px 0; font-size: 13px; }
+.jg-pad small { display: block; color: var(--ink-3); }
+.jg-pad.ativo { background: var(--good-bg); border-radius: 0 6px 6px 0; }
+.jg-pad.ativo small { color: var(--good); font-weight: 600; }
+.props-tab tr.jg-ativo td:first-child { box-shadow: inset 3px 0 0 var(--good); }
+.props-tab td.jg-janela { background: var(--good-bg); color: var(--good); }
+.jg-agora { border-color: var(--good); margin-bottom: 12px; }
+.jg-agora h2 { margin: 0 0 6px; }
 /* props de um jogador agrupadas (12/11/2026): cabeçalho com nome, lesão e minutos; edge real em verde */
 .props-tab tr.grupo td { padding-top: 12px; border-top: 2px solid var(--line); background: var(--bg); }
 .props-tab tr.grupo td small { display: inline; margin-left: 8px; }

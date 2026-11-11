@@ -13,6 +13,9 @@ const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: 
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
 const VELHA_MIN = 3;
 const ST = { resumos: new Map(), dados: null, carregando: false };
+// ordem da tabela (12/11/2026, usuário: "ordenar por EV, as de maior EV no topo"): ev (padrão) | dif | nome
+let ORDEM = (() => { try { return localStorage.getItem("traderpoly.casa.ordem") || "ev"; } catch { return "ev"; } })();
+const evMax = (w) => Math.max(w.evO ?? -Infinity, w.evU ?? -Infinity);
 const num = (v, c = 1) => (v == null || !Number.isFinite(v) ? "–" : Number(v).toFixed(c).replace(".", ","));
 const hhmm = (ms) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
@@ -121,22 +124,25 @@ function jogoHtml(g, s, linhas, d) {
     const evO = r.O && !ch.semDK ? ch.over * r.O + ch.push - 1 : null, evU = r.U && !ch.semDK ? ch.under * r.U + ch.push - 1 : null;
     return { r, feito, justa, sn, ch, evO, evU, ks };
   });
-  // 11/11 (usuário): só o que importa — linha justa do Painel − linha da casa; ordem = maior diferença
-  const ok = rows.filter((w) => !w.fora).map((w) => ({ ...w, dif: w.justa - w.r.L })).sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif));
+  // ordem: maior EV (padrão), maior diferença justa − linha ou nome
+  const cmp = { ev: (a, b) => evMax(b) - evMax(a) || Math.abs(b.dif) - Math.abs(a.dif), dif: (a, b) => Math.abs(b.dif) - Math.abs(a.dif), nome: (a, b) => a.r.j.nome.localeCompare(b.r.j.nome) || a.r.k.localeCompare(b.r.k) }[ORDEM] || ((a, b) => evMax(b) - evMax(a));
+  const ok = rows.filter((w) => !w.fora).map((w) => ({ ...w, dif: w.justa - w.r.L })).sort(cmp);
   const fora = rows.filter((w) => w.fora);
   const corpo = ok.map(({ r, justa, dif, sn, ch, evO, evU }) => {
     const cor = dif > 0 ? "var(--sig-o)" : "var(--sig-u)";
     const sinal = sn ? ` <span title="sinal do Painel: alvo ${num(justa + sn.uj)}" style="color:${sn.ef > 0 ? "var(--sig-o)" : "var(--sig-u)"}">${sn.ef > 0 ? "↑" : "↓"} alvo ${num(justa + sn.uj)}</span>` : "";
-    return `<tr><td><b>${esc(r.j.nome)}</b> <span class="muted">${NOME_K[r.k]}</span></td>
+    const forte = Math.max(evO ?? -9, evU ?? -9) >= 0.05;
+    return `<tr${forte ? ' style="background:var(--good-bg)"' : ""}><td><b>${esc(r.j.nome)}</b> <span class="muted">${NOME_K[r.k]}</span></td>
       <td class="n">${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span></td>
       <td class="n"><b>${num(justa)}</b> <span class="muted">± ${num(ch.dp)}</span>${sinal}</td>
       <td class="n"><b style="color:${cor}">${dif > 0 ? "▲ +" : "▼ −"}${num(Math.abs(dif))}</b></td>
       <td class="n">${chanceHtml(ch, evO, evU)}</td></tr>`;
   }).join("");
-  return `<div class="panel"><p style="margin:0 0 6px">${placarHtml(g, s)}${linhas[0]?.em ? ` <span class="muted">· odds das ${hhmm(Math.min(...linhas.map((r) => r.em || Date.now())))}</span>` : ""}</p>
+  const melhor = ok.length ? evMax(ok.reduce((a, b) => (evMax(b) > evMax(a) ? b : a))) : -Infinity;
+  return { melhor, html: `<div class="panel"><p style="margin:0 0 6px">${placarHtml(g, s)}${linhas[0]?.em ? ` <span class="muted">· odds das ${hhmm(Math.min(...linhas.map((r) => r.em || Date.now())))}</span>` : ""}</p>
     ${idade > VELHA_MIN && st?.type?.state === "in" ? `<p class="banner">Odds capturadas há ${idade} min — o jogo andou desde então. Capture de novo.</p>` : ""}
     ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Linha justa<small>Painel, agora</small></th><th class="n">Justa − linha</th><th class="n">Chance · valor<small>lado de maior valor esperado com a odd da casa</small></th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
-    ${fora.length ? `<p class="muted">Sem conta: ${fora.map((w) => `${esc(w.r.j.nome)} ${NOME_K[w.r.k]} (${w.fora})`).join(" · ")}</p>` : ""}</div>`;
+    ${fora.length ? `<p class="muted">Sem conta: ${fora.map((w) => `${esc(w.r.j.nome)} ${NOME_K[w.r.k]} (${w.fora})`).join(" · ")}</p>` : ""}</div>` };
 }
 
 export async function mostrarCasaVivo(el, dia, espn) {
@@ -155,11 +161,18 @@ export async function mostrarCasaVivo(el, dia, espn) {
     const resumo = casas.map(([c, co]) => `<b>${esc(CASAS[c] || c)}</b>: captura das ${hhmm(co.em)} · ${co.eventos.length} jogo(s) · ${linhas.filter((r) => r.casa === c).length} linhas casadas com o Painel`).join(" · ");
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     el.innerHTML = `<section class="panel"><h2>Casa × Painel</h2>
-      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo; ordem = maior diferença. <b>± desvio</b> e <b>chance</b>: ao vivo, o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas. <b>Antes do jogo</b> a chance vem da odd sem margem da DraftKings (marca "DK"): no teste de 11/11 a nossa dispersão com a linha como média perdeu da DK antes do jogo. EV = chance × odd − 1. Na casa: capture (D) e clique em <b>"Abrir a comparação"</b> (coletor 1.18).</p>
+      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo. Ordem padrão: maior EV no topo (os jogos também, pelo melhor EV). <b>± desvio</b> e <b>chance</b>: ao vivo, o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas. <b>Antes do jogo</b> a chance vem da odd sem margem da DraftKings (marca "DK"): no teste de 11/11 a nossa dispersão com a linha como média perdeu da DK antes do jogo. EV = chance × odd − 1. Na casa: capture (D) e clique em <b>"Abrir a comparação"</b> (coletor 1.18).</p>
       ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · <a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
-      ${jogos.map((g) => jogoHtml(g, ST.resumos.get(g.id), linhas.filter((r) => r.g.id === g.id), d)).join("")}
+      ${jogos.length ? `<div class="chips" role="group" aria-label="Ordem">Ordenar por: ${[["ev", "maior EV"], ["dif", "maior diferença"], ["nome", "jogador"]].map(([k, t]) => `<button type="button" class="chip" data-ordem="${k}" aria-pressed="${ORDEM === k}" style="${ORDEM === k ? "background:var(--accent);color:var(--panel);border-color:var(--accent)" : ""}">${t}</button>`).join(" ")} <span class="muted">· verde = EV ≥ 5%</span></div>` : ""}
+      ${jogos.map((g) => jogoHtml(g, ST.resumos.get(g.id), linhas.filter((r) => r.g.id === g.id), d)).sort((a, b) => (ORDEM === "ev" ? b.melhor - a.melhor : 0)).map((x) => x.html).join("")}
       ${sem.length ? `<details><summary class="muted">${sem.length} mercados sem par (jogador fora da análise do dia, estatística sem projeção ou mercado parcial)</summary><p class="muted">${sem.slice(0, 150).map(esc).join(" · ")}</p></details>` : ""}
     </section>`;
+    for (const b of el.querySelectorAll("[data-ordem]")) b.onclick = () => {
+      ORDEM = b.dataset.ordem;
+      try { localStorage.setItem("traderpoly.casa.ordem", ORDEM); } catch { /* sem armazenamento */ }
+      ST.carregando = false;
+      mostrarCasaVivo(el, dia, espn);
+    };
     el.querySelector("#cv-limpar")?.addEventListener("click", (e) => {
       e.preventDefault();
       try { localStorage.removeItem("casas-coleta"); } catch { /* sem armazenamento */ }
