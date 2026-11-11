@@ -2,39 +2,19 @@
 // capturou na CampeonBet (e nas outras casas do coletor) comparadas com a linha justa do Painel naquele momento.
 // A coleta chega pelo endereço (#campeon=…, botão "Abrir no Painel" do coletor v1.17) ou pela aba Casas × DK de
 // props.html (mesmo localStorage "casas-coleta"; esta aba percebe a gravação na hora pelo evento "storage").
-// Conta: linha justa = a do Painel (feito + ritmo × minutos que faltam); desvio = C·√(o que ainda falta produzir),
-// C da simulação do Painel (09/11, nba_pbp/simular_painel.py: pontos/PRA 1,9, rebotes 1,2, assist. 1,1, 3PM 1,0 — a normal
-// calibrou; P+A/P+R/R+A sem medida própria). Chance do Over na linha da casa → EV = chance × odd − 1 de cada lado.
-// Com sinal do Painel, mostra também a chance pelo alvo (linha justa + efeito do insight). NÃO calibrado contra linhas ao vivo.
+// Mostra só a linha justa do Painel (feito + ritmo × minutos que faltam, `estimar`) − a linha da casa (usuário, 11/11: "é só
+// isso"; a 1ª versão com chance/EV/desvio era informação demais). Combos P+A/P+R/R+A = soma das justas. NÃO calibrado.
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome } from "./campeon.js";
 import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo } from "./painel.js";
 
-const C = { pts: 1.9, reb: 1.2, ast: 1.1, tpm: 1.0, pra: 1.9, pa: 1.8, pr: 1.8, ra: 1.4 };
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
-const MIN_EV = 0.05, VELHA_MIN = 3;
+const VELHA_MIN = 3;
 const ST = { resumos: new Map(), dados: null, carregando: false };
 const num = (v, c = 1) => (v == null || !Number.isFinite(v) ? "–" : Number(v).toFixed(c).replace(".", ","));
-const pc = (v) => (v == null || !Number.isFinite(v) ? "–" : `${v >= 0 ? "+" : "−"}${num(Math.abs(100 * v), 1)}%`);
 const hhmm = (ms) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-// normal padrão (Abramowitz-Stegun 26.2.17)
-function fi(z) {
-  const t = 1 / (1 + 0.2316419 * Math.abs(z));
-  const d = 0.3989422804 * Math.exp(-z * z / 2) * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-  return z >= 0 ? 1 - d : d;
-}
-// chances de Over, Under e devolução na linha L (linha inteira: o valor exato devolve)
-function chances(feito, justa, L, c) {
-  if (feito > L) return { o: 1, u: 0, d: 0 };
-  const sd = c * Math.sqrt(Math.max(justa - feito, 0.25));
-  const o = 1 - fi((Math.floor(L) + 0.5 - justa) / sd);
-  const u = feito >= Math.ceil(L) && L % 1 === 0 ? 0 : fi((Math.ceil(L) - 0.5 - justa) / sd);
-  return { o, u, d: Math.max(0, 1 - o - u) };
-}
-const evDe = (ch, O, U) => ({ o: ch.o * O + ch.d - 1, u: ch.u * U + ch.d - 1 });
 
 function lerColetas() {
   try { return JSON.parse(localStorage.getItem("casas-coleta") || "null") || {}; } catch { return {}; }
@@ -116,29 +96,23 @@ function jogoHtml(g, s, linhas, d) {
     const partes = r.ks.map((k) => x.est[k]);
     if (partes.some((e) => e?.justa == null)) return { r, fora: "sem linha pré-jogo para a base" };
     const feito = partes.reduce((t, e) => t + e.feito, 0), justa = partes.reduce((t, e) => t + e.justa, 0);
-    const ch = chances(feito, justa, r.L, C[r.k]);
-    const ev = evDe(ch, r.O, r.U);
     const sn = r.ks.length === 1 ? sinalDe(r.j.aid, r.k) : null;
-    const chA = sn ? chances(feito, justa + sn.uj, r.L, C[r.k]) : null;
-    const evA = chA ? evDe(chA, r.O, r.U) : null;
-    return { r, b, x, feito, justa, ch, ev, sn, chA, evA, melhor: Math.max(ev.o, ev.u) };
+    return { r, feito, justa, sn };
   });
-  const ok = rows.filter((w) => !w.fora).sort((a, b) => b.melhor - a.melhor);
+  // 11/11 (usuário): só o que importa — linha justa do Painel − linha da casa; ordem = maior diferença
+  const ok = rows.filter((w) => !w.fora).map((w) => ({ ...w, dif: w.justa - w.r.L })).sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif));
   const fora = rows.filter((w) => w.fora);
-  const evTd = (v) => `<td class="n${v >= MIN_EV ? " ev-bom" : ""}">${pc(v)}</td>`;
-  const corpo = ok.map((w) => {
-    const { r, b, x, feito, justa, ch, ev, sn, chA, evA } = w;
-    const bom = w.melhor >= MIN_EV;
-    const sinal = sn ? `<b style="color:${sn.ef > 0 ? "var(--sig-o)" : "var(--sig-u)"}">${sn.ef > 0 ? "↑ Over" : "↓ Under"}</b> alvo ${num(justa + sn.uj)}<small>chance Over ${num(100 * chA.o, 0)}% · EV ${pc(evA.o)} / ${pc(evA.u)}</small>` : `<span class="muted">–</span>`;
-    return `<tr${bom ? ' class="defasada"' : ""}><td><b>${esc(r.j.nome)}</b><small>${esc(r.j.time)} · ${NOME_K[r.k]} · ${esc(CASAS[r.casa] || r.casa)}${r.escada > 1 ? ` (escada de ${r.escada}, linha principal)` : ""}</small></td>
-      <td class="n"><b>${num(r.L)} · ${num(r.O, 2)} / ${num(r.U, 2)}</b><small>captura ${r.em ? hhmm(r.em) : "?"}</small></td>
-      <td class="n">${num(feito, 0)}<small>${num(b?.min ?? 0, 0)} de ~${num(x.minEsp, 0)} min</small></td>
-      <td class="n"><b>${num(justa)}</b><small>± ${num(C[r.k] * Math.sqrt(Math.max(justa - feito, 0.25)))}</small></td>
-      <td class="n">${num(100 * ch.o, 0)}%</td>${evTd(ev.o)}${evTd(ev.u)}<td>${sinal}</td></tr>`;
+  const corpo = ok.map(({ r, justa, dif, sn }) => {
+    const cor = dif > 0 ? "var(--sig-o)" : "var(--sig-u)";
+    const sinal = sn ? ` <span title="sinal do Painel: alvo ${num(justa + sn.uj)}" style="color:${sn.ef > 0 ? "var(--sig-o)" : "var(--sig-u)"}">${sn.ef > 0 ? "↑" : "↓"} alvo ${num(justa + sn.uj)}</span>` : "";
+    return `<tr><td><b>${esc(r.j.nome)}</b> <span class="muted">${NOME_K[r.k]}</span></td>
+      <td class="n">${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span></td>
+      <td class="n"><b>${num(justa)}</b>${sinal}</td>
+      <td class="n"><b style="color:${cor}">${dif > 0 ? "▲ +" : "▼ −"}${num(Math.abs(dif))}</b></td></tr>`;
   }).join("");
-  return `<div class="panel"><p style="margin:0 0 6px">${placarHtml(g, s)}</p>
-    ${idade > VELHA_MIN && st?.type?.state === "in" ? `<p class="banner">Odds capturadas há ${idade} min — o jogo andou desde então. Capture de novo antes de comparar.</p>` : ""}
-    ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Feito<small>agora</small></th><th class="n">Linha justa<small>Painel · desvio</small></th><th class="n">Chance Over<small>nossa</small></th><th class="n">EV Mais</th><th class="n">EV Menos</th><th>Sinal do Painel</th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
+  return `<div class="panel"><p style="margin:0 0 6px">${placarHtml(g, s)}${linhas[0]?.em ? ` <span class="muted">· odds das ${hhmm(Math.min(...linhas.map((r) => r.em || Date.now())))}</span>` : ""}</p>
+    ${idade > VELHA_MIN && st?.type?.state === "in" ? `<p class="banner">Odds capturadas há ${idade} min — o jogo andou desde então. Capture de novo.</p>` : ""}
+    ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Linha justa<small>Painel, agora</small></th><th class="n">Justa − linha</th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
     ${fora.length ? `<p class="muted">Sem conta: ${fora.map((w) => `${esc(w.r.j.nome)} ${NOME_K[w.r.k]} (${w.fora})`).join(" · ")}</p>` : ""}</div>`;
 }
 
@@ -158,8 +132,7 @@ export async function mostrarCasaVivo(el, dia, espn) {
     const resumo = casas.map(([c, co]) => `<b>${esc(CASAS[c] || c)}</b>: captura das ${hhmm(co.em)} · ${co.eventos.length} jogo(s) · ${linhas.filter((r) => r.casa === c).length} linhas casadas com o Painel`).join(" · ");
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     el.innerHTML = `<section class="panel"><h2>Casa × Painel</h2>
-      <p class="muted">As odds que o coletor capturou na casa comparadas com a <b>linha justa do Painel agora</b> (feito + ritmo × minutos que faltam, com o Q4 ajustado pelo placar). A chance do Over sai da linha justa com o desvio medido na simulação do Painel (pontos/PRA 1,9·√(o que falta), rebotes 1,2, assist. 1,1, 3PM 1,0; P+A/P+R/R+A sem medida própria); <b>EV</b> = chance × odd − 1 (verde = ${num(100 * MIN_EV, 0)}%+). Com sinal do Painel, a chance pelo alvo (linha justa + efeito do insight) vem junto. Estimativa: <b>não calibrada contra linhas ao vivo</b> — a casa sabe coisas que o Painel não sabe (lesão no jogo, quem fecha o jogo). Só jogadores da análise do dia.</p>
-      <p class="muted">Como usar: deixe esta aba aberta; na casa, capture a tela (D) e clique em <b>"Abrir no Painel"</b> (coletor 1.17) — ou em "Abrir a comparação": a aba de props grava e esta atualiza sozinha. Odds ao vivo mudam rápido: compare logo depois de capturar.</p>
+      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo; ordem = maior diferença. Seta com alvo = sinal do Painel. Na casa: capture (D) e clique em <b>"Abrir no Painel"</b> (coletor 1.17).</p>
       ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · <a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
       ${jogos.map((g) => jogoHtml(g, ST.resumos.get(g.id), linhas.filter((r) => r.g.id === g.id), d)).join("")}
       ${sem.length ? `<details><summary class="muted">${sem.length} mercados sem par (jogador fora da análise do dia, estatística sem projeção ou mercado parcial)</summary><p class="muted">${sem.slice(0, 150).map(esc).join(" · ")}</p></details>` : ""}
