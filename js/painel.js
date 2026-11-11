@@ -392,7 +392,18 @@ export function chanceAgora(cm, rel, margem, hTime) {
   };
   const b = pega(cm.peso_handicap?.B ?? 1), c = pega(cm.peso_handicap?.C ?? 0.75);
   if (!b || !c) return null;
-  return { bmais: b[0], bmenos: b[1], b5mais: b[3], b5menos: b[4], clutch: c[2] };
+  const tab = { bmais: b[0], bmenos: b[1], b5mais: b[3], b5menos: b[4], clutch: c[2] };
+  // 11/11/2026: antes do jogo e no começo, a tabela minuto × placar não tem placares grandes (no 1º minuto para em +10)
+  // e subestimava o favorito grande (SA −15,5: 24% × 50,5% medido pelo handicap). Antes do jogo vale a chance pelo
+  // handicap (blowout_minuto.py, por_handicap); ao longo dos primeiros 12 min ela dá lugar à tabela.
+  const ph = cm.por_handicap, h = hTime;
+  if (!ph || h == null) return tab;
+  const a = Math.abs(h), lado = h <= -3 ? "fav" : h >= 3 ? "zebra" : null;
+  const f = lado ? ph[`${lado} ${a >= 10 ? "10+" : a >= 6 ? "6-9,5" : "3-5,5"}`] : ph["±2,5"];
+  if (!f) return tab;
+  const w = rel.t < 60 ? 1 : Math.max(0, 1 - rel.t / 720);
+  const mix = (x, y) => Math.round(w * 100 * y + (1 - w) * x);
+  return { bmais: mix(tab.bmais, f.bmais), bmenos: mix(tab.bmenos, f.bmenos), b5mais: mix(tab.b5mais, f.bmais5), b5menos: mix(tab.b5menos, f.bmenos5), clutch: mix(tab.clutch, f.clutch6) };
 }
 
 const INI = ["muito frio", "frio", "média", "quente", "muito quente"];
