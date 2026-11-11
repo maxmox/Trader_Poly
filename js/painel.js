@@ -84,24 +84,34 @@ function estadoH(h, t) {
 }
 const media = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 export function minRestoRotacao(j, rel, agora, minEsp, base) {
+  // 11/11 (nba_pbp/minutos_vivo2.py): até 20 jogos anteriores, cada um pesado pela semelhança do total de minutos com o
+  // previsto de hoje (mesmo papel; σ 5 min), na escala dos minutos previstos (nossa projeção + média recente + mercado).
+  // Minutos que faltam: erro 3,25 → 3,18 min; papel mudando 3,65 → 3,43.
   const hist = j.rotacao?.hist;
   if (!hist?.length || hist.length < 4 || !agora || rel.p < 1 || rel.p > 4 || rel.fim || !minEsp) return null;
   const t = rel.t;
-  const tot = media(hist.map((h) => sobreS(h, 0, 2880)));
+  const tots = hist.map((h) => sobreS(h, 0, 2880));
+  const pesos = tots.map((x) => Math.exp(-0.5 * ((x - minEsp) / 5) ** 2) + 0.05);
+  const W = pesos.reduce((a, b) => a + b, 0), wmax = Math.max(...pesos);
+  const tot = pesos.reduce((s, w, i) => s + w * tots[i], 0) / W;
   if (!tot) return null;
   const esc = minEsp / tot;
-  const iguais = [];
-  for (const h of hist) {
-    const [q, d] = estadoH(h, t);
-    if (q !== agora.quadra || (!agora.quadra && d + 1 < agora.dur)) continue;
-    iguais.push(sobreS(h, t, 2880) * esc);
-  }
-  const n = iguais.length;
-  const B = n ? media(iguais) : base;
-  const desvio = agora.jogou - esc * media(hist.map((h) => sobreS(h, 0, t)));
-  const q = Math.min(3, Math.floor(t / 720)), c = COEF_ROT[q][agora.quadra ? 0 : 1];
-  const v = (q < 3 ? (n * B + K_ROT * base) / (n + K_ROT) : B) + c * desvio;
-  return { min: Math.max(0, Math.min(v, (2880 - t) / 60)), n };
+  const q = Math.min(3, Math.floor(t / 720));
+  const espQ = [0, 1, 2, 3].map((k) => (pesos.reduce((s, w, i) => s + w * sobreS(hist[i], 720 * k, 720 * (k + 1)), 0) / W) * esc);
+  const A = espQ[q] * (720 * (q + 1) - t) / 720 + espQ.slice(q + 1).reduce((a, b) => a + b, 0);
+  let num = 0, den = 0, n = 0;
+  hist.forEach((h, i) => {
+    const [qd, d] = estadoH(h, t);
+    if (qd !== agora.quadra || (!agora.quadra && d + 1 < agora.dur)) return;
+    num += pesos[i] * sobreS(h, t, 2880) * esc;
+    den += pesos[i];
+    n += pesos[i] / wmax;
+  });
+  const B = den ? num / den : A;
+  const ate = (pesos.reduce((s, w, i) => s + w * sobreS(hist[i], 0, t), 0) / W) * esc;
+  const c = COEF_ROT[q][agora.quadra ? 0 : 1];
+  const v = (q < 3 ? (n * B + K_ROT * A) / (n + K_ROT) : B) + c * (agora.jogou - ate);
+  return { min: Math.max(0, Math.min(v, (2880 - t) / 60)), n: Math.round(n * 10) / 10 };
 }
 
 // Situação dele agora: em quadra ou no banco, há quanto tempo (s) e quantos minutos já jogou (tempo normal).
