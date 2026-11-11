@@ -114,7 +114,8 @@ export function agoraDe(plays, aid, b, rel, st) {
 // Calibração da linha justa (11/11/2026, nba_pbp/calibrar_justa.py → data/padroes/calibra_justa.json): fator de minutos e
 // de ritmo por momento × placar projetado do time (placar + handicap pelo tempo que falta) × papel (minutos esperados),
 // peso do ritmo de hoje por estatística (K) e nível do ritmo contra a linha da DK. Ajustado em metade dos jogos e
-// medido na outra: viés médio por situação pontos 0,42 → 0,28, PRA 0,56 → 0,37, rebotes 0,12 → 0,08.
+// medido na outra: viés médio por situação pontos 0,42 → 0,28, PRA 0,56 → 0,37, rebotes 0,12 → 0,08; com as estrelas
+// e as faltas (jogos com lesão provável fora do ajuste e do teste) pontos 0,21, PRA 0,29.
 export function placarProj(g, time, mg, rel) {
   if (mg == null) return null;
   const h = g.handicap == null ? 0 : time === g.casa ? g.handicap : -g.handicap; // negativo = favorito
@@ -186,6 +187,19 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
   if (fe) for (const k of ["pts", "reb", "ast", "tpm"]) {
     const e = est[k], f = fe[k]?.[c[0]]?.[c[1]];
     if (e?.justa != null && f) e.justa = e.feito + (e.justa - e.feito) * f;
+  }
+  // faltas (11/11, usuário: pivô caçado por faltas no Q1): fator por grande/outro × quarto × faixa de faltas; grande = C/PF
+  // ou 0,24+ rebote por minuto pela linha (pega pivôs registrados como F); também corrige os rebotes dos grandes (~0,9)
+  const ff = c ? cal.tab.faltas : null;
+  if (ff?.f) {
+    const rebMin = (j.linhas?.rebounds?.l ?? 0) / minEsp;
+    const grande = ["C", "PF"].includes(j.pos) || rebMin >= 0.24 ? 1 : 0;
+    const q = Math.min(3, Math.floor(rel.t / 720));
+    const fb = Math.min(3, ff.lim[q].filter((x) => (box?.pf ?? 0) >= x).length);
+    for (const k of ["pts", "reb", "ast", "tpm"]) {
+      const e = est[k], f = ff.f[k]?.[grande]?.[q]?.[fb];
+      if (e?.justa != null && f) e.justa = e.feito + (e.justa - e.feito) * f;
+    }
   }
   // PRA calibrado = soma das três (foi assim que se mediu)
   if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
