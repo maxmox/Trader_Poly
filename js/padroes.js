@@ -4,7 +4,7 @@ import { mostrarCenarios } from "./cenarios.js";
 import { mostrarPainel, sinaisJogo, sinaisHtml } from "./painel.js";
 import { mostrarCasaVivo } from "./casavivo.js";
 import { ouvirCampeon } from "./campeon.js";
-import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra } from "./jogada.js";
+import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra, consertarResumo } from "./jogada.js";
 
 const MERC = { points: "Pontos", rebounds: "Rebotes", assists: "Assist.", threes: "3PM", pra: "PRA", steals: "Roubos", blocks: "Tocos" };
 const CHAVE = { points: "pts", rebounds: "reb", assists: "ast", threes: "tpm", pra: "pra", steals: "stl", blocks: "blk" };
@@ -153,7 +153,10 @@ async function espn(caminho) {
   const urls = RELAY ? [`${RELAY}/espn${ESPN_NBA}${caminho}`, `${ESPN_DIRETO}${ESPN_NBA}${caminho}`] : [`${ESPN_DIRETO}${ESPN_NBA}${caminho}`];
   for (const u of urls) {
     const r = await fetch(u, { cache: "no-store" }).catch(() => null);
-    if (r?.ok) return r.json();
+    if (r?.ok) {
+      const d = await r.json();
+      return caminho.startsWith("/summary") ? consertarResumo(d) : d;
+    }
   }
   throw new Error("ESPN sem resposta");
 }

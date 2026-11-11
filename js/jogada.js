@@ -3,6 +3,46 @@
 
 const FALTA = /foul|charge|personal block|shooting block/i;
 
+// A ESPN às vezes manda o status fora de ordem (11/11/2026, OKC @ POR: "fim do 3º" e placar errado na volta do
+// intervalo). Confere com o último lance e corrige no próprio summary (todas as abas leem dele):
+//   - status num período que ainda não tem lance e relógio em 0 → começo desse período;
+//   - relógio em 0 sem "End Period" no último lance do mesmo período → relógio do último lance;
+//   - status atrás do lance a lance → período, relógio e placar do último lance;
+//   - placar do cabeçalho atrás do último lance → placar do lance.
+const segs = (txt) => {
+  const t = String(txt ?? "");
+  return t.includes(":") ? t.split(":").reduce((m, x) => (Number(m) || 0) * 60 + (Number(x) || 0)) : Number(t) || 0;
+};
+const ORD = ["1st", "2nd", "3rd", "4th"];
+export function consertarResumo(s) {
+  const comp = s?.header?.competitions?.[0], st = comp?.status, plays = s?.plays;
+  if (!st || st.type?.state !== "in" || !plays?.length) return s;
+  const ult = plays[plays.length - 1];
+  const lp = Number(ult.period?.number) || 0;
+  const fimLance = /end period|end game/i.test(ult.type?.text || "") || /^end of/i.test(ult.text || "");
+  const p = Number(st.period) || 0, resta = segs(st.displayClock);
+  const nome = st.type?.name || "";
+  let novo = null;
+  if (p < lp) novo = { p: lp, resta: fimLance ? 0 : segs(ult.clock?.displayValue), fim: fimLance };
+  else if (p > lp && resta === 0) novo = { p, resta: p > 4 ? 300 : 720, fim: false };
+  else if (p === lp && resta === 0 && !fimLance && !/END_PERIOD|HALFTIME/.test(nome)) novo = { p, resta: segs(ult.clock?.displayValue), fim: false };
+  if (novo) {
+    const rel = `${Math.floor(novo.resta / 60)}:${String(Math.round(novo.resta % 60)).padStart(2, "0")}`;
+    const q = novo.p > 4 ? `OT${novo.p > 5 ? novo.p - 4 : ""}` : ORD[novo.p - 1];
+    st.period = novo.p;
+    st.displayClock = rel;
+    st.type = { ...st.type, name: novo.fim ? "STATUS_END_PERIOD" : "STATUS_IN_PROGRESS", shortDetail: novo.fim ? `End of ${q}` : `${rel} - ${q}`, detail: novo.fim ? `End of ${q}` : `${rel} - ${q}` };
+    st.corrigido = true;
+  }
+  const casa = comp.competitors?.find((c) => c.homeAway === "home"), fora = comp.competitors?.find((c) => c.homeAway === "away");
+  if (casa && fora && ult.homeScore != null && ult.awayScore != null
+      && (Number(casa.score) || 0) + (Number(fora.score) || 0) < Number(ult.homeScore) + Number(ult.awayScore)) {
+    casa.score = String(ult.homeScore);
+    fora.score = String(ult.awayScore);
+  }
+  return s;
+}
+
 // Estatísticas por atleta somando as jogadas até o fim do período `ate` (1 = fim do Q1, 2 = intervalo, 3 = fim do 3º).
 export function contarAte(plays, ate) {
   const out = {};
