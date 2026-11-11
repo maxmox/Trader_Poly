@@ -114,6 +114,71 @@ export function minRestoRotacao(j, rel, agora, minEsp, base) {
   return { min: Math.max(0, Math.min(v, (2880 - t) / 60)), n: Math.round(n * 10) / 10 };
 }
 
+// Dispersão e chance de acerto (11/11/2026, pedido do usuário; nba_pbp/dispersao.py): o que falta até o fim é uma
+// contagem com média μ (justa − feito) e dispersão φ = variância ÷ média (φ < 1 concentrado/binomial, 1 Poisson, > 1
+// espalhado/binomial negativa). φ da liga por estatística × momento × tamanho de μ e fator de cada jogador (traço que
+// repete entre metades dos jogos, encolhido), escolhidos por máxima verossimilhança; melhor que Poisson fora da amostra.
+function lgamma(x) {
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1;
+  const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  let a = c[0];
+  const tt = x + 7.5;
+  for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(tt) - tt + Math.log(a);
+}
+function logp(k, mu, phi) {
+  mu = Math.max(mu, 1e-6);
+  if (phi > 1.02) {
+    const r = mu / (phi - 1), p = r / (r + mu);
+    return lgamma(k + r) - lgamma(r) - lgamma(k + 1) + r * Math.log(p) + k * Math.log(1 - p);
+  }
+  if (phi < 0.98) {
+    const pb = 1 - phi, n = mu / pb;
+    if (k > n + 0.999) return -30;
+    return lgamma(n + 1) - lgamma(k + 1) - lgamma(Math.max(n - k + 1, 1e-9)) + k * Math.log(pb) + (n - k) * Math.log(1 - pb);
+  }
+  return k * Math.log(mu) - mu - lgamma(k + 1);
+}
+// P(o que falta ≥ falta), falta inteiro
+export function chanceAcima(mu, phi, falta) {
+  if (falta <= 0) return 1;
+  let s = 0;
+  for (let k = 0; k < falta; k++) s += Math.exp(logp(k, mu, phi));
+  if (phi < 0.98) {
+    const n = mu / (1 - phi);
+    let tot = 0;
+    for (let k = 0; k < Math.floor(n) + 2; k++) tot += Math.exp(logp(k, mu, phi));
+    if (tot > 0) s /= tot;
+  }
+  return Math.max(0, Math.min(1, 1 - s));
+}
+// φ de uma estatística (pts/reb/ast/tpm/pra) para o jogador agora
+export function phiDe(tab, k, t, mu, aid) {
+  const dp = tab?.dispersao;
+  const i = dp?.stats?.indexOf(k) ?? -1;
+  if (i < 0) return 1;
+  const m = t < 720 ? 0 : t < 1440 ? 1 : t < 2160 ? 2 : 3;
+  const fb = dp.mu_lim.filter((x) => mu >= x).length;
+  const linha = dp.liga[k][m];
+  let v = null;
+  for (const d of [0, -1, 1, -2, 2, -3, 3]) if (linha[fb + d] != null) { v = linha[fb + d]; break; }
+  return (v ?? 1) * (dp.jogadores?.[aid]?.[i] ?? 1);
+}
+// Chance de Over/Under numa linha L com o que ele já fez (feito) e o que falta (lista de [k, μ]); combinações somam
+// as variâncias. Devolve {over, under, push, dp}.
+export function chanceLinha(tab, aid, t, partes, feito, L) {
+  const mu = partes.reduce((s, [, m]) => s + Math.max(m, 0.05), 0);
+  const varr = partes.reduce((s, [k, m]) => s + phiDe(tab, k, t, Math.max(m, 0.05), aid) * Math.max(m, 0.05), 0);
+  const phi = varr / mu;
+  const alvo = L - feito;
+  if (alvo < 0) return { over: 1, under: 0, push: 0, dp: Math.sqrt(varr) };
+  const over = chanceAcima(mu, phi, Math.floor(alvo) + 1);
+  const ateL = chanceAcima(mu, phi, Math.ceil(alvo)); // P(resto ≥ alvo)
+  const push = Number.isInteger(alvo) ? Math.max(0, ateL - over) : 0;
+  return { over, under: Math.max(0, 1 - over - push), push, dp: Math.sqrt(varr) };
+}
+
 // Situação dele agora: em quadra ou no banco, há quanto tempo (s) e quantos minutos já jogou (tempo normal).
 export function agoraDe(plays, aid, b, rel, st) {
   if (st?.type?.state !== "in" || !b || rel.p > 4) return null;

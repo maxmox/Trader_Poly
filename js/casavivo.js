@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -73,6 +73,15 @@ function placarHtml(g, s) {
   return `<b>${esc(g.fora)} ${sc[g.fora] ?? ""} × ${sc[g.casa] ?? ""} ${esc(g.casa)}</b> <span class="muted">${esc(comp.status?.type?.shortDetail || "")}</span>`;
 }
 
+// lado de maior valor esperado: chance de acerto (dispersão dele) e EV com a odd da casa
+function chanceHtml(ch, evO, evU) {
+  const over = (evO ?? -9) >= (evU ?? -9);
+  const p = over ? ch.over : ch.under, ev = over ? evO : evU;
+  if (ev == null) return "–";
+  const cor = over ? "var(--sig-o)" : "var(--sig-u)";
+  return `<span style="color:${cor}">${over ? "Mais" : "Menos"} ${Math.round(100 * p)}%</span> · <b style="color:${ev > 0 ? cor : "var(--ink-3)"}">EV ${ev > 0 ? "+" : "−"}${Math.round(Math.abs(100 * ev))}%</b>`;
+}
+
 function jogoHtml(g, s, linhas, d) {
   const comp = s?.header?.competitions?.[0];
   const st = comp?.status;
@@ -98,22 +107,28 @@ function jogoHtml(g, s, linhas, d) {
     if (partes.some((e) => e?.justa == null)) return { r, fora: "sem linha pré-jogo para a base" };
     const feito = partes.reduce((t, e) => t + e.feito, 0), justa = partes.reduce((t, e) => t + e.justa, 0);
     const sn = r.ks.length === 1 ? sinalDe(r.j.aid, r.k) : null;
-    return { r, feito, justa, sn };
+    // chance de acerto pela dispersão (dele e da liga) em volta da linha justa; PRA usa a dispersão própria do PRA
+    const ks = r.k === "pra" ? ["pra"] : r.ks;
+    const mus = r.k === "pra" ? [["pra", justa - feito]] : r.ks.map((k) => [k, x.est[k].justa - x.est[k].feito]);
+    const ch = chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L);
+    const evO = r.O ? ch.over * r.O + ch.push - 1 : null, evU = r.U ? ch.under * r.U + ch.push - 1 : null;
+    return { r, feito, justa, sn, ch, evO, evU, ks };
   });
   // 11/11 (usuário): só o que importa — linha justa do Painel − linha da casa; ordem = maior diferença
   const ok = rows.filter((w) => !w.fora).map((w) => ({ ...w, dif: w.justa - w.r.L })).sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif));
   const fora = rows.filter((w) => w.fora);
-  const corpo = ok.map(({ r, justa, dif, sn }) => {
+  const corpo = ok.map(({ r, justa, dif, sn, ch, evO, evU }) => {
     const cor = dif > 0 ? "var(--sig-o)" : "var(--sig-u)";
     const sinal = sn ? ` <span title="sinal do Painel: alvo ${num(justa + sn.uj)}" style="color:${sn.ef > 0 ? "var(--sig-o)" : "var(--sig-u)"}">${sn.ef > 0 ? "↑" : "↓"} alvo ${num(justa + sn.uj)}</span>` : "";
     return `<tr><td><b>${esc(r.j.nome)}</b> <span class="muted">${NOME_K[r.k]}</span></td>
       <td class="n">${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span></td>
-      <td class="n"><b>${num(justa)}</b>${sinal}</td>
-      <td class="n"><b style="color:${cor}">${dif > 0 ? "▲ +" : "▼ −"}${num(Math.abs(dif))}</b></td></tr>`;
+      <td class="n"><b>${num(justa)}</b> <span class="muted">± ${num(ch.dp)}</span>${sinal}</td>
+      <td class="n"><b style="color:${cor}">${dif > 0 ? "▲ +" : "▼ −"}${num(Math.abs(dif))}</b></td>
+      <td class="n">${chanceHtml(ch, evO, evU)}</td></tr>`;
   }).join("");
   return `<div class="panel"><p style="margin:0 0 6px">${placarHtml(g, s)}${linhas[0]?.em ? ` <span class="muted">· odds das ${hhmm(Math.min(...linhas.map((r) => r.em || Date.now())))}</span>` : ""}</p>
     ${idade > VELHA_MIN && st?.type?.state === "in" ? `<p class="banner">Odds capturadas há ${idade} min — o jogo andou desde então. Capture de novo.</p>` : ""}
-    ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Linha justa<small>Painel, agora</small></th><th class="n">Justa − linha</th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
+    ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Linha justa<small>Painel, agora</small></th><th class="n">Justa − linha</th><th class="n">Chance · valor<small>lado de maior valor esperado com a odd da casa</small></th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
     ${fora.length ? `<p class="muted">Sem conta: ${fora.map((w) => `${esc(w.r.j.nome)} ${NOME_K[w.r.k]} (${w.fora})`).join(" · ")}</p>` : ""}</div>`;
 }
 
@@ -133,7 +148,7 @@ export async function mostrarCasaVivo(el, dia, espn) {
     const resumo = casas.map(([c, co]) => `<b>${esc(CASAS[c] || c)}</b>: captura das ${hhmm(co.em)} · ${co.eventos.length} jogo(s) · ${linhas.filter((r) => r.casa === c).length} linhas casadas com o Painel`).join(" · ");
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     el.innerHTML = `<section class="panel"><h2>Casa × Painel</h2>
-      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo; ordem = maior diferença. Seta com alvo = sinal do Painel. Na casa: capture (D) e clique em <b>"Abrir no Painel"</b> (coletor 1.17).</p>
+      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo; ordem = maior diferença. <b>± desvio</b> e <b>chance</b>: o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas; EV = chance × odd − 1. Seta com alvo = sinal do Painel. Na casa: capture (D) e clique em <b>"Abrir no Painel"</b> (coletor 1.17).</p>
       ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · <a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
       ${jogos.map((g) => jogoHtml(g, ST.resumos.get(g.id), linhas.filter((r) => r.g.id === g.id), d)).join("")}
       ${sem.length ? `<details><summary class="muted">${sem.length} mercados sem par (jogador fora da análise do dia, estatística sem projeção ou mercado parcial)</summary><p class="muted">${sem.slice(0, 150).map(esc).join(" · ")}</p></details>` : ""}
