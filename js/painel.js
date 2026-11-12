@@ -665,21 +665,59 @@ function blowoutClutchHtml(g, chance, fat, lim, rel) {
   const v = Object.fromEntries(times.map((t) => { const c = chance[t], f = fat(t); return [t, { mais: lim(c.bmais * f.fator), menos: lim(c.bmenos * f.fator), mais5: lim(c.b5mais * f.fator), menos5: lim(c.b5menos * f.fator), clutch: lim(c.clutch * f.fator_clutch), f }]; }));
   const lider = times.reduce((a, b) => (v[b].mais > v[a].mais ? b : a));
   const bMax = v[lider].mais, cMed = Math.round(times.reduce((s, t) => s + v[t].clutch, 0) / times.length);
-  const [cls, titulo, sub] = bMax >= 40 ? ["blow", `⚠ Blowout provável · ${bMax}%`, `${esc(lider)} tirar os titulares ganhando (5+ min antes do fim: ${v[lider].mais5}%). Titulares dos dois lados perdem minutos no Q4; reservas ganham.`]
-    : cMed >= 50 ? ["clutch", `🔥 Fim apertado provável · ${cMed}%`, "Titulares até o fim e placar até 6 a 2:00 do fim: estrelas rendem mais, assistências caem."]
+  const [cls, titulo, sub] = bMax >= 40 ? ["blow", `⚠ Blowout provável ${bMax}%`, `${esc(lider)} tirar os titulares ganhando (5+ min antes do fim ${v[lider].mais5}%): titulares perdem minutos no Q4, reservas ganham`]
+    : cMed >= 50 ? ["clutch", `🔥 Fim apertado provável ${cMed}%`, "titulares até o fim: estrelas rendem mais, assistências caem"]
     : ["aberto", "Jogo em aberto", `blowout ${bMax}% · fim apertado ${cMed}%`];
-  const papel = (t) => (g.handicap == null || g.handicap === 0 ? "" : (t === g.casa) === (g.handicap < 0) ? `favorito por ${num(Math.abs(g.handicap))}` : "azarão");
-  const cards = times.map((t) => {
+  const papel = (t) => (g.handicap == null || g.handicap === 0 ? "" : (t === g.casa) === (g.handicap < 0) ? `fav. ${num(Math.abs(g.handicap))}` : "azarão");
+  const mini = (rot, val, cor, tip) => `<span class="mini" title="${esc(tip)}"><small>${rot}</small><span class="mini-b"><i style="width:${Math.min(100, val)}%;background:${cor}"></i></span><b style="color:${val >= 40 ? cor : "var(--ink-2)"}">${val}%</b></span>`;
+  const linhas = times.map((t) => {
     const x = v[t], T = PAINEL.pol?.times?.[t];
-    const pol = T ? `ganhando 16+: ${polChip(T.ganhando_atual || T.ganhando) || "<span class=\"muted\">poucos jogos</span>"} · perdendo 16+: ${polChip(T.perdendo_atual || T.perdendo) || "<span class=\"muted\">poucos jogos</span>"}` : "";
-    const blow = Math.max(x.mais, x.menos) >= 25 && T ? `<p class="bc-quem"><b>No blowout</b> perdem minutos: ${(T.perdem || []).slice(0, 3).map((j) => `${nomeCurto(j.nome)} <small>${num(j.normal)}→${num(j.blowout)}</small>`).join(", ") || "–"} · ganham: ${(T.ganham || []).slice(0, 3).map((j) => `${nomeCurto(j.nome)} <small>${num(j.normal)}→${num(j.blowout)}</small>`).join(", ") || "–"}</p>` : "";
-    const assume = (T?.clutch || []).filter((j) => j.uso >= 1.12 || j.pts >= 1.1).slice(0, 3), some = (T?.clutch || []).filter((j) => j.uso <= 0.88).slice(0, 2);
-    const clu = x.clutch >= 30 && (assume.length || some.length) ? `<p class="bc-quem"><b>No fim apertado</b> assumem: ${assume.map((j) => `${nomeCurto(j.nome)} <small>uso ${Math.round(100 * j.parte_antes)}→${Math.round(100 * j.parte)}%</small>`).join(", ") || "–"}${some.length ? ` · somem: ${some.map((j) => nomeCurto(j.nome)).join(", ")}` : ""}</p>` : "";
-    return `<div class="bc-time"><div class="bc-top"><b>${esc(t)}</b> <span class="muted">${papel(t)}</span> <small class="muted" title="fator do técnico sobre a liga">técnico ×${num(x.f.fator, 2)}</small></div>
-      ${medidor("Blowout a favor", x.mais, "var(--warn)", `5+ min ${x.mais5}%`)}${medidor("Blowout contra", x.menos, "var(--warn)", `5+ min ${x.menos5}%`)}${medidor("Fim apertado", x.clutch, "var(--accent)")}
-      ${pol ? `<p class="bc-quem">${pol}</p>` : ""}${blow}${clu}</div>`;
+    const pg = T ? polChip(T.ganhando_atual || T.ganhando) : "", pp = T ? polChip(T.perdendo_atual || T.perdendo) : "";
+    return `<div class="bc2-t"><b class="bc2-sig">${esc(t)}</b><small class="muted bc2-pap">${papel(t)}</small>${mini("blowout a favor", x.mais, "var(--warn)", `blowout a favor ${x.mais}% (titulares fora com 5+ min: ${x.mais5}%)`)}${mini("contra", x.menos, "var(--warn)", `blowout contra ${x.menos}% (5+ min: ${x.menos5}%)`)}${mini("apertado", x.clutch, "var(--accent)", `fim apertado ${x.clutch}% (titulares até o fim, placar até 6 a 2:00)`)}<small class="muted bc2-tec" title="fator do técnico sobre a liga e política com 16+ de diferença">téc. ×${num(x.f.fator, 2)}${pg ? ` · ganhando ${pg}` : ""}${pp ? ` · perdendo ${pp}` : ""}</small></div>`;
   }).join("");
-  return `<div class="bc-vivo"><div class="bc-cenario ${cls}"><b>${titulo}</b><span>${sub}</span><small>${rel.p === 0 || rel.t < 60 ? "antes do jogo, pelo handicap do dia" : "agora, pelo placar e o tempo que falta (placar projetado pelo handicap)"}</small></div><div class="bc-grid">${cards}</div></div>`;
+  const quem = times.map((t) => {
+    const T = PAINEL.pol?.times?.[t];
+    if (!T) return "";
+    const blow = `perdem min: ${(T.perdem || []).slice(0, 3).map((j) => `${nomeCurto(j.nome)} <small>${num(j.normal)}→${num(j.blowout)}</small>`).join(", ") || "–"} · ganham: ${(T.ganham || []).slice(0, 3).map((j) => `${nomeCurto(j.nome)} <small>${num(j.normal)}→${num(j.blowout)}</small>`).join(", ") || "–"}`;
+    const assume = (T.clutch || []).filter((j) => j.uso >= 1.12 || j.pts >= 1.1).slice(0, 3), some = (T.clutch || []).filter((j) => j.uso <= 0.88).slice(0, 2);
+    const clu = `assumem: ${assume.map((j) => `${nomeCurto(j.nome)} <small>uso ${Math.round(100 * j.parte_antes)}→${Math.round(100 * j.parte)}%</small>`).join(", ") || "–"}${some.length ? ` · somem: ${some.map((j) => nomeCurto(j.nome)).join(", ")}` : ""}`;
+    return `<p class="bc-quem"><b>${esc(t)}</b> — <b>no blowout</b> ${blow} · <b>no fim apertado</b> ${clu}</p>`;
+  }).join("");
+  const quando = rel.p === 0 || rel.t < 60 ? "antes do jogo, pelo handicap do dia" : "agora, pelo placar e o tempo que falta";
+  return `<div class="bc2 ${cls}"><div class="bc2-top"><b>${titulo}</b> <span>${sub}</span> <small class="muted">${quando}</small></div>${linhas}${quem ? `<details data-k="bc-quem"${aberto("bc-quem")}><summary class="muted">quem perde/ganha minutos no blowout e quem assume no fim apertado</summary>${quem}</details>` : ""}</div>`;
+}
+
+// blocos recolhíveis lembram se ficaram abertos (o Painel é redesenhado a cada 30 s)
+let ABERTOS = null;
+function aberto(k) {
+  if (!ABERTOS) { try { ABERTOS = new Set(JSON.parse(localStorage.getItem("traderpoly.painel.abertos") || "[]")); } catch { ABERTOS = new Set(); } }
+  return ABERTOS.has(k) ? " open" : "";
+}
+function ligarDetalhes(el) {
+  aberto("");
+  for (const d of el.querySelectorAll("details[data-k]")) d.addEventListener("toggle", () => {
+    if (d.open) ABERTOS.add(d.dataset.k); else ABERTOS.delete(d.dataset.k);
+    try { localStorage.setItem("traderpoly.painel.abertos", JSON.stringify([...ABERTOS])); } catch { /* sem armazenamento */ }
+  });
+}
+
+// Bola rolando × parada (12/11/2026, pedido do usuário: vermelho = hora de conferir entradas, rotação e odds): parada =
+// fim de quarto/intervalo, último lance tempo técnico/revisão/fim de período, ou relógio igual há 25+ s (entre as
+// atualizações). Nos outros jogos (sem lance a lance) só o status e o relógio do placar da ESPN.
+const RELOG = {};
+function paradaDe(id, st, plays) {
+  if (st?.type?.state !== "in") return null;
+  const nome = st.type.name || "";
+  if (/HALFTIME/.test(nome)) return "intervalo";
+  if (/END_PERIOD/.test(nome)) return `fim do Q${st.period}`;
+  const ult = plays?.length ? plays[plays.length - 1] : null;
+  const tx = `${ult?.type?.text || ""} ${ult?.text || ""}`;
+  if (ult && /review|challenge|replay/i.test(tx)) return "revisão/desafio";
+  if (ult && /timeout/i.test(tx)) return "tempo técnico";
+  if (ult && /end of|end period|end game/i.test(tx)) return `fim do Q${st.period}`;
+  const k = `${st.period}|${st.displayClock}`, a = RELOG[id];
+  if (!a || a.k !== k) { RELOG[id] = { k, em: Date.now() }; return null; }
+  return Date.now() - a.em >= 25e3 ? "relógio parado" : null;
 }
 
 function jogoHtml(g, s) {
@@ -750,9 +788,11 @@ function jogoHtml(g, s) {
   // rotação agora: quem está para sentar, passou do normal ou acabou de sentar (só rotação regular, Q1–Q3)
   const ordemRot = { passou: 0, prestes: 1, sentou: 2 };
   const rots = Object.values(porTime).flat().filter((p) => p.rot).sort((a, c) => ordemRot[a.rot.tipo] - ordemRot[c.rot.tipo] || a.rot.s - c.rot.s);
-  const rotH = rots.length ? `<div class="panel rot-agora"><b>Rotação agora</b> ${rots.map((p) => `<span class="rot-item">${esc(p.j.time)} <b>${esc(p.j.nome)}</b>${seloMin(p.j, rel)}${rotacaoChip(p.rot)}</span>`).join("")}</div>` : "";
-  return `<div class="placar-vivo"><span class="pt">${esc(g.fora)} <b>${placar[g.fora] ?? "–"}</b></span><span class="px">×</span><span class="pt"><b>${placar[g.casa] ?? "–"}</b> ${esc(g.casa)}</span>
-    <span class="pq">${quandoTxt(st)}</span>${aviso}</div>${chanceH}${rotH}${insH}
+  const rotH = rots.length ? `<div class="rot-agora"><small class="muted">rotação</small> ${rots.slice(0, 8).map((p) => `<span class="rot-item"><small class="muted">${esc(p.j.time)}</small> ${nomeCurto(p.j.nome)}${rotacaoChip(p.rot)}</span>`).join("")}</div>` : "";
+  const estado = st.type?.state === "in" ? (PAINEL.parada ? "parado" : "rolando") : st.type?.state === "post" ? "fim" : "pre";
+  const estTxt = estado === "parado" ? `■ parado · ${PAINEL.parada}` : estado === "rolando" ? "● bola rolando" : "";
+  return `<div class="placar-vivo ${estado}"><span class="pt">${esc(g.fora)} <b>${placar[g.fora] ?? "–"}</b></span><span class="px">×</span><span class="pt"><b>${placar[g.casa] ?? "–"}</b> ${esc(g.casa)}</span>
+    <span class="pq">${quandoTxt(st)}</span>${estTxt ? `<span class="pn-estado">${estTxt}</span>` : ""}${aviso}</div>${chanceH}${rotH}${insH}
     ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t), rel)).join("")}`;
 }
 
@@ -760,16 +800,19 @@ function seletor(dia) {
   const ev = Object.fromEntries((PAINEL.sb?.events || []).map((e) => [e.id, e]));
   return `<div class="chips painel-jogos">${dia.jogos.map((g) => {
     const e = ev[g.id]?.competitions?.[0];
-    const st = e?.status?.type?.state;
+    const st = e?.status, est = st?.type?.state;
     const sc = e ? Object.fromEntries(e.competitors.map((c) => [c.team.abbreviation, c.score])) : {};
-    const txt = st && st !== "pre" ? `${g.fora} ${sc[g.fora] ?? ""} × ${sc[g.casa] ?? ""} ${g.casa}` : `${g.fora} @ ${g.casa}`;
-    const ao = st === "in" ? " ●" : "";
-    return `<button type="button" data-jogo="${g.id}" aria-pressed="${g.id === PAINEL.sel}" class="${st === "in" ? "ao-vivo" : ""}">${esc(txt)}${ao}</button>`;
+    const par = g.id === PAINEL.sel ? PAINEL.parada : paradaDe(g.id, st, null);
+    const cls = est === "in" ? (par ? "parado" : "rolando") : est === "post" ? "fim" : "pre";
+    const hora = est === "pre" && e?.date ? new Date(e.date).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+    const q = est === "in" ? quandoTxt(st).replace(" aos ", " ") : est === "post" ? "final" : hora;
+    const txt = est && est !== "pre" ? `${esc(g.fora)} <b>${sc[g.fora] ?? ""}</b>–<b>${sc[g.casa] ?? ""}</b> ${esc(g.casa)}` : `${esc(g.fora)} @ ${esc(g.casa)}`;
+    return `<button type="button" data-jogo="${g.id}" aria-pressed="${g.id === PAINEL.sel}" class="${cls}" title="${par ? `parado: ${par}` : est === "in" ? "bola rolando" : ""}"><i class="pt-dot"></i>${txt} <small>${q}</small></button>`;
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Rotação agora</b> (Q1–Q3, só rotação regular — saídas nos jogos parecidos variando até 3 min; medido em 420 mil momentos de 2025-27): <i>⏱ sai em ~X</i> = saída típica em até 2 min (senta nos 2,5 min seguintes em 67–81%, contra 33% em qualquer momento); <i>⚠ +X além do normal</i> = passou 1–4 min da saída típica (67–78%); <i>🪑 sentou há X · volta ~Y</i> = acabou de sentar. A linha da casa costuma cair em salto quando ele senta (e mais ainda se o placar abre junto). <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
-<p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Linha justa calibrada</b> (11/11): além da rotação e do placar, entram fatores medidos em ~1.400 jogos com linha e conferidos fora da amostra: estrela nº 1/nº 2 conforme o placar (no parelho rende mais desde o Q3), faltas (por grande/outro, quarto e nº de faltas), formato individual de pontos (232 jogadores com 80+ jogos), começo dele (feito ÷ deveria) × momento × placar e, em pontos e cestas de 3, quente com o time frio. Os antigos insights ↑/↓ e os sinais com alvo foram desligados: o que deles se sustentou já está dentro da linha justa. Compare a justa com a linha ao vivo da casa (aba Casa × Painel).</p>`;
+const LEGENDA = () => `<details class="como-ler" data-k="como-ler"${aberto("como-ler")}><summary class="muted">Como ler o Painel</summary><p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Rotação agora</b> (Q1–Q3, só rotação regular — saídas nos jogos parecidos variando até 3 min; medido em 420 mil momentos de 2025-27): <i>⏱ sai em ~X</i> = saída típica em até 2 min (senta nos 2,5 min seguintes em 67–81%, contra 33% em qualquer momento); <i>⚠ +X além do normal</i> = passou 1–4 min da saída típica (67–78%); <i>🪑 sentou há X · volta ~Y</i> = acabou de sentar. A linha da casa costuma cair em salto quando ele senta (e mais ainda se o placar abre junto). <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+<p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Linha justa calibrada</b> (11/11): além da rotação e do placar, entram fatores medidos em ~1.400 jogos com linha e conferidos fora da amostra: estrela nº 1/nº 2 conforme o placar (no parelho rende mais desde o Q3), faltas (por grande/outro, quarto e nº de faltas), formato individual de pontos (232 jogadores com 80+ jogos), começo dele (feito ÷ deveria) × momento × placar e, em pontos e cestas de 3, quente com o time frio. Os antigos insights ↑/↓ e os sinais com alvo foram desligados: o que deles se sustentou já está dentro da linha justa. Compare a justa com a linha ao vivo da casa (aba Casa × Painel).</p></details>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
   if (!dia || PAINEL.carregando || document.hidden) return;
@@ -802,7 +845,13 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
       try { PAINEL.sum = await espn(`/summary?event=${g.id}`); } catch { if (PAINEL.sum?.header?.id !== g.id) PAINEL.sum = null; }
     }
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    vivo.innerHTML = `${seletor(dia)}<p class="muted" style="margin:6px 0">atualizado às ${hora}</p>${jogoHtml(g, PAINEL.sum?.header?.id === g.id ? PAINEL.sum : null)}${LEGENDA}`;
+    const sumG = PAINEL.sum?.header?.id === g.id ? PAINEL.sum : null;
+    PAINEL.parada = paradaDe(g.id, sumG?.header?.competitions?.[0]?.status, sumG?.plays);
+    const corpo = jogoHtml(g, sumG);
+    vivo.innerHTML = `<div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora}</small></div>${corpo}${LEGENDA()}`;
+    ligarDetalhes(vivo);
+    const bar = document.querySelector(".bar"); // a barra de jogos gruda logo abaixo do cabeçalho fixo do site
+    if (bar) document.documentElement.style.setProperty("--bar-h", `${bar.offsetHeight}px`);
     for (const b of vivo.querySelectorAll("[data-jogo]")) b.onclick = () => {
       PAINEL.sel = b.dataset.jogo;
       try { localStorage.setItem("traderpoly.painel", PAINEL.sel); } catch { /* sem armazenamento */ }
