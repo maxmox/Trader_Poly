@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.20
+// @version      1.21
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin e Betcoin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.20";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.21";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : null);
   // VelvetSpin (v1.16, 30/10/2026, pelos prints): quadros "individual total" (= pontos), "Três pontos. individual total",
@@ -129,7 +129,27 @@
   // Marcos ("8+" | odd): menor elemento com um "N+" e uma odd; o jogador é o 1º nome subindo.
   const BOT = (f) => f.length === 2 && /^\d{1,3}[.,]\d$/.test(f[0]) && /^\d{1,3}[.,]\d{2,3}$/.test(f[1]);
   const ehNomeJog = (x) => NOME.test(x) && x.length <= 40 && !/^(mais|menos|linha|odds?|over|under)\b/i.test(x) && !/prorroga|jogador|total|\+/i.test(x);
-  const tituloBetby = (t) => ehTitulo(t) && !/média|temporada|dicas/i.test(t);
+  // títulos de quadro (sem as frases das "Dicas de Especialista" e sem as pernas das múltiplas "Tyrese Maxey pontos: 25+")
+  const tituloBetby = (t) => ehTitulo(t) && !/média|temporada|dicas/i.test(t) && !/:\s*\d|\d\+|&/.test(t);
+  // v1.21 (2º Diagnóstico, 12/11): a tabela é uma GRADE PLANA — as células do quadro são irmãs, sem bloco por jogador:
+  //   [título, time, "Linha", "Odds", "Tyrese Maxey", "36+", "1.90", "Jaylen Brown", "36+", "1.93", …]
+  //   [título, time, "Mais De", "Menos De", jogador, "35.5", "1.87", "35.5", "1.83", …]
+  // → lê a página como uma sequência de textos: título vale até o próximo; jogador + L + Mais + L + Menos, ou jogador + N+ + odd
+  function capturarSequencia() {
+    const S = folhas(document.body || document.documentElement);
+    const L1 = (x) => /^\d{1,3}[.,]\d$/.test(x || ""), P2 = (x) => /^\d{1,3}[.,]\d{2,3}$/.test(x || "");
+    const pares = [];
+    let tit = "";
+    for (let i = 0; i < S.length; i++) {
+      const x = S[i];
+      if (tituloBetby(x)) { tit = x; continue; }
+      if (!tit || !ehNomeJog(x) || /dupl|tripl|m[uú]ltipl/i.test(tit)) continue;
+      const [a, b, c, d] = S.slice(i + 1, i + 5);
+      if (L1(a) && a === c && P2(b) && P2(d)) { pares.push([tit, x, num(a), num(b), num(d)]); i += 4; continue; }
+      if (MARCO.test(a || "") && P2(b)) { pares.push([`${tit} · marco`, x, +a.match(MARCO)[1] - 0.5, num(b), null]); i += 2; }
+    }
+    return pares;
+  }
   function capturarBetby(els, F) {
     const up = (x) => x.parentElement || x.getRootNode?.()?.host || null;
     const ordem = new Map(els.map((el, i) => [el, i]));
@@ -184,7 +204,7 @@
     if (CASA === "betcoin") {
       // os dois leitores; o de botões vale por cima (mesma chave título|jogador|linha)
       const m = new Map();
-      for (const p of [...capturarCampeon(els, F), ...capturarBetby(els, F)]) m.set(`${p[0]}|${p[1]}|${p[2]}`, p);
+      for (const p of [...capturarCampeon(els, F), ...capturarBetby(els, F), ...capturarSequencia()]) m.set(`${p[0]}|${p[1]}|${p[2]}`, p);
       return { nome: nomeDoJogo(els, F), pares: [...m.values()] };
     }
     return { nome: nomeDoJogo(els, F), pares: CASA === "jogabrasil" ? capturarJogaBrasil(els, F) : capturarCampeon(els, F) };
