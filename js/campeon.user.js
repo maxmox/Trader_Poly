@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin)
+// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.18
+// @version      1.19
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet, JogaBrasil, 99play e VelvetSpin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
+// @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin e Betcoin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
@@ -26,12 +26,17 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.18";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.19";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
-  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : null);
+  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : null);
   // VelvetSpin (v1.16, 30/10/2026, pelos prints): quadros "individual total" (= pontos), "Três pontos. individual total",
   // "Rebotes. …", "Assistências. …", "Tocos. …", "Bolas recuperadas. …" com a tabela Jogador | Linha | Mais | Menos
   // → mesmo leitor de tabela da CampeonBet; o título "individual total" entra como título de quadro
+  // Betcoin (v1.19, 12/11/2026, pelos prints do usuário): esporte da Betby (endereço "?bt-path=/basketball/usa/nba/<a>-<b>-<id>");
+  // jogo › "Adereços de jogador" › abas Principal/Pontos/Assistências/Rebotes/3 pontos/Extras. Dois formatos de quadro:
+  //   "Total de pontos (incl. prorrogação)": time | Mais De | Menos De, linha = jogador, botão "24.5 1.81", botão "24.5 1.89"
+  //   "Assistências do jogador (incl. prorrogação)": time | Linha | Odds, linha = jogador, "8+" (seletor), odd → marco = só o
+  //   Mais na linha 7,5 (a casa não oferece o Menos)
   // página de fora = sem ancestrais (com @grant o window do script pode ser um invólucro e window.top !== window)
   const TOPO = location.ancestorOrigins ? location.ancestorOrigins.length === 0 : window.self === window.top;
   const ancestrais = [...(location.ancestorOrigins || [])].join(" ") || document.referrer;
@@ -49,11 +54,22 @@
   // todos os elementos, entrando nos shadow roots
   const todos = (r0) => { const out = []; const anda = (r) => { for (const el of r.querySelectorAll("*")) { out.push(el); const s = raiz(el); if (s) anda(s); } }; anda(r0); return out; };
   // textos das folhas (nós de texto não vazios), em ordem, entrando nos shadow roots
-  const folhas = (el) => { const out = []; const anda = (n) => { for (const c of n.childNodes) { if (c.nodeType === 3) { const t = c.nodeValue.trim(); if (t) out.push(t); } else if (c.nodeType === 1) { anda(c); const s = raiz(c); if (s) anda(s); } } }; anda(el); return out; };
+  const folhas = (el) => { const out = []; const anda = (n) => { for (const c of n.childNodes) { if (c.nodeType === 3) { const t = c.nodeValue.trim(); if (t) out.push(t); } else if (c.nodeType === 1) { if (c.tagName === "OPTION" && !c.selected) continue; anda(c); const s = raiz(c); if (s) anda(s); } } }; anda(el); return out; }; // seletor nativo: só a opção escolhida (marcos "8+" da Betcoin)
   const ehLinhaDeTabela = (F) => F.length === 4 && NOME.test(F[0]) && LINHA.test(F[1]) && PRECO.test(F[2]) && PRECO.test(F[3]);
+  const MARCO = /^(\d{1,2})\+$/;
+  // linha de tabela → [jogador, linha, Mais, Menos] (Menos null = marco "8+", só o Mais) ou null
+  //   4 textos: jogador | linha | Mais | Menos (CampeonBet/99play/VelvetSpin)
+  //   5 textos: jogador | linha | Mais | linha | Menos (Betcoin: a linha se repete em cada botão)
+  //   3 textos: jogador | "8+" | odd (Betcoin, marcos)
+  const linhaTabela = (F) => {
+    if (ehLinhaDeTabela(F)) return [F[0], num(F[1]), num(F[2]), num(F[3])];
+    if (F.length === 5 && NOME.test(F[0]) && LINHA.test(F[1]) && F[3] === F[1] && PRECO.test(F[2]) && PRECO.test(F[4]) && /^\d{1,3}[.,]\d{2,3}$/.test(F[2]) && /^\d{1,3}[.,]\d{2,3}$/.test(F[4])) return [F[0], num(F[1]), num(F[2]), num(F[4])];
+    if (F.length === 3 && NOME.test(F[0]) && MARCO.test(F[1]) && PRECO.test(F[2])) return [F[0], +F[1].match(MARCO)[1] - 0.5, num(F[2]), null];
+    return null;
+  };
   const num = (t) => parseFloat(t.replace(",", "."));
   // título de quadro de mercado (os rótulos das abas, "Pontos", "Assistências"…, são curtos e ficam de fora)
-  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|over\s*\/\s*under|individual total/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
+  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|incl\.?\s*prorroga|over\s*\/\s*under|individual total/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
   // JogaBrasil: título de bloco ("Ace Bailey Total de pontos. Com prorrogação") e botão "Mais 6.5 1.26"
   const ehTituloJB = (t) => t.length >= 12 && !/^(mais|menos)\b/i.test(t) && /prorroga|total de|cestas|pontos|ressaltos|rebotes|assist|roubos|bloqueios|desarmes/i.test(t);
   const BOTAO_JB = /^(mais|menos)\s+(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{1,3})$/i;
@@ -70,11 +86,11 @@
 
   function capturarCampeon(els, F) {
     // linhas da tabela: o menor elemento cujo texto é exatamente jogador, linha, Mais, Menos
-    const linhas = els.filter((el) => ehLinhaDeTabela(F(el)));
+    const linhas = els.filter((el) => linhaTabela(F(el)));
     const minimas = linhas.filter((el) => !linhas.some((o) => o !== el && el.contains(o)));
     const pares = [];
     for (const el of minimas) {
-      const [jogador, linha, mais, menos] = F(el);
+      const [jogador, linha, mais, menos] = linhaTabela(F(el));
       // título do quadro: subindo, o 1º texto que é de mercado
       let titulo = "", up = el.parentElement || el.getRootNode()?.host;
       for (let k = 0; k < 14 && up && !titulo; k++) {
@@ -82,7 +98,8 @@
         up = up.parentElement || up.getRootNode()?.host;
       }
       if (!titulo) continue;
-      pares.push([titulo, jogador, num(linha), num(mais), num(menos)]);
+      // marco (só o Mais): título próprio para não sobrescrever a linha Mais/Menos do mesmo jogador
+      pares.push([menos == null ? `${titulo} · marco` : titulo, jogador, linha, mais, menos]);
     }
     return pares;
   }
@@ -162,7 +179,11 @@
     const aqui = capturarAqui(), deles = await perguntar("tp-capturar");
     const pares = [...aqui.pares, ...deles.flatMap((r) => r?.pares || [])];
     // sem nome (a 99play põe o horário entre os times): o nº do evento no endereço separa os jogos; a aba acha o jogo pelos jogadores
-    const nome = aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, location.pathname.split("/").filter(Boolean).pop() || "?"])[1]}`;
+    // Betcoin/Betby: "?bt-path=/basketball/usa/nba/washington-wizards-detroit-pistons-2732496039935365120"
+    const bt = (new URLSearchParams(location.search).get("bt-path") || "").split("/").filter(Boolean).pop() || "";
+    const mb = bt.match(/^(.+?)-(\d{6,})$/);
+    const nomeBt = mb ? `${mb[1].replaceAll("-", " ").replace(/\b\w/g, (c) => c.toUpperCase())} · ${mb[2]}` : "";
+    const nome = nomeBt || aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, location.pathname.split("/").filter(Boolean).pop() || "?"])[1]}`;
     return { nome, pares, quadros: deles.length };
   }
 
@@ -172,7 +193,9 @@
     const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
     return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
-  const COMO = CASA === "velvet"
+  const COMO = CASA === "betcoin"
+    ? "Abra o jogo › \"Adereços de jogador\" e aperte D (ou \"Capturar esta tela\") em cada aba: Principal, Pontos, Assistências, Rebotes, 3 pontos, Extras (role até o fim de cada uma). As capturas se somam; no fim, \"Abrir a comparação\"."
+    : CASA === "velvet"
     ? "Abra o jogo › aba \"Total de jogadores\" (quadros \"individual total\") e aperte D ou \"Capturar esta tela\"; role e capture de novo se houver mais quadros; no fim, \"Abrir a comparação\"."
     : CASA === "jogabrasil"
     ? "Abra o jogo › \"Mercado de Jogadores\" e clique em \"Capturar esta tela\" (ou aperte D). Se a lista carrega aos poucos, role até o fim e capture de novo (as capturas se somam); no fim, \"Abrir a comparação\"."

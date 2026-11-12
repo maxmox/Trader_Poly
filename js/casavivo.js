@@ -1,6 +1,6 @@
 // Aba "Casa × Painel" de padroes.html (11/11/2026, pedido do usuário): as odds AO VIVO que o coletor (js/campeon.user.js)
 // capturou na CampeonBet (e nas outras casas do coletor) comparadas com a linha justa do Painel naquele momento.
-// A coleta chega pelo endereço (#campeon=…, botão "Abrir a comparação" do coletor v1.18) ou pela aba Casas × DK de
+// A coleta chega pelo endereço (#campeon=…, botão "Abrir a comparação" do coletor v1.19) ou pela aba Casas × DK de
 // props.html (mesmo localStorage "casas-coleta"; esta aba percebe a gravação na hora pelo evento "storage").
 // Mostra só a linha justa do Painel (feito + ritmo × minutos que faltam, `estimar`) − a linha da casa (usuário, 11/11: "é só
 // isso"; a 1ª versão com chance/EV/desvio era informação demais). Combos P+A/P+R/R+A = soma das justas. NÃO calibrado.
@@ -49,7 +49,7 @@ function linhasDaColeta(coletas, dia) {
       const ks = DE_TIPO[tipo];
       const j = ks && acharJog(g.jogadores, textos[i]);
       if (!j) { sem.push(`${CASAS[casa] || casa}: ${m.nome}`); return; }
-      for (const p of m.pares || []) out.push({ casa, g, j, k: ks.length === 1 ? ks[0] : tipo, ks, L: p.L, O: p.O, U: p.U, em: ev.em || co.em, mercado: m.nome.split(" | ")[0] });
+      for (const p of [...(m.pares || []), ...(m.soMais || [])]) out.push({ casa, g, j, k: ks.length === 1 ? ks[0] : tipo, ks, L: p.L, O: p.O, U: p.U, em: ev.em || co.em, mercado: m.nome.split(" | ")[0] });
     });
   }
   // escada (várias linhas do mesmo jogador × estatística na mesma casa): fica a linha principal da casa, a de odds mais
@@ -57,7 +57,9 @@ function linhasDaColeta(coletas, dia) {
   const grupos = new Map();
   for (const r of out) { const k = `${r.casa}|${r.g.id}|${r.j.aid}|${r.k}`; (grupos.get(k) || grupos.set(k, []).get(k)).push(r); }
   const linhas = [...grupos.values()].map((gr) => {
-    const r = gr.reduce((a, b) => (Math.abs(1 / b.O - 1 / b.U) < Math.abs(1 / a.O - 1 / a.U) ? b : a));
+    // marco (só o Mais, Betcoin "8+") só entra se não houver linha com os dois lados; entre marcos, o de odd mais perto de 2
+    const eq = (x) => (x.U ? Math.abs(1 / x.O - 1 / x.U) : 9 + Math.abs(1 / x.O - 0.5));
+    const r = gr.reduce((a, b) => (eq(b) < eq(a) ? b : a));
     return { ...r, escada: gr.length };
   });
   return { linhas, sem: [...new Set(sem)] };
@@ -140,7 +142,7 @@ function jogoHtml(g, s, linhas, d) {
     const suspeito = evm >= EV_SUSPEITO;
     const forte = evm >= 0.05 && !suspeito && cm?.n !== 2;
     return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td><b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)} <span class="muted">${NOME_K[r.k]}</span></td>
-      <td class="n">${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span></td>
+      <td class="n">${r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>` : `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`}</td>
       <td class="n"><b>${num(justa)}</b> <span class="muted">± ${num(ch.dp)}</span>${sinal}</td>
       <td class="n"><b style="color:${cor}">${dif > 0 ? "▲ +" : "▼ −"}${num(Math.abs(dif))}</b></td>
       <td class="n">${chanceHtml(ch, evO, evU)}${suspeito ? `<br><small style="color:var(--warn)" title="Com a linha ao vivo da casa, EV tão alto quase sempre é algo que o modelo não sabe (rotação, lesão, papel). Nas apostas de 10–11/11 o Painel dava 70% de chance em média e acertou 37%.">⚠ EV alto demais: confira rotação e notícia</small>` : ""}</td></tr>`;
@@ -168,7 +170,7 @@ export async function mostrarCasaVivo(el, dia, espn) {
     const resumo = casas.map(([c, co]) => `<b>${esc(CASAS[c] || c)}</b>: captura das ${hhmm(co.em)} · ${co.eventos.length} jogo(s) · ${linhas.filter((r) => r.casa === c).length} linhas casadas com o Painel`).join(" · ");
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     el.innerHTML = `<section class="panel"><h2>Casa × Painel</h2>
-      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo. Ordem padrão: maior EV no topo (os jogos também, pelo melhor EV). <b>± desvio</b> e <b>chance</b>: ao vivo, o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas. <b>Antes do jogo</b> a chance vem da odd sem margem da DraftKings (marca "DK"): no teste de 11/11 a nossa dispersão com a linha como média perdeu da DK antes do jogo. EV = chance × odd − 1. Na casa: capture (D) e clique em <b>"Abrir a comparação"</b> (coletor 1.18).</p>
+      <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo. Ordem padrão: maior EV no topo (os jogos também, pelo melhor EV). <b>± desvio</b> e <b>chance</b>: ao vivo, o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas. <b>Antes do jogo</b> a chance vem da odd sem margem da DraftKings (marca "DK"): no teste de 11/11 a nossa dispersão com a linha como média perdeu da DK antes do jogo. EV = chance × odd − 1. Na casa: capture (D) e clique em <b>"Abrir a comparação"</b> (coletor 1.19).</p>
       <p class="muted"><b>Selo dos minutos</b> ao lado do nome (passe o mouse para ver o motivo): <span class="selo-min" style="color:var(--good);border-color:var(--good)">min ✓</span> confiável, <span class="selo-min" style="color:var(--warn);border-color:var(--warn)">min ~</span> atenção, <span class="selo-min n2" style="color:var(--bad);border-color:var(--bad)">min ?</span> incerto (em casos assim ~1 em 5 joga 70% ou menos do previsto): a linha justa depende dos minutos — confira a rotação antes. Linha com minutos incertos não ganha o fundo verde. <b>EV de 30%+</b> também não: ao vivo, contra a linha da casa, quase sempre é informação que falta ao modelo (nas apostas de 10–11/11, com EV a favor o Painel dava 70% de chance em média e acertou 37%) — o Painel não está calibrado contra linhas ao vivo; use para confirmar a sua leitura.</p>
       ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · <a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
       ${jogos.length ? `<div class="chips" role="group" aria-label="Ordem">Ordenar por: ${[["ev", "maior EV"], ["dif", "maior diferença"], ["nome", "jogador"]].map(([k, t]) => `<button type="button" class="chip" data-ordem="${k}" aria-pressed="${ORDEM === k}" style="${ORDEM === k ? "background:var(--accent);color:var(--panel);border-color:var(--accent)" : ""}">${t}</button>`).join(" ")} <span class="muted">· verde = EV ≥ 5%</span></div>` : ""}
