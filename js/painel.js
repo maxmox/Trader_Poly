@@ -143,6 +143,28 @@ export function rotacaoAgora(j, rel, agora) {
   const volta = R.length >= 5 && iqr(R) <= 180 ? quantilQ(R, 0.5) - t : null;
   return { tipo: "sentou", s: dur, volta };
 }
+// Retrato da rotação para a lateral (12/11/2026): em quadra há X (saída típica se a rotação for regular) / no banco há X
+// (volta típica se regular). Mesma conta do aviso, sem a janela de 2 min.
+export function rotacaoInfo(j, rel, agora) {
+  if (!agora || rel.fim || rel.p < 1) return null;
+  const out = { quadra: agora.quadra, dur: agora.dur };
+  const hist = j?.rotacao?.hist;
+  if (!hist?.length || hist.length < 8 || rel.t >= 2160) return out;
+  const t = rel.t, dur = agora.dur;
+  const iqr = (v) => quantilQ(v, 0.75) - quantilQ(v, 0.25);
+  const v = [];
+  for (const h of hist) {
+    if (agora.quadra) {
+      for (let i = 0; i + 1 < h.length; i += 2) if (h[i] <= t && t < h[i + 1] && Math.abs(t - h[i] - dur) <= 180) { v.push(h[i + 1]); break; }
+    } else {
+      const [qd, d] = estadoH(h, t);
+      if (qd || d + 60 < dur) continue;
+      for (let i = 0; i + 1 < h.length; i += 2) if (h[i] > t) { v.push(h[i]); break; }
+    }
+  }
+  if (v.length >= 5 && iqr(v) <= 180) out[agora.quadra ? "sai" : "volta"] = Math.max(0, quantilQ(v, 0.5) - t);
+  return out;
+}
 const mmssR = (s) => { const x = Math.max(0, Math.round(s)); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, "0")}`; };
 export function rotacaoChip(r) {
   if (!r) return "";
@@ -744,12 +766,13 @@ function jogoHtml(g, s) {
     const minEsp = minEspDe(j);
     const ag = agoraDe(plays, j.aid, b, rel, st);
     const rot = rotacaoAgora(j, rel, ag);
+    const rinfo = rotacaoInfo(j, rel, ag);
     const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), ag, { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] });
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
     const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
-    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot });
+    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot, rinfo });
   }
   // cenário do time (quente com os companheiros frios): junta aos insights e marca os minutos a mais
   const cen = cenarioTime(PAINEL.tim, rel, Object.values(porTime).flat().filter((p) => p.b).map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
@@ -788,6 +811,18 @@ function jogoHtml(g, s) {
   // rotação agora: quem está para sentar, passou do normal ou acabou de sentar (só rotação regular, Q1–Q3)
   const ordemRot = { passou: 0, prestes: 1, sentou: 2 };
   const rots = Object.values(porTime).flat().filter((p) => p.rot).sort((a, c) => ordemRot[a.rot.tipo] - ordemRot[c.rot.tipo] || a.rot.s - c.rot.s);
+  const linhaRot = (p) => {
+    const r = p.rinfo;
+    const det = r.quadra ? `há ${mmssR(r.dur)}${r.sai != null && !p.rot ? ` · sai ~${mmssR(r.sai)}` : ""}` : `banco ${mmssR(r.dur)}${r.volta != null && p.rot?.tipo !== "sentou" ? ` · volta ~${mmssR(r.volta)}` : ""}`;
+    return `<div class="rail-l${r.quadra ? " q" : ""}"><i></i><span>${nomeCurto(p.j.nome)}${seloMin(p.j, rel)}</span><small>${det}</small>${rotacaoChip(p.rot)}</div>`;
+  };
+  PAINEL.rail = st.type?.state !== "in" ? `<div class="rail-tit">Rotação</div><p class="muted">${st.type?.state === "post" ? "jogo encerrado" : "aparece com o jogo em andamento"}</p>`
+    : `<div class="rail-tit">Rotação <small class="muted">${esc(g.fora)} @ ${esc(g.casa)}</small></div>${siglas.map((tm) => {
+      const L = (porTime[tm] || []).filter((p) => p.rinfo && p.b && !p.b.dnp);
+      const q = L.filter((p) => p.rinfo.quadra).sort((a, c) => c.rinfo.dur - a.rinfo.dur);
+      const bn = L.filter((p) => !p.rinfo.quadra && p.x.minEsp >= 12).sort((a, c) => (a.rinfo.volta ?? 999) - (c.rinfo.volta ?? 999));
+      return `<div class="rail-time"><b>${esc(tm)}</b> <small class="muted">em quadra</small></div>${q.map(linhaRot).join("") || '<p class="muted">–</p>'}${bn.length ? `<div class="rail-sub muted">banco</div>${bn.map(linhaRot).join("")}` : ""}`;
+    }).join("")}<p class="muted rail-nota">⏱ sai em até 2 min · ⚠ passou do normal · 🪑 acabou de sentar (só rotação regular, Q1–Q3)</p>`;
   const rotH = rots.length ? `<div class="rot-agora"><small class="muted">rotação</small> ${rots.slice(0, 8).map((p) => `<span class="rot-item"><small class="muted">${esc(p.j.time)}</small> ${nomeCurto(p.j.nome)}${rotacaoChip(p.rot)}</span>`).join("")}</div>` : "";
   const estado = st.type?.state === "in" ? (PAINEL.parada ? "parado" : "rolando") : st.type?.state === "post" ? "fim" : "pre";
   const estTxt = estado === "parado" ? `■ parado · ${PAINEL.parada}` : estado === "rolando" ? "● bola rolando" : "";
@@ -847,8 +882,9 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const sumG = PAINEL.sum?.header?.id === g.id ? PAINEL.sum : null;
     PAINEL.parada = paradaDe(g.id, sumG?.header?.competitions?.[0]?.status, sumG?.plays);
+    PAINEL.rail = "";
     const corpo = jogoHtml(g, sumG);
-    vivo.innerHTML = `<div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora}</small></div>${corpo}${LEGENDA()}`;
+    vivo.innerHTML = `<aside class="pn-rail pn-esq"><div class="rail-tit">Jogos do dia</div>${seletor(dia)}<small class="muted">atualizado às ${hora}</small></aside><aside class="pn-rail pn-dir">${PAINEL.rail || ""}</aside><div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora}</small></div>${corpo}${LEGENDA()}`;
     ligarDetalhes(vivo);
     const bar = document.querySelector(".bar"); // a barra de jogos gruda logo abaixo do cabeçalho fixo do site
     if (bar) document.documentElement.style.setProperty("--bar-h", `${bar.offsetHeight}px`);

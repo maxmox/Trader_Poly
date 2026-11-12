@@ -532,3 +532,26 @@ table.painel td.pc:hover { background: var(--accent-soft); }
 .bc2 .bc-quem { margin: 4px 0 0; font-size: 12px; }
 .como-ler { margin: 10px 0; }
 .como-ler summary { cursor: pointer; }
+
+/* Laterais do Painel em telas largas (12/11/2026): jogos do dia fixos à esquerda, rotação à direita */
+.pn-rail { display: none; }
+@media (min-width: 1480px) {
+  .pn-rail { display: block; position: fixed; top: calc(var(--bar-h, 56px) + 16px); bottom: 16px; width: min(300px, calc((100vw - 1100px) / 2 - 28px)); overflow-y: auto; font-size: 13px; }
+  .pn-esq { left: 16px; }
+  .pn-dir { right: 16px; }
+  .pn-esq .painel-jogos { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 6px 0; }
+  .pn-esq .painel-jogos button { justify-content: flex-start; flex-wrap: wrap; padding: 8px 10px; font-size: 14px; }
+  .pn-esq .painel-jogos button small { margin-left: auto; }
+  .painel-topo { display: none; }
+  .rot-agora { display: none; }
+}
+.rail-tit { font-family: var(--display); font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.rail-time { margin: 10px 0 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+.rail-sub { font-size: 11px; margin: 4px 0 1px; text-transform: uppercase; letter-spacing: .04em; }
+.rail-l { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; padding: 2px 0; }
+.rail-l > i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); flex: none; }
+.rail-l.q > i { background: var(--good); }
+.rail-l > small { color: var(--ink-3); font-family: var(--mono); font-size: 11px; margin-left: auto; }
+.rail-l .selo-min { font-size: 10px; padding: 0 3px; margin-left: 4px; }
+.rail-l .rot-chip { margin-left: 13px; }
+.rail-nota { font-size: 11px; margin-top: 10px; }
