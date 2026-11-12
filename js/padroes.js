@@ -4,7 +4,7 @@
 // FORÇA ALTA (o resto estava no nível do acaso). Linhas e projeções ficam na página de props; a aba "Blowout e clutch"
 // saiu (o Painel mostra em destaque).
 import { $, esc } from "./formato.js";
-import { mostrarPainel } from "./painel.js";
+import { mostrarPainel, seloMin, confMin } from "./painel.js";
 import { mostrarCasaVivo } from "./casavivo.js";
 import { ouvirCampeon } from "./campeon.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra, consertarResumo } from "./jogada.js";
@@ -106,7 +106,9 @@ function entradaDe(a, j, plays, stQ, titular, tAgora) {
 function minutosCel(j) {
   const m = j.min_final ?? j.min_proj ?? j.edgely?.min;
   const fontes = [j.min_proj != null && `nossa ${num(j.min_proj)}`, j.min_mercado != null && `mercado ${num(j.min_mercado)}`, j.min_hist != null && `recente ${num(j.min_hist)}`, j.darko?.min != null && `DARKO ${num(j.darko.min)}`, j.edgely?.min != null && `Edgely ${num(j.edgely.min)}`].filter(Boolean).join(" · ");
-  return `<td class="n"><b class="jg-min">${num(m)}</b><small>${fontes}</small></td>`;
+  const c = confMin(j);
+  const inc = c ? `<small>± ${num(c.sd)} min${c.mot.length ? ` · ${esc(c.mot.join("; "))}` : ""}</small>` : "";
+  return `<td class="n"><b class="jg-min">${num(m)}</b>${seloMin(j)}<small>${fontes}</small>${inc}</td>`;
 }
 
 function clutchCel(j) {

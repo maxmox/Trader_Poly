@@ -57,6 +57,25 @@ export function linhaPre(j, k) {
 // nba_pbp/minutos_mercado.py: erro 4,50 min × 4,90 da nossa projeção sozinha nos jogadores com linha).
 export const minEspDe = (j) => j.min_final ?? j.min_proj ?? (j.darko?.min || j.edgely?.min || j.recente?.media?.min || 0);  // 11/11: DARKO antes do Edgely (usuário)
 
+// Confiança nos minutos previstos (12/11/2026, feedback do usuário: Jarace Walker previsto 20 jogou 7 com o elenco
+// inteiro saudável e a Casa × Painel "gritava" EV; nba_pbp/minutos_incerteza.py): σ dos minutos antes do jogo (variação
+// dele nos últimos 10, fontes que discordam, sem linha DK, elenco cheio, reserva, titular às vezes), calibrado em ~49 mil
+// jogadores-jogo. min_conf: 0 confiável, 1 atenção, 2 incerto. Ao vivo o σ do que falta = σ · √(fração do jogo que falta).
+export function confMin(j, rel = null) {
+  if (j?.min_sd == null) return null;
+  const frac = rel ? Math.max(0, 1 - rel.t / JOGO_S) : 1;
+  return { n: j.min_conf ?? 1, sd: j.min_sd, sdResto: j.min_sd * Math.sqrt(frac), mot: j.min_inc || [], risco: j.min_risco };
+}
+const SELO = [["min ✓", "var(--good)", "minutos confiáveis"], ["min ~", "var(--warn)", "minutos: atenção"], ["min ?", "var(--bad)", "minutos incertos"]];
+export function seloMin(j, rel = null) {
+  const c = confMin(j, rel);
+  if (!c) return "";
+  const [txt, cor, rot] = SELO[c.n];
+  const rk = c.risco ? `; em casos assim ${Math.round(100 * c.risco[0])}% jogam 70% ou menos do previsto e ${Math.round(100 * c.risco[1])}% jogam 30%+ a mais` : "";
+  const tip = `${rot}: previsto ${num(minEspDe(j))} ± ${num(c.sd)} min antes do jogo${rel && rel.t > 0 ? ` (± ${num(c.sdResto)} no que falta)` : ""}${rk}${c.mot.length ? `. Por quê: ${c.mot.join("; ")}` : ""}`;
+  return ` <span class="selo-min n${c.n}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${txt}</span>`;
+}
+
 // Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
 // time atual (rotacao.min_q); sem rotação, 1/4 em cada quarto.
 export function minutosQuarto(j) {
@@ -567,8 +586,9 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const md = b ? b.min - x.minAgora : 0;
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
-    return `<tr><td class="pj">${dot}<b>${esc(j.nome)}</b><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
-      <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}</small>${notaMin}</td>
+    const cm = confMin(j, rel);
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+      <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
   }).join("");
@@ -693,7 +713,7 @@ function seletor(dia) {
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
 <p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Linha justa calibrada</b> (11/11): além da rotação e do placar, entram fatores medidos em ~1.400 jogos com linha e conferidos fora da amostra: estrela nº 1/nº 2 conforme o placar (no parelho rende mais desde o Q3), faltas (por grande/outro, quarto e nº de faltas), formato individual de pontos (232 jogadores com 80+ jogos), começo dele (feito ÷ deveria) × momento × placar e, em pontos e cestas de 3, quente com o time frio. Os antigos insights ↑/↓ e os sinais com alvo foram desligados: o que deles se sustentou já está dentro da linha justa. Compare a justa com a linha ao vivo da casa (aba Casa × Painel).</p>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
