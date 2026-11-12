@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.19
+// @version      1.20
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin e Betcoin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.19";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.20";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : null);
   // VelvetSpin (v1.16, 30/10/2026, pelos prints): quadros "individual total" (= pontos), "Três pontos. individual total",
@@ -122,10 +122,71 @@
     return [...porBloco.values()].filter((p) => p[3] > 1 && p[4] > 1);
   }
 
+  // Betcoin v1.20 (Diagnóstico do usuário em 12/11: a linha do jogador não tem só [jogador, L, Mais, L, Menos] — 5 sombras,
+  // botões "8.5 | 1.83" aninhados em 3 níveis, o nome não aparece junto). Leitor que parte dos BOTÕES: botão = menor
+  // elemento com os textos exatos [linha, odd]; a linha da tabela = o 1º ancestral com 2+ botões; se forem exatamente 2 com a
+  // mesma linha, o 1º é o Mais e o 2º o Menos, e o jogador é o 1º texto de nome nesse bloco (textos a mais são ignorados).
+  // Marcos ("8+" | odd): menor elemento com um "N+" e uma odd; o jogador é o 1º nome subindo.
+  const BOT = (f) => f.length === 2 && /^\d{1,3}[.,]\d$/.test(f[0]) && /^\d{1,3}[.,]\d{2,3}$/.test(f[1]);
+  const ehNomeJog = (x) => NOME.test(x) && x.length <= 40 && !/^(mais|menos|linha|odds?|over|under)\b/i.test(x) && !/prorroga|jogador|total|\+/i.test(x);
+  const tituloBetby = (t) => ehTitulo(t) && !/média|temporada|dicas/i.test(t);
+  function capturarBetby(els, F) {
+    const up = (x) => x.parentElement || x.getRootNode?.()?.host || null;
+    const ordem = new Map(els.map((el, i) => [el, i]));
+    const tituloDe = (x) => { for (let k = 0; k < 16 && x; k++, x = up(x)) { const tt = F(x).find(tituloBetby); if (tt) return tt; } return ""; };
+    const minimos = (cand) => { const s = new Set(cand); for (const c of cand) for (let x = up(c); x; x = up(x)) s.delete(x); return [...s]; };
+    const pares = [];
+    // tabela Mais/Menos
+    const bots = minimos(els.filter((el) => BOT(F(el))));
+    const porAnc = new Map();
+    for (const b of bots) for (let x = up(b); x; x = up(x)) (porAnc.get(x) || porAnc.set(x, []).get(x)).push(b);
+    const feitas = new Set();
+    for (const b of bots) {
+      let row = up(b);
+      while (row && (porAnc.get(row) || []).length < 2) row = up(row);
+      // os 2 botões podem estar num bloco só deles: sobe enquanto o bloco tiver os mesmos 2 botões, até aparecer o nome
+      while (row && (porAnc.get(row) || []).length === 2 && !F(row).find(ehNomeJog) && up(row) && (porAnc.get(up(row)) || []).length === 2) row = up(row);
+      if (!row || feitas.has(row)) continue;
+      feitas.add(row);
+      const bs = porAnc.get(row);
+      if (bs.length !== 2) continue;
+      const [b1, b2] = [...bs].sort((a, c) => (ordem.get(a) ?? 0) - (ordem.get(c) ?? 0));
+      const [L1, o1] = F(b1), [L2, o2] = F(b2);
+      if (L1 !== L2) continue;
+      const nomeJ = F(row).find(ehNomeJog);
+      const titulo = tituloDe(row);
+      if (!nomeJ || !titulo) continue;
+      pares.push([titulo, nomeJ, num(L1), num(o1), num(o2)]);
+    }
+    // marcos "8+" | odd (só o Mais)
+    const marcos = minimos(els.filter((el) => { const f = F(el); return f.filter((x) => MARCO.test(x)).length === 1 && f.some((x) => /^\d{1,3}[.,]\d{2,3}$/.test(x)) && f.length <= 12; }));
+    for (const m of marcos) {
+      let row = m, nomeJ = "";
+      for (let k = 0; k < 4 && row && !nomeJ; k++, row = up(row)) nomeJ = F(row).find(ehNomeJog) || "";
+      const f = F(m), titulo = tituloDe(m);
+      if (!nomeJ || !titulo) continue;
+      pares.push([`${titulo} · marco`, nomeJ, +f.find((x) => MARCO.test(x)).match(MARCO)[1] - 0.5, num(f.find((x) => /^\d{1,3}[.,]\d{2,3}$/.test(x))), null]);
+    }
+    return pares;
+  }
+  // estrutura em volta dos botões (Diagnóstico): para os primeiros botões, cada ancestral com tag, classe e textos
+  function estruturaBotoes(els, F) {
+    const up = (x) => x.parentElement || x.getRootNode?.()?.host || null;
+    const cand = els.filter((el) => BOT(F(el)) || F(el).some((x) => MARCO.test(x)));
+    const s = new Set(cand); for (const c of cand) for (let x = up(c); x; x = up(x)) s.delete(x);
+    return [...s].slice(0, 8).map((b) => { const out = []; for (let x = b, k = 0; x && k < 9; x = up(x), k++) out.push({ tag: x.tagName, cls: String(x.className?.baseVal ?? x.className ?? "").slice(0, 60), sombra: !x.parentElement, n: F(x).length, textos: F(x).slice(0, 14) }); return out; });
+  }
+
   // leitura DESTE documento (página de fora ou quadro)
   function capturarAqui() {
     const els = todos(document.documentElement).filter((el) => !fora(el));
     const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+    if (CASA === "betcoin") {
+      // os dois leitores; o de botões vale por cima (mesma chave título|jogador|linha)
+      const m = new Map();
+      for (const p of [...capturarCampeon(els, F), ...capturarBetby(els, F)]) m.set(`${p[0]}|${p[1]}|${p[2]}`, p);
+      return { nome: nomeDoJogo(els, F), pares: [...m.values()] };
+    }
     return { nome: nomeDoJogo(els, F), pares: CASA === "jogabrasil" ? capturarJogaBrasil(els, F) : capturarCampeon(els, F) };
   }
   function diagnosticoAqui() {
@@ -134,7 +195,8 @@
     const amostra = els.map(folhas).filter((f) => f.length >= 2 && f.length <= 8 && f.some((t) => PRECO.test(t)) && !f.some((t) => /R\$|B\$|saldo/i.test(t))).slice(0, 400);
     const titulos = [...new Set(els.flatMap((el) => [...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.nodeValue.trim())).filter(CASA === "jogabrasil" ? ehTituloJB : ehTitulo))].slice(0, 200);
     const quadros = [...document.querySelectorAll("iframe")].map((f) => { try { return new URL(f.src || "about:blank").origin; } catch { return "?"; } });
-    return { url: location.origin + location.pathname, elementos: els.length, sombras: els.filter((el) => raiz(el)).length, quadros, titulos, capturado: capturarAqui().pares, amostra };
+    const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+    return { url: location.origin + location.pathname, elementos: els.length, sombras: els.filter((el) => raiz(el)).length, quadros, titulos, capturado: capturarAqui().pares, estrutura: estruturaBotoes(els, F), amostra: [...new Set(amostra.map((f) => JSON.stringify(f)))].map((x) => JSON.parse(x)) };
   }
 
   // atalho (v1.13, pedido do usuário): tecla D = "Capturar esta tela"; não vale digitando num campo nem com Ctrl/Alt/⌘
