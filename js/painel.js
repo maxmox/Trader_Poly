@@ -103,6 +103,55 @@ function estadoH(h, t) {
   return [false, t - ant];
 }
 const media = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+
+// Aviso de rotação (12/11/2026, pedido do usuário: no Under do Jokic em 11/11 a linha caiu 3 pts em < 2 min quando ele
+// sentou e o placar abriu; nba_pbp/rotacao_saida.py, 420 mil momentos em quadra no Q1–Q3 de 2025-27, base: senta nos 2,5 min
+// seguintes em 33%). Só com rotação REGULAR (saídas nos jogos parecidos variando ≤ 3 min) e só no Q1–Q3:
+//   "sai em ~X"        saída prevista em até 2 min (trechos em quadra no mesmo instante, entrada ±3 min): senta em até
+//                      2,5 min em 81% (IQR ≤ 1,5 min) / 67% (1,5–3); erro mediano 0,5–0,9 min
+//   "+X além do normal" passou 1–4 min da saída típica (trechos que começaram ±3 min do atual): senta em 67–78%
+//   "sentou há X"      até 2,5 min no banco, com a volta típica se ela for regular
+const quantilQ = (v, p) => { const s = [...v].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+export function rotacaoAgora(j, rel, agora) {
+  const hist = j?.rotacao?.hist;
+  if (!hist?.length || hist.length < 8 || !agora || rel.fim || rel.p < 1 || rel.t >= 2160) return null;
+  const t = rel.t, dur = agora.dur, ini = t - dur;
+  const iqr = (v) => quantilQ(v, 0.75) - quantilQ(v, 0.25);
+  if (agora.quadra) {
+    const E = [], E0 = [];
+    for (const h of hist) {
+      for (let i = 0; i + 1 < h.length; i += 2) if (h[i] <= t && t < h[i + 1] && Math.abs(t - h[i] - dur) <= 180) { E.push(h[i + 1]); break; }
+      for (let i = 0; i + 1 < h.length; i += 2) if (Math.abs(h[i] - ini) <= 180 && h[i] < 2160) E0.push(h[i + 1]);
+    }
+    if (E0.length >= 5 && iqr(E0) <= 180) {
+      const pas = t - quantilQ(E0, 0.5);
+      if (pas >= 60 && pas <= 240) return { tipo: "passou", s: pas, forte: iqr(E0) <= 90, chance: pas <= 120 ? 75 : 68 };
+    }
+    if (E.length >= 5 && iqr(E) <= 180) {
+      const falta = quantilQ(E, 0.5) - t;
+      if (falta >= 0 && falta <= 120) return { tipo: "prestes", s: falta, forte: iqr(E) <= 90, chance: iqr(E) <= 90 ? 81 : 67 };
+    }
+    return null;
+  }
+  if (dur > 150) return null;
+  const R = [];
+  for (const h of hist) {
+    const [qd, d] = estadoH(h, t);
+    if (qd || d + 60 < dur) continue;
+    for (let i = 0; i + 1 < h.length; i += 2) if (h[i] > t) { R.push(h[i]); break; }
+  }
+  const volta = R.length >= 5 && iqr(R) <= 180 ? quantilQ(R, 0.5) - t : null;
+  return { tipo: "sentou", s: dur, volta };
+}
+const mmssR = (s) => { const x = Math.max(0, Math.round(s)); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, "0")}`; };
+export function rotacaoChip(r) {
+  if (!r) return "";
+  const [txt, cor, tip] = r.tipo === "prestes" ? [`⏱ sai em ~${mmssR(r.s)}`, "var(--warn)", `saída típica dele neste trecho em ~${mmssR(r.s)}; em rotações assim ${r.chance}% sentam nos 2,5 min seguintes`]
+    : r.tipo === "passou" ? [`⚠ +${mmssR(r.s)} além do normal`, "var(--bad)", `já passou ${mmssR(r.s)} da saída típica dele neste trecho; em rotações assim ~${r.chance}% sentam nos 2,5 min seguintes`]
+    : [`🪑 sentou há ${mmssR(r.s)}${r.volta != null ? ` · volta ~${mmssR(r.volta)}` : ""}`, "var(--accent)", `no banco há ${mmssR(r.s)}${r.volta != null ? `; volta típica em ~${mmssR(r.volta)}` : "; volta irregular"}`];
+  return ` <span class="rot-chip${r.forte ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${txt}</span>`;
+}
+
 export function minRestoRotacao(j, rel, agora, minEsp, base) {
   // 11/11 (nba_pbp/minutos_vivo2.py): até 20 jogos anteriores, cada um pesado pela semelhança do total de minutos com o
   // previsto de hoje (mesmo papel; σ 5 min), na escala dos minutos previstos (nossa projeção + média recente + mercado).
@@ -579,7 +628,7 @@ function celQuarto(real, esp, q, rel) {
 
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin }) => {
+  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot }) => {
     const notaMin = cmin ? `<small style="color:${COR_O}" title="${esc(`quente em pontos (${cmin.faixa}) com o time ${cmin.est}: o técnico costuma deixar em quadra; ${b?.starter ? "titular" : "reserva"} nessa situação joga em média ${num(cmin.min)} min a mais que os companheiros (mesmo sinal em 3 testes)`)}">+${num(cmin.min)} min (quente, time ${cmin.est})</small>` : "";
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
@@ -587,7 +636,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -655,12 +704,14 @@ function jogoHtml(g, s) {
     if (b?.dnp || (!b && (Object.keys(box).length || out.includes(j.nome)) && st.type?.state !== "pre")) continue;
     const margem = placar[j.time] != null ? placar[j.time] - (Object.entries(placar).find(([k]) => k !== j.time)?.[1] ?? 0) : null;
     const minEsp = minEspDe(j);
-    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), agoraDe(plays, j.aid, b, rel, st), { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] });
+    const ag = agoraDe(plays, j.aid, b, rel, st);
+    const rot = rotacaoAgora(j, rel, ag);
+    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), ag, { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] });
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
     const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
-    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins });
+    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot });
   }
   // cenário do time (quente com os companheiros frios): junta aos insights e marca os minutos a mais
   const cen = cenarioTime(PAINEL.tim, rel, Object.values(porTime).flat().filter((p) => p.b).map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
@@ -696,8 +747,12 @@ function jogoHtml(g, s) {
   const corIns = (x) => (x.z > 0 ? COR_O : COR_U);
   const insH = fortes.length ? `<div class="panel ins-vivo"><h2 style="margin:0 0 6px">Insights agora (${fortes.length})</h2><ul class="regras">${fortes.slice(0, 10).map(({ j, nome, x }) =>
     `<li style="border-left:4px solid ${corIns(x)};padding-left:8px${Math.abs(x.z) >= 0.15 ? ";font-weight:600" : ""}"><span class="chip" style="color:${corIns(x)};border:1px solid ${corIns(x)};background:transparent">${x.z > 0 ? "↑ Over" : "↓ Under"}</span> <b>${esc(j.nome)}</b> ${nome}: ${esc(insTxt(x))}</li>`).join("")}</ul>${fortes.length > 10 ? `<p class="muted">+${fortes.length - 10} nas células</p>` : ""}</div>` : "";
+  // rotação agora: quem está para sentar, passou do normal ou acabou de sentar (só rotação regular, Q1–Q3)
+  const ordemRot = { passou: 0, prestes: 1, sentou: 2 };
+  const rots = Object.values(porTime).flat().filter((p) => p.rot).sort((a, c) => ordemRot[a.rot.tipo] - ordemRot[c.rot.tipo] || a.rot.s - c.rot.s);
+  const rotH = rots.length ? `<div class="panel rot-agora"><b>Rotação agora</b> ${rots.map((p) => `<span class="rot-item">${esc(p.j.time)} <b>${esc(p.j.nome)}</b>${seloMin(p.j, rel)}${rotacaoChip(p.rot)}</span>`).join("")}</div>` : "";
   return `<div class="placar-vivo"><span class="pt">${esc(g.fora)} <b>${placar[g.fora] ?? "–"}</b></span><span class="px">×</span><span class="pt"><b>${placar[g.casa] ?? "–"}</b> ${esc(g.casa)}</span>
-    <span class="pq">${quandoTxt(st)}</span>${aviso}</div>${chanceH}${insH}
+    <span class="pq">${quandoTxt(st)}</span>${aviso}</div>${chanceH}${rotH}${insH}
     ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t), rel)).join("")}`;
 }
 
@@ -713,7 +768,7 @@ function seletor(dia) {
   }).join("")}</div>`;
 }
 
-const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+const LEGENDA = `<p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Rotação agora</b> (Q1–Q3, só rotação regular — saídas nos jogos parecidos variando até 3 min; medido em 420 mil momentos de 2025-27): <i>⏱ sai em ~X</i> = saída típica em até 2 min (senta nos 2,5 min seguintes em 67–81%, contra 33% em qualquer momento); <i>⚠ +X além do normal</i> = passou 1–4 min da saída típica (67–78%); <i>🪑 sentou há X · volta ~Y</i> = acabou de sentar. A linha da casa costuma cair em salto quando ele senta (e mais ainda se o placar abre junto). <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
 <p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Linha justa calibrada</b> (11/11): além da rotação e do placar, entram fatores medidos em ~1.400 jogos com linha e conferidos fora da amostra: estrela nº 1/nº 2 conforme o placar (no parelho rende mais desde o Q3), faltas (por grande/outro, quarto e nº de faltas), formato individual de pontos (232 jogadores com 80+ jogos), começo dele (feito ÷ deveria) × momento × placar e, em pontos e cestas de 3, quente com o time frio. Os antigos insights ↑/↓ e os sinais com alvo foram desligados: o que deles se sustentou já está dentro da linha justa. Compare a justa com a linha ao vivo da casa (aba Casa × Painel).</p>`;
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
