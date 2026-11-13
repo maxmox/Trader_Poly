@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin)
+// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.21
+// @version      1.22
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin e Betcoin: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
+// @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin e DonBet: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
@@ -26,9 +26,13 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.21";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.22";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
-  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : null);
+  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : /(^|\.|\/\/)donbet\.[a-z]+/i.test(s) ? "donbet" : null);
+  // DonBet (v1.22, 12/11/2026, pelo print e texto do usuário; donbet.win/en/sportsbook/prematch/match/<id>, em inglês):
+  // abas All/Player/Points/Assists/Rebounds/…; quadro "Total assists (incl. overtime)" › time › linhas
+  //   "Shannon, Terrence" | "Over (1.5)" 1.69 | "Under (1.5)" 2.04  (nome invertido com vírgula)
+  // e quadros de marcos "Player points X+ (incl. overtime)" (jogador | "10+" odd …, só o Mais)
   // VelvetSpin (v1.16, 30/10/2026, pelos prints): quadros "individual total" (= pontos), "Três pontos. individual total",
   // "Rebotes. …", "Assistências. …", "Tocos. …", "Bolas recuperadas. …" com a tabela Jogador | Linha | Mais | Menos
   // → mesmo leitor de tabela da CampeonBet; o título "individual total" entra como título de quadro
@@ -69,7 +73,7 @@
   };
   const num = (t) => parseFloat(t.replace(",", "."));
   // título de quadro de mercado (os rótulos das abas, "Pontos", "Assistências"…, são curtos e ficam de fora)
-  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|incl\.?\s*prorroga|over\s*\/\s*under|individual total/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
+  const ehTitulo = (t) => /mais de\s*\/\s*menos de|incluindo prorroga|incl\.?\s*prorroga|incl\.?\s*overtime|over\s*\/\s*under|individual total/i.test(t) || (t.length >= 14 && /conseguid|tentad|tentativ|arremess|pontos|rebotes|assist|bloqueio|roubo|3pt|triplo/i.test(t) && !/^mostrar/i.test(t));
   // JogaBrasil: título de bloco ("Ace Bailey Total de pontos. Com prorrogação") e botão "Mais 6.5 1.26"
   const ehTituloJB = (t) => t.length >= 12 && !/^(mais|menos)\b/i.test(t) && /prorroga|total de|cestas|pontos|ressaltos|rebotes|assist|roubos|bloqueios|desarmes/i.test(t);
   const BOTAO_JB = /^(mais|menos)\s+(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{1,3})$/i;
@@ -197,10 +201,37 @@
     return [...s].slice(0, 8).map((b) => { const out = []; for (let x = b, k = 0; x && k < 9; x = up(x), k++) out.push({ tag: x.tagName, cls: String(x.className?.baseVal ?? x.className ?? "").slice(0, 60), sombra: !x.parentElement, n: F(x).length, textos: F(x).slice(0, 14) }); return out; });
   }
 
+  // DonBet v1.22: lê a página como sequência de textos (como a v1.21 da Betcoin). Título = texto com "(incl. overtime)";
+  // jogador = nome (pode ser "Sobrenome, Nome" → vira "Nome Sobrenome"), seguido de "Over (L)" odd "Under (L)" odd
+  // ("Over" e "(L)" podem vir em textos separados) ou de marcos "N+" odd (um ou vários: só o Mais, na linha N − 0,5)
+  function capturarDonbet() {
+    const S = folhas(document.body || document.documentElement);
+    const P2 = /^\d{1,3}[.,]\d{2,3}$/;
+    const tituloDon = (x) => /incl\.?\s*overtime/i.test(x) && x.length <= 80;
+    const nomeDon = (x) => NOME.test(x) && x.length <= 40 && !/^(over|under|all|player|points|assists|rebounds|blocks|other|result|totals|handicap)$/i.test(x) && !/^(over|under)\b/i.test(x) && !/overtime|\+|quarter|half/i.test(x);
+    const virar = (x) => (/^[^,]+,\s*[^,]+$/.test(x) ? x.replace(/^([^,]+),\s*(.+)$/, "$2 $1") : x);
+    const pares = [];
+    let tit = "";
+    for (let i = 0; i < S.length; i++) {
+      const x = S[i];
+      if (tituloDon(x)) { tit = x; continue; }
+      if (!tit || !nomeDon(x) || /double|triple|combo/i.test(tit)) continue;
+      const jog = virar(x);
+      const prox = S.slice(i + 1, i + 9).join(" ");
+      const m = prox.match(/^over\s*\(?\s*(\d{1,3}[.,]\d)\s*\)?\s+(\d{1,3}[.,]\d{2,3})\s+under\s*\(?\s*(\d{1,3}[.,]\d)\s*\)?\s+(\d{1,3}[.,]\d{2,3})(\s|$)/i);
+      if (m && m[1] === m[3]) { pares.push([tit, jog, num(m[1]), num(m[2]), num(m[4])]); continue; }
+      // marcos: jogador | "10+" | odd | "15+" | odd …
+      for (let k = i + 1; k + 1 < S.length && MARCO.test(S[k]) && P2.test(S[k + 1]); k += 2)
+        pares.push([`${tit} · marco`, jog, +S[k].match(MARCO)[1] - 0.5, num(S[k + 1]), null]);
+    }
+    return pares;
+  }
+
   // leitura DESTE documento (página de fora ou quadro)
   function capturarAqui() {
     const els = todos(document.documentElement).filter((el) => !fora(el));
     const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+    if (CASA === "donbet") return { nome: nomeDoJogo(els, F), pares: capturarDonbet() };
     if (CASA === "betcoin") {
       // os dois leitores; o de botões vale por cima (mesma chave título|jogador|linha)
       const m = new Map();
@@ -265,7 +296,7 @@
     const bt = (new URLSearchParams(location.search).get("bt-path") || "").split("/").filter(Boolean).pop() || "";
     const mb = bt.match(/^(.+?)-(\d{6,})$/);
     const nomeBt = mb ? `${mb[1].replaceAll("-", " ").replace(/\b\w/g, (c) => c.toUpperCase())} · ${mb[2]}` : "";
-    const nome = nomeBt || aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, location.pathname.split("/").filter(Boolean).pop() || "?"])[1]}`;
+    const nome = nomeBt || aqui.nome || deles.map((r) => r?.nome).find(Boolean) || `${document.title || CASA} · evento ${(location.href.match(/event(?:Id=|\/)(\d+)/) || [, location.pathname.split("/").filter(Boolean).pop() || "?"])[1]}`;
     return { nome, pares, quadros: deles.length };
   }
 
@@ -275,7 +306,9 @@
     const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
     return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
-  const COMO = CASA === "betcoin"
+  const COMO = CASA === "donbet"
+    ? "Abra o jogo › aba \"Player\" (ou Points, Assists, Rebounds, Other), abra os quadros \"Total … (incl. overtime)\" e aperte D (ou \"Capturar esta tela\") em cada aba. As capturas se somam; no fim, \"Abrir a comparação\"."
+    : CASA === "betcoin"
     ? "Abra o jogo › \"Adereços de jogador\" e aperte D (ou \"Capturar esta tela\") em cada aba: Principal, Pontos, Assistências, Rebotes, 3 pontos, Extras (role até o fim de cada uma). As capturas se somam; no fim, \"Abrir a comparação\"."
     : CASA === "velvet"
     ? "Abra o jogo › aba \"Total de jogadores\" (quadros \"individual total\") e aperte D ou \"Capturar esta tela\"; role e capture de novo se houver mais quadros; no fim, \"Abrir a comparação\"."

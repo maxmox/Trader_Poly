@@ -10,7 +10,7 @@ import { esc, hora } from "./formato.js";
 import { semMargem, movimentoMercado, nomeChave, TIPOS_PROP } from "./core.js";
 
 // 25/10: também a JogaBrasil (mesmo coletor; o pacote diz a casa). Uma coleta por casa; a de uma casa não apaga a da outra.
-export const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin", betcoin: "Betcoin" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
+export const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin", betcoin: "Betcoin", donbet: "DonBet" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
 const CHAVE = "casas-coleta", MIN_EV = 0.03;
 const coletas = (() => {
   try {
