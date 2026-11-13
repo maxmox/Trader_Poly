@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime, Cloudbet)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.24
+// @version      1.25
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime e Cloudbet: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.24";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.25";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : /(^|\.|\/\/)donbet\.[a-z]+/i.test(s) ? "donbet" : /(^|\.|\/\/)overtimemarkets\.[a-z]+|(^|\.|\/\/)overtime\.io\b/i.test(s) ? "overtime" : /(^|\.|\/\/)cloudbet\.[a-z]+/i.test(s) ? "cloudbet" : null);
   // Cloudbet (v1.24, 13/11/2026, pelos prints do usuário; cloudbet.com/pt-br/sports/basketball/usa-nba/<id>?markets-tab=playerProps):
@@ -259,18 +259,29 @@
   // Cloudbet v1.24: sequência de textos. Título = texto com "jogador" + estatística; jogador "Nome (TIM)" seguido de
   // "O L" odd "U L" odd ("O" e a linha podem vir em textos separados); odds decimais (outro formato não casa)
   function capturarCloudbet() {
-    const S = folhas(document.body || document.documentElement);
-    const tituloCB = (x) => x.length <= 80 && /jogador|player/i.test(x) && STAT_OT.test(x);
-    const nomeCB = (x) => NOME.test(x) && x.length <= 45 && /\([A-Z]{2,4}\)$/.test(x);
+    // v1.25 (Diagnóstico de 13/11): na página real o "(IND)" é um texto à parte do nome → junta com o anterior
+    const S0 = folhas(document.body || document.documentElement), S = [];
+    for (const x of S0) { if (/^\([A-Z]{2,4}\)$/.test(x) && S.length) S[S.length - 1] += " " + x; else S.push(x); }
+    // título = qualquer quadro "… Jogador …" com "Total"; os que não comparamos (faltas, lances livres, 2 pontos,
+    // turnovers, cestas, rebotes of./def.) zeram o título para as linhas dele não herdarem o quadro anterior
+    const tituloCB = (x) => x.length <= 90 && /jogador|player/i.test(x) && /total/i.test(x) && !/\([A-Z]{2,4}\)$/.test(x);
+    const FORA_CB = /2 pontos|faltas|lances livres|turnover|desperd|cestas convertidas|ofensivos|defensivos|duplo|triplo|tentativ/i;
+    const nomeCB = (x) => NOME.test(x) && x.length <= 45 && /\s\([A-Z]{2,4}\)$/.test(x);
+    const L = String.raw`(\d{1,3}(?:[.,]\d)?)`, P = String.raw`(\d{1,3}[.,]\d{2,3})`;
+    const OU = new RegExp(String.raw`^(?:o|over|mais|acima de)\s*${L}\s+${P}\s+(?:u|under|menos|abaixo de)\s*${L}\s+${P}(\s|$)`, "i");
+    const UO = new RegExp(String.raw`^(?:u|under|menos|abaixo de)\s*${L}\s+${P}\s+(?:o|over|mais|acima de)\s*${L}\s+${P}(\s|$)`, "i");
     const pares = [];
     let tit = "";
     for (let i = 0; i < S.length; i++) {
       const x = S[i];
-      if (tituloCB(x)) { tit = x; continue; }
+      if (tituloCB(x)) { tit = FORA_CB.test(x) ? "" : /3 pontos convertidos/i.test(x) ? x.replace(/arremessos de 3 pontos convertidos/i, "cestas de 3 pontos") : x; continue; }
       if (!tit || !nomeCB(x)) continue;
+      const jog = x.replace(/\s*\([A-Z]{2,4}\)$/, "");
       const prox = S.slice(i + 1, i + 9).join(" ");
-      const m = prox.match(/^(?:o|over|mais)\s*(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{2,3})\s+(?:u|under|menos)\s*(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{2,3})(\s|$)/i);
-      if (m && m[1] === m[3]) pares.push([tit, x.replace(/\s*\([A-Z]{2,4}\)$/, ""), num(m[1]), num(m[2]), num(m[4])]);
+      let m = prox.match(OU);
+      if (m && m[1] === m[3]) { pares.push([tit, jog, num(m[1]), num(m[2]), num(m[4])]); continue; }
+      m = prox.match(UO);
+      if (m && m[1] === m[3]) pares.push([tit, jog, num(m[1]), num(m[4]), num(m[2])]);
     }
     return pares;
   }

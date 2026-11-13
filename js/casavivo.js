@@ -37,11 +37,17 @@ function linhasDaColeta(coletas, dia) {
   const out = [], sem = [];
   for (const [casa, co] of Object.entries(coletas)) for (const ev of co?.eventos || []) {
     const textos = (ev.mercados || []).map((m) => m.nome + " " + (m.opcoes || []).map((o) => o.nome).join(" "));
+    // captura velha (> 8 h) não entra: jogo de ontem pode cair no de hoje pelo sobrenome (13/11: Overtime das 00:08,
+    // "Bridges" de CHA virou Mikal Bridges do NY com EV +42%)
+    if (Date.now() - (ev.em || co.em || 0) > 8 * 3600e3) { sem.push(`${CASAS[casa] || casa}: ${ev.nome} (captura antiga, capture de novo)`); continue; }
+    // o jogo é escolhido só por nome completo (sem o sobrenome) e precisa de 2+ jogadores dele
+    const estrito = (js, t) => { const ch = nomeChave(t), ws = new Set(palavras(t)); return js.some((j) => { const k = nomeChave(j.nome); return (k.length >= 6 && ch.includes(k)) || temNome(ws, palavras(j.nome)); }); };
     let g = null, max = 0;
     for (const x of dia.jogos) {
-      const n = textos.filter((t) => acharJog(x.jogadores, t)).length;
+      const n = textos.filter((t) => estrito(x.jogadores, t)).length;
       if (n > max) { max = n; g = x; }
     }
+    if (max < 2) g = null;
     if (!g) { if ((ev.mercados || []).length) sem.push(`${CASAS[casa] || casa}: ${ev.nome} (nenhum jogador da análise do dia)`); continue; }
     ev.mercados.forEach((m, i) => {
       const nm = m.nome.toLowerCase();
