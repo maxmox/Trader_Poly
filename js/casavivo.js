@@ -6,7 +6,7 @@
 // isso"; a 1ª versão com chance/EV/desvio era informação demais). Combos P+A/P+R/R+A = soma das justas. NÃO calibrado.
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
-import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome } from "./campeon.js";
+import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome, porSobrenome } from "./campeon.js";
 import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
@@ -28,7 +28,8 @@ function lerColetas() {
 function acharJog(jogadores, texto) {
   const chave = nomeChave(texto), ws = new Set(palavras(texto));
   return jogadores.find((j) => { const k = nomeChave(j.nome); return k.length >= 6 && chave.includes(k); })
-    || jogadores.find((j) => temNome(ws, palavras(j.nome)));
+    || jogadores.find((j) => temNome(ws, palavras(j.nome)))
+    || porSobrenome(jogadores.map((j) => [j, palavras(j.nome)]), ws);
 }
 
 // linhas da coleta → [{casa, g, j, k, L, O, U, em, mercado}]; o jogo é o da análise do dia com mais jogadores citados

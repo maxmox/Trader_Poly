@@ -10,7 +10,7 @@ import { esc, hora } from "./formato.js";
 import { semMargem, movimentoMercado, nomeChave, TIPOS_PROP } from "./core.js";
 
 // 25/10: também a JogaBrasil (mesmo coletor; o pacote diz a casa). Uma coleta por casa; a de uma casa não apaga a da outra.
-export const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin", betcoin: "Betcoin", donbet: "DonBet" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
+export const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin", betcoin: "Betcoin", donbet: "DonBet", overtime: "Overtime" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
 const CHAVE = "casas-coleta", MIN_EV = 0.03;
 const coletas = (() => {
   try {
@@ -134,8 +134,15 @@ const jogoDe = (ev, jogos) => { const n = nomeChave(ev.nome); return jogos.find(
 export const palavras = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").split(" ").filter((w) => w && !/^(jr|sr|ii|iii|iv)$/.test(w));
 // "OG Anunoby" × "Anunoby Ogugua": cada palavra da DK igual a uma do mercado ou início dela
 export const temNome = (ws, p) => p.length >= 2 && p.every((w) => [...ws].some((x) => x === w || x.startsWith(w)));
+// apelido × nome de registro ("Bub Carrington" × "Carlton Carrington", Overtime 12/11): pelo sobrenome (≥ 4 letras), só se
+// nenhum outro jogador do mesmo jogo tiver esse sobrenome. lista = [[x, palavras]]
+export const porSobrenome = (lista, ws) => {
+  const sob = lista.map(([x, p]) => [x, p[p.length - 1]]).filter(([, s]) => s && s.length >= 4);
+  const ach = sob.filter(([, s]) => ws.has(s));
+  return ach.length === 1 && sob.filter(([, s]) => s === ach[0][1]).length === 1 ? ach[0][0] : undefined;
+};
 const jogadoresDe = (j) => [...new Set(j.linhas.map((x) => x.jogador))].map((n) => [n, nomeChave(n), palavras(n)]).filter(([, k]) => k.length >= 6);
-const acharJogador = (jogadores, chave, ws) => jogadores.find(([, k]) => chave.includes(k)) || jogadores.find(([, , p]) => p.every((w) => ws.has(w)) && p.length >= 2) || jogadores.find(([, , p]) => temNome(ws, p));
+const acharJogador = (jogadores, chave, ws) => jogadores.find(([, k]) => chave.includes(k)) || jogadores.find(([, , p]) => p.every((w) => ws.has(w)) && p.length >= 2) || jogadores.find(([, , p]) => temNome(ws, p)) || porSobrenome(jogadores.map((x) => [x, x[2]]), ws);
 const textoDe = (m) => m.nome + " " + m.opcoes.map((o) => o.nome).join(" ");
 // sem nome de jogo reconhecível (JogaBrasil até v1.7 gravava "JogaBrasil"): o jogo da DK com mais jogadores nos mercados (≥ 3)
 function jogoPelosJogadores(ev, jogos) {
