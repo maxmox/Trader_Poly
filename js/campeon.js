@@ -10,7 +10,7 @@ import { esc, hora } from "./formato.js";
 import { semMargem, movimentoMercado, nomeChave, TIPOS_PROP } from "./core.js";
 
 // 25/10: também a JogaBrasil (mesmo coletor; o pacote diz a casa). Uma coleta por casa; a de uma casa não apaga a da outra.
-export const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin", betcoin: "Betcoin", donbet: "DonBet", overtime: "Overtime" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
+export const CASAS = { campeon: "CampeonBet", jogabrasil: "JogaBrasil", play99: "99play", velvet: "VelvetSpin", betcoin: "Betcoin", donbet: "DonBet", overtime: "Overtime", cloudbet: "Cloudbet" }; // 99play desde 25/10 à noite (Altenar, como a CampeonBet); VelvetSpin desde 30/10
 const CHAVE = "casas-coleta", MIN_EV = 0.03;
 const coletas = (() => {
   try {
@@ -263,6 +263,7 @@ export function renderCampeon(el, f, jogos) {
         <br>· <a href="https://www.velvetspin.fun/sports" target="_blank" rel="noopener">VelvetSpin</a>: jogo › aba <b>"Total de jogadores"</b> (quadros "individual total"); capture com D.
         <br>· <a href="https://99play.io/sports" target="_blank" rel="noopener">99play</a>: igual à CampeonBet — jogo › <b>"Especiais de Jogadores"</b>; abra cada quadro, capture um time, troque para o outro e capture de novo.
         <br>· <a href="https://www.betcoin.ag/pt-br/sportbook/?bt-path=/basketball/usa/nba" target="_blank" rel="noopener">Betcoin</a>: jogo › <b>"Adereços de jogador"</b>; capture (D) cada aba (Principal, Pontos, Assistências, Rebotes, 3 pontos, Extras). Assistências/rebotes em "8+" são marcos: só o Mais (linha 7,5).
+        <br>· <a href="https://www.cloudbet.com/pt-br/sports/basketball/usa-nba" target="_blank" rel="noopener">Cloudbet</a>: jogo › aba <b>"Props de jogadores"</b>; abra os quadros, role até o fim e capture com D.
         <br>· <a href="https://jogabrasil.bet/sports/basketball/13589-nba" target="_blank" rel="noopener">JogaBrasil</a>: jogo › <b>"Mercado de Jogadores"</b>; se a lista carregar aos poucos, role até o fim e capture de novo.
         <br><small class="muted">Sem extensão: arraste este botão para a barra de favoritos: <a id="link-coletor" class="pill" href="#" onclick="return false">carregando o botão…</a> (ou <a href="#" id="copiar-coletor">copie o código</a>, crie um favorito, edite e cole no lugar do endereço) e clique nele na página da casa.</small></div>
       ${casas.length ? `${resumo}<p class="muted"><a href="#" class="colar-dados">colar dados</a> · <button type="button" class="pill limpar-casa" data-casa="">Limpar todas as coletas</button></p>` : `<div class="vazio"><b>Nenhuma coleta ainda.</b><span>Siga os passos acima. Se a caixa mostrou "Copiar dados": <a href="#" class="colar-dados">colar dados</a>.</span></div>`}

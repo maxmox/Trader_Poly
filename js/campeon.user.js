@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime)
+// @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime, Cloudbet)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.23
+// @version      1.24
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
-// @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet e Overtime: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
+// @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime e Cloudbet: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
 // @match        *://*/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
@@ -26,9 +26,13 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.23";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.24";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
-  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : /(^|\.|\/\/)donbet\.[a-z]+/i.test(s) ? "donbet" : /(^|\.|\/\/)overtimemarkets\.[a-z]+|(^|\.|\/\/)overtime\.io\b/i.test(s) ? "overtime" : null);
+  const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : /(^|\.|\/\/)donbet\.[a-z]+/i.test(s) ? "donbet" : /(^|\.|\/\/)overtimemarkets\.[a-z]+|(^|\.|\/\/)overtime\.io\b/i.test(s) ? "overtime" : /(^|\.|\/\/)cloudbet\.[a-z]+/i.test(s) ? "cloudbet" : null);
+  // Cloudbet (v1.24, 13/11/2026, pelos prints do usuário; cloudbet.com/pt-br/sports/basketball/usa-nba/<id>?markets-tab=playerProps):
+  // título do jogo "IND Pacers v NY Knicks"; aba "Props de jogadores" › quadros "Jogador - Total De Pontos",
+  // "Total De Assistências + Rebotes De Jogador", "1º Quarto - Total De Pontos De Jogador" (parcial: a aba pula) ›
+  // linha "Aaron Nesmith (IND)" | "O 4.5" | "1.63" | "U 4.5" | "2.14"
   // Overtime (v1.23, 12/11/2026, pelos prints do usuário; overtimemarkets.xyz/pt, ao vivo): jogo aberto à direita com o
   // título "Washington Wizards - Detroit Pistons"; abas "Pontos/Ressaltos/Assistências/Triplos do jogador"; quadro PONTOS ›
   // "Mais de | Menos de" › jogador › botão "3.5 1.65" › botão "3.5 2.09" (lado suspenso = "4.5 -")
@@ -252,10 +256,32 @@
   // nome do jogo na Overtime: "Time A - Time B" (título do jogo aberto)
   const jogoOvertime = () => folhas(document.body || document.documentElement).find((x) => /^[A-Z][\w .'&]+ - [A-Z][\w .'&]+$/.test(x) && x.split(" ").length >= 4 && x.length <= 70) || "";
 
+  // Cloudbet v1.24: sequência de textos. Título = texto com "jogador" + estatística; jogador "Nome (TIM)" seguido de
+  // "O L" odd "U L" odd ("O" e a linha podem vir em textos separados); odds decimais (outro formato não casa)
+  function capturarCloudbet() {
+    const S = folhas(document.body || document.documentElement);
+    const tituloCB = (x) => x.length <= 80 && /jogador|player/i.test(x) && STAT_OT.test(x);
+    const nomeCB = (x) => NOME.test(x) && x.length <= 45 && /\([A-Z]{2,4}\)$/.test(x);
+    const pares = [];
+    let tit = "";
+    for (let i = 0; i < S.length; i++) {
+      const x = S[i];
+      if (tituloCB(x)) { tit = x; continue; }
+      if (!tit || !nomeCB(x)) continue;
+      const prox = S.slice(i + 1, i + 9).join(" ");
+      const m = prox.match(/^(?:o|over|mais)\s*(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{2,3})\s+(?:u|under|menos)\s*(\d{1,3}(?:[.,]\d)?)\s+(\d{1,3}[.,]\d{2,3})(\s|$)/i);
+      if (m && m[1] === m[3]) pares.push([tit, x.replace(/\s*\([A-Z]{2,4}\)$/, ""), num(m[1]), num(m[2]), num(m[4])]);
+    }
+    return pares;
+  }
+  // nome do jogo na Cloudbet: "IND Pacers v NY Knicks" → "IND Pacers - NY Knicks"
+  const jogoCloudbet = () => (folhas(document.body || document.documentElement).find((x) => /^[A-Z][\w .'&]+ v [A-Z][\w .'&]+$/.test(x) && x.length <= 70) || "").replace(" v ", " - ");
+
   // leitura DESTE documento (página de fora ou quadro)
   function capturarAqui() {
     const els = todos(document.documentElement).filter((el) => !fora(el));
     const cache = new Map(), F = (el) => cache.get(el) || cache.set(el, folhas(el)).get(el);
+    if (CASA === "cloudbet") return { nome: jogoCloudbet() || nomeDoJogo(els, F), pares: capturarCloudbet() };
     if (CASA === "overtime") return { nome: jogoOvertime() || nomeDoJogo(els, F), pares: capturarOvertime() };
     if (CASA === "donbet") return { nome: nomeDoJogo(els, F), pares: capturarDonbet() };
     if (CASA === "betcoin") {
@@ -332,7 +358,9 @@
     const velhos = jogos.filter((j) => Date.now() - j.em > 30 * 60e3).length;
     return `📊 Trader Poly · ${jogos.length} jogo(s), ${n} linhas capturadas${velhos ? ` (${velhos} jogo(s) com mais de 30 min)` : ""}`;
   };
-  const COMO = CASA === "overtime"
+  const COMO = CASA === "cloudbet"
+    ? "Abra o jogo › aba \"Props de jogadores\", abra os quadros (Jogador - Total De Pontos, Rebotes, Assistências, combinações), role até o fim e aperte D (ou \"Capturar esta tela\"). As capturas se somam; no fim, \"Abrir a comparação\"."
+    : CASA === "overtime"
     ? "Abra o jogo (ele aparece à direita com \"Time A - Time B\") e, em cada aba (Pontos, Ressaltos, Assistências, Triplos do jogador), role a lista e aperte D (ou \"Capturar esta tela\"). As capturas se somam; no fim, \"Abrir a comparação\"."
     : CASA === "donbet"
     ? "Abra o jogo › aba \"Player\" (ou Points, Assists, Rebounds, Other), abra os quadros \"Total … (incl. overtime)\" e aperte D (ou \"Capturar esta tela\") em cada aba. As capturas se somam; no fim, \"Abrir a comparação\"."
