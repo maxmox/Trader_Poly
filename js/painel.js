@@ -76,6 +76,30 @@ export function seloMin(j, rel = null) {
   return ` <span class="selo-min n${c.n}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${txt}</span>`;
 }
 
+// Matchup de defesa (14/11/2026, tese do usuário: defesa que dobra/ajuda cede o chute de fora; arremessador frio com jogo
+// parelho tem as oportunidades e a casa não reprecifica ao vivo; nba_pbp/matchup.py e matchup_vivo.py). Perfil dele nos
+// 30 jogos anteriores (parte dos arremessos em catch-and-shoot) × o que a defesa cedeu nos últimos 10. Teste 2024-27
+// contra a linha justa (arremessador com 35%+ de catch-and-shoot, frio, jogo parelho), resto do jogo a partir do
+// intervalo: defesa que cede +0,09 desvio em pontos e +0,20 em cestas de 3 × defesa que fecha −0,12 e −0,03 (com 45%+:
+// +0,15/+0,24); no fim do Q1 só o lado "fecha" pesa; fim do Q3 e blowout sem efeito. Marcador, não entra na justa.
+export function matchupChip(j, x = null, rel = null, margem = null) {
+  const m = j?.matchup;
+  if (!m?.nivel) return "";
+  const cede = m.nivel === "cede";
+  const pct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(100 * v))}%`;
+  const e = x?.est?.pts;
+  const frio = !!e && e.deveria >= 1.5 && e.feito / e.deveria <= 0.7;
+  const ativo = frio && rel != null && rel.t >= 540 && rel.t < 2160 && margem != null && Math.abs(margem) <= 8;
+  const txt = cede ? `🎯 matchup C&S${ativo ? " · frio, jogo parelho" : ""}` : `🧱 defesa fecha C&S${ativo ? " · frio" : ""}`;
+  const cor = cede ? "var(--good)" : "var(--bad)";
+  const tip = `${Math.round(100 * m.cs)}% dos arremessos dele são catch-and-shoot (liga 29%); a defesa adversária cedeu ${pct(m.cs_d)} de catch-and-shoot ` +
+    `e ${pct(m.tres_d)} de arremessos de 3 nos últimos ${m.jogos_def} jogos. ` +
+    (cede ? "Teste 2024-27: frio e com jogo parelho, do intervalo em diante ele fez mais que a linha justa (pontos +0,1 desvio, cestas de 3 +0,2); a casa costuma não reprecificar ao vivo."
+      : "Teste 2024-27: frio contra defesa que fecha o catch-and-shoot, continuou abaixo da linha justa (pontos −0,12 desvio).") +
+    " Marcador: não entra na linha justa." + (m.forte ? " Perfil forte (45%+ de catch-and-shoot)." : "");
+  return ` <span class="mu-chip${ativo ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${txt}</span>`;
+}
+
 // Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
 // time atual (rotacao.min_q); sem rotação, 1/4 em cada quarto.
 export function minutosQuarto(j) {
@@ -650,7 +674,7 @@ function celQuarto(real, esp, q, rel) {
 
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot }) => {
+  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot, mg }) => {
     const notaMin = cmin ? `<small style="color:${COR_O}" title="${esc(`quente em pontos (${cmin.faixa}) com o time ${cmin.est}: o técnico costuma deixar em quadra; ${b?.starter ? "titular" : "reserva"} nessa situação joga em média ${num(cmin.min)} min a mais que os companheiros (mesmo sinal em 3 testes)`)}">+${num(cmin.min)} min (quente, time ${cmin.est})</small>` : "";
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
@@ -658,7 +682,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -772,7 +796,7 @@ function jogoHtml(g, s) {
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
     const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
-    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot, rinfo });
+    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot, rinfo, mg: margem });
   }
   // cenário do time (quente com os companheiros frios): junta aos insights e marca os minutos a mais
   const cen = cenarioTime(PAINEL.tim, rel, Object.values(porTime).flat().filter((p) => p.b).map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));

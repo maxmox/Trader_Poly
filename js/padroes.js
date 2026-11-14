@@ -4,7 +4,7 @@
 // FORÇA ALTA (o resto estava no nível do acaso). Linhas e projeções ficam na página de props; a aba "Blowout e clutch"
 // saiu (o Painel mostra em destaque).
 import { $, esc } from "./formato.js";
-import { mostrarPainel, seloMin, confMin } from "./painel.js";
+import { mostrarPainel, seloMin, confMin, matchupChip } from "./painel.js";
 import { mostrarCasaVivo } from "./casavivo.js";
 import { ouvirCampeon } from "./campeon.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra, consertarResumo } from "./jogada.js";
@@ -185,7 +185,7 @@ function jogoHtml(g, s) {
       if (r.janela) janelas.push({ j, v: r.janela });
       abertos.push(...p.abertos);
       const reserva = /reserva/.test(j.origem || "");
-      return `<tr${p.abertos.length || r.janela ? ' class="jg-ativo"' : ""}><td><b>${esc(j.nome)}</b>${reserva ? ' <span class="muted">reserva</span>' : ""}${j.base_outro_time ? ' <span class="tag-les" title="poucos jogos no time atual">time novo</span>' : ""}</td>${minutosCel(j)}${r.html}${clutchCel(j)}${p.html}</tr>`;
+      return `<tr${p.abertos.length || r.janela ? ' class="jg-ativo"' : ""}><td><b>${esc(j.nome)}</b>${matchupChip(j)}${reserva ? ' <span class="muted">reserva</span>' : ""}${j.base_outro_time ? ' <span class="tag-les" title="poucos jogos no time atual">time novo</span>' : ""}</td>${minutosCel(j)}${r.html}${clutchCel(j)}${p.html}</tr>`;
     }).join("");
   }).join("");
   return {

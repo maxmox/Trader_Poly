@@ -212,6 +212,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .selo-min.n2 { background: var(--bad-bg); }
 .rot-chip { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px dashed; border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: nowrap; cursor: help; }
 .rot-chip.forte { border-style: solid; font-weight: 700; }
+.mu-chip { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px dashed; border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: nowrap; cursor: help; }
+.mu-chip.forte { border-style: solid; font-weight: 700; }
 .rot-agora { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 4px 0 8px; font-size: 13px; }
 .rot-item { white-space: nowrap; }
 tr.min-incerto td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
