@@ -873,19 +873,19 @@ const DEF_LINHAS = [
   ["canto3", "3 do canto"], ["cs", "Catch-and-shoot"], ["pullup", "Pull-up"], ["meia", "Meia distância"], ["fta", "Lances livres"],
   ["reb", "Rebotes do adversário"], ["oreb_pct", "Rebote ofensivo cedido", 1], ["dreb_pct", "Rebote defensivo cedido", 1],
   ["ast", "Assistências"], ["ast_pct", "Cestas assistidas", 1], ["ast3", "Assistências para o 3"], ["astp", "Assistências perto da cesta"],
-  ["tov", "Perdas que força (sem cor)", 0, 1], ["poss", "Ritmo (posses, sem cor)", 0, 1],
+  ["tov", "Perdas de bola do adversário", 0, 1], ["poss", "Ritmo (posses)", 0, 1],
 ];
-const DEF_MUITO = 5, DEF_POUCO = 26;
+const DEF_MUITO = 10, DEF_POUCO = 21, DEF_RES = 5;  // cor: 1º–10º verde (Over), 21º–30º vermelho (Under); resumo só os 5 das pontas
 function defesaHtml(g) {
   const D = g.defesa || {};
   const [a, b] = [g.fora, g.casa];
   if (!D[a] && !D[b]) return "";
   const N = (g.notas_defesa || {});
-  const cel = (d, k, pct, neutro) => {
+  const cel = (d, k, pct) => {
     const v = d?.[k];
     if (!v) return `<td class="muted">–</td>`;
     const [val, rel, pos] = v;
-    const cls = neutro ? "" : pos <= DEF_MUITO ? " def-muito" : pos >= DEF_POUCO ? " def-pouco" : "";
+    const cls = pos <= DEF_MUITO ? " def-muito" : pos >= DEF_POUCO ? " def-pouco" : "";
     const r = Math.round(100 * rel);
     return `<td class="num${cls}">${pct ? `${(100 * val).toFixed(1).replace(".", ",")}%` : String(val).replace(".", ",")} <small>${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r)}% · ${pos}º</small></td>`;
   };
@@ -894,8 +894,8 @@ function defesaHtml(g) {
     const d = D[def];
     if (!d) return "";
     const it = DEF_LINHAS.filter(([k, , , neutro]) => !neutro && d[k]);
-    const muito = it.filter(([k]) => d[k][2] <= DEF_MUITO).sort((x, y) => d[x[0]][2] - d[y[0]][2]).map(([k, r]) => `${r.toLowerCase()} (${d[k][2]}º)`);
-    const pouco = it.filter(([k]) => d[k][2] >= DEF_POUCO).sort((x, y) => d[y[0]][2] - d[x[0]][2]).map(([k, r]) => `${r.toLowerCase()} (${d[k][2]}º)`);
+    const muito = it.filter(([k]) => d[k][2] <= DEF_RES).sort((x, y) => d[x[0]][2] - d[y[0]][2]).map(([k, r]) => `${r.toLowerCase()} (${d[k][2]}º)`);
+    const pouco = it.filter(([k]) => d[k][2] >= 31 - DEF_RES).sort((x, y) => d[y[0]][2] - d[x[0]][2]).map(([k, r]) => `${r.toLowerCase()} (${d[k][2]}º)`);
     const notas = (N[def] || []).map((t) => `<li class="muted">${esc(t)}</li>`).join("");
     return `<div class="def-res"><b>${esc(atq)}</b> <small class="muted">ataca contra ${esc(def)}</small>
       ${muito.length ? `<div><span style="color:var(--good)">▲ ${esc(def)} cede muito:</span> ${esc(muito.join(" · "))}</div>` : ""}
@@ -906,8 +906,8 @@ function defesaHtml(g) {
   return `<details class="def-box" data-k="defesa"${aberto("defesa")}><summary class="muted">Matchup das defesas: o que cada time cede (últimos 10 jogos)</summary>
     <div class="def-resumos">${resumo(b, a)}${resumo(a, b)}</div>
     <div class="def-wrap"><table class="def-tab"><thead><tr><th></th><th>${esc(b)} cede a ${esc(a)}${nj(b)}</th><th>${esc(a)} cede a ${esc(b)}${nj(a)}</th></tr></thead><tbody>
-    ${DEF_LINHAS.map(([k, r, pct, neutro]) => `<tr><td>${r}</td>${cel(D[b], k, pct, neutro)}${cel(D[a], k, pct, neutro)}</tr>`).join("")}</tbody></table></div>
-    <p class="hint">Por jogo (ou %), quanto acima/abaixo da média da liga e posição entre os 30 (1º = o que mais cede). Verde = top 5 que mais cede (Over para quem ataca), vermelho = 5 que menos cedem. Lance a lance da ESPN: catch-and-shoot ≈ arremesso "Jump Shot", pull-up = "Pullup/Step Back", perto da cesta = menos de 10 pés. Rebote ofensivo cedido = % dos erros do adversário que ele pega de volta; rebote defensivo cedido = % dos erros deste time que o adversário pega. As notas em cinza vêm dos prints (pick-and-roll, marcação individual, transição: o lance a lance não mede). Consulta: não entra na linha justa.</p></details>`;
+    ${DEF_LINHAS.map(([k, r, pct]) => `<tr><td>${r}</td>${cel(D[b], k, pct)}${cel(D[a], k, pct)}</tr>`).join("")}</tbody></table></div>
+    <p class="hint">Por jogo (ou %), quanto acima/abaixo da média da liga e posição entre os 30 (1º = o que mais cede). Cor sempre no sentido da estatística: <span style="color:var(--good)">verde</span> = 1º a 10º (a favor do Over), <span style="color:var(--bad)">vermelho</span> = 21º a 30º (a favor do Under); o resumo de cima lista só os 5 das pontas (fora as perdas e o ritmo). Perdas de bola do adversário em verde = Over em perdas dele; ritmo em verde = mais posses, Over em tudo. Lance a lance da ESPN: catch-and-shoot ≈ arremesso "Jump Shot", pull-up = "Pullup/Step Back", perto da cesta = menos de 10 pés. Rebote ofensivo cedido = % dos erros do adversário que ele pega de volta; rebote defensivo cedido = % dos erros deste time que o adversário pega. As notas em cinza vêm dos prints (pick-and-roll, marcação individual, transição: o lance a lance não mede). Consulta: não entra na linha justa.</p></details>`;
 }
 
 const LEGENDA = () => `<details class="como-ler" data-k="como-ler"${aberto("como-ler")}><summary class="muted">Como ler o Painel</summary><p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Rotação agora</b> (Q1–Q3, só rotação regular — saídas nos jogos parecidos variando até 3 min; medido em 420 mil momentos de 2025-27): <i>⏱ sai em ~X</i> = saída típica em até 2 min (senta nos 2,5 min seguintes em 67–81%, contra 33% em qualquer momento); <i>⚠ +X além do normal</i> = passou 1–4 min da saída típica (67–78%); <i>🪑 sentou há X · volta ~Y</i> = acabou de sentar. A linha da casa costuma cair em salto quando ele senta (e mais ainda se o placar abre junto). <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
