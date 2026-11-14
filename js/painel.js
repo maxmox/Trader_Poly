@@ -83,21 +83,17 @@ export function seloMin(j, rel = null) {
 // intervalo: defesa que cede +0,09 desvio em pontos e +0,20 em cestas de 3 × defesa que fecha −0,12 e −0,03 (com 45%+:
 // +0,15/+0,24); no fim do Q1 só o lado "fecha" pesa; fim do Q3 e blowout sem efeito. Marcador, não entra na justa.
 export function matchupChip(j, x = null, rel = null, margem = null) {
-  const m = j?.matchup;
-  if (!m?.nivel) return "";
-  const cede = m.nivel === "cede";
-  const pct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(100 * v))}%`;
+  const m = j?.marcador;  // 14/11/2026: só os marcadores escolhidos à mão (padroes/dia/marcadores_AAAA-MM-DD.json)
+  if (!m?.chip) return "";
+  const over = m.lado !== "under";
   const e = x?.est?.pts;
   const frio = !!e && e.deveria >= 1.5 && e.feito / e.deveria <= 0.7;
-  const ativo = frio && rel != null && rel.t >= 540 && rel.t < 2160 && margem != null && Math.abs(margem) <= 8;
-  const txt = cede ? `🎯 matchup C&S${ativo ? " · frio, jogo parelho" : ""}` : `🧱 defesa fecha C&S${ativo ? " · frio" : ""}`;
-  const cor = cede ? "var(--good)" : "var(--bad)";
-  const tip = `${Math.round(100 * m.cs)}% dos arremessos dele são catch-and-shoot (liga 29%); a defesa adversária cedeu ${pct(m.cs_d)} de catch-and-shoot ` +
-    `e ${pct(m.tres_d)} de arremessos de 3 nos últimos ${m.jogos_def} jogos. ` +
-    (cede ? "Teste 2024-27: frio e com jogo parelho, do intervalo em diante ele fez mais que a linha justa (pontos +0,1 desvio, cestas de 3 +0,2); a casa costuma não reprecificar ao vivo."
-      : "Teste 2024-27: frio contra defesa que fecha o catch-and-shoot, continuou abaixo da linha justa (pontos −0,12 desvio).") +
-    " Marcador: não entra na linha justa." + (m.forte ? " Perfil forte (45%+ de catch-and-shoot)." : "");
-  return ` <span class="mu-chip${ativo ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${txt}</span>`;
+  // catch-and-shoot: o teste 2024-27 só mostrou efeito com ele frio e jogo parelho, do Q1 ao Q3 → chip cheio
+  const ativo = m.chip === "C&S" && frio && rel != null && rel.t >= 540 && rel.t < 2160 && (!over || (margem != null && Math.abs(margem) <= 8));
+  const cor = over ? "var(--good)" : "var(--bad)";
+  const txt = `${over ? "🎯" : "🧱"} ${m.chip} ${over ? "↑" : "↓"}${ativo ? (over ? " · frio, parelho" : " · frio") : ""}`;
+  const tip = `${m.motivo || ""}${m.chip === "C&S" ? (over ? " — vale mais com ele frio e jogo parelho (intervalo/começo do Q3); blowout anula." : " — frio contra defesa que fecha tende a continuar frio.") : ""} Marcador escolhido à mão; não entra na linha justa.`;
+  return ` <span class="mu-chip${ativo ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
 }
 
 // Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
@@ -682,7 +678,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
