@@ -682,7 +682,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
