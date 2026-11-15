@@ -3,7 +3,7 @@
 // Atualiza a cada 30 s pelo box score da ESPN. Base: linha da DraftKings da análise do dia (sem linha: projeção do
 // Edgely) ÷ minutos projetados. Estimativa simples e NÃO calibrada contra linhas ao vivo.
 import { esc } from "./formato.js";
-import { emQuadra, segundosPorPeriodo } from "./jogada.js";
+import { contarAte, emQuadra, segundosPorPeriodo } from "./jogada.js";
 import { atualizarRegistro, preencher, resolverPendentes } from "./registro.js";
 
 export const ESTATS = [["pts", "PTS", "points"], ["reb", "REB", "rebounds"], ["ast", "AST", "assists"], ["tpm", "3PM", "threes"], ["pra", "PRA", "pra"]];
@@ -482,6 +482,26 @@ export function lerBox(s) {
       out[a.athlete.id] = b;
     }
   }
+  // 14/11/2026 (DAL @ CLE): a ESPN mandou o box do jogo inteiro zerado ("--" nos minutos) com o lance a lance andando →
+  // reconstrói pelo lance a lance (contarAte bate com o box em 310/312; minutos pelas substituições)
+  const plays = s?.plays || [];
+  const vals = Object.values(out).filter((b) => !b.dnp);
+  if (vals.length && vals.every((b) => !b.min && !b.pts && !b.reb && !b.ast) && plays.some((x) => x.scoringPlay)) {
+    const c = contarAte(plays, 99);
+    const st = s?.header?.competitions?.[0]?.status;
+    const txt = String(st?.displayClock || "0:00");
+    const resta = txt.includes(":") ? txt.split(":").reduce((m, x) => (Number(m) || 0) * 60 + (Number(x) || 0)) : Number(txt) || 0;
+    const agora = st?.type?.state === "post" ? null : { p: st?.period || 1, resta };
+    for (const [id, b] of Object.entries(out)) {
+      if (b.dnp) continue;
+      const x = c[id] || {};
+      const min = segundosPorPeriodo(plays, id, agora).reduce((a, v) => a + v, 0) / 60;
+      Object.assign(b, { min: Math.round(min * 10) / 10, pts: x.pts || 0, reb: x.reb || 0, ast: x.ast || 0, tpm: x.tpm || 0, pf: x.pf || 0 });
+      b.pra = b.pts + b.reb + b.ast;
+      if (min > 0 || x.pts || x.reb || x.ast) delete b.naoEntrou;
+    }
+    Object.defineProperty(out, "pelaJogada", { value: true, enumerable: false });
+  }
   return out;
 }
 
@@ -817,8 +837,9 @@ function jogoHtml(g, s) {
   const siglas = [g.fora, g.casa];
   for (const t of siglas) (porTime[t] || []).sort((a, c) => (c.b?.starter - a.b?.starter) || (c.x.minEsp - a.x.minEsp));
   const marg = (placar[g.casa] ?? 0) - (placar[g.fora] ?? 0);
-  const aviso = rel.p >= 3 && Math.abs(marg) >= 16 ? `<span class="chip" style="background:var(--warn-bg);color:var(--warn)">blowout: minutos do Q4 ajustados</span>`
-    : rel.p >= 4 && Math.abs(marg) <= 5 ? `<span class="chip" style="background:var(--accent-soft);color:var(--accent)">parelho: titulares jogam mais o Q4</span>` : "";
+  const avisoBox = box.pelaJogada ? `<span class="chip" style="background:var(--warn-bg);color:var(--warn)" title="O box score da ESPN veio zerado neste jogo; pontos, rebotes, assistências, 3 e faltas foram contados no lance a lance e os minutos pelas substituições (pode diferir um pouco do box oficial).">box da ESPN zerado: contando pelo lance a lance</span>` : "";
+  const aviso = avisoBox + (rel.p >= 3 && Math.abs(marg) >= 16 ? `<span class="chip" style="background:var(--warn-bg);color:var(--warn)">blowout: minutos do Q4 ajustados</span>`
+    : rel.p >= 4 && Math.abs(marg) <= 5 ? `<span class="chip" style="background:var(--accent-soft);color:var(--accent)">parelho: titulares jogam mais o Q4</span>` : "");
   // chance de cada time, com o fator do técnico (tira titulares mais ou menos que a liga com o mesmo placar)
   const fat = (t) => PAINEL.cm?.times?.[t] || { fator: 1, fator_clutch: 1 };
   const lim = (v) => Math.min(95, Math.round(v));
