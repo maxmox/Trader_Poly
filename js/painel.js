@@ -83,7 +83,13 @@ export function seloMin(j, rel = null) {
 // intervalo: defesa que cede +0,09 desvio em pontos e +0,20 em cestas de 3 × defesa que fecha −0,12 e −0,03 (com 45%+:
 // +0,15/+0,24); no fim do Q1 só o lado "fecha" pesa; fim do Q3 e blowout sem efeito. Marcador, não entra na justa.
 export function matchupChip(j, x = null, rel = null, margem = null) {
-  const m = j?.marcador;  // 14/11/2026: só os marcadores escolhidos à mão (padroes/dia/marcadores_AAAA-MM-DD.json)
+  // 14/11/2026: só os marcadores escolhidos à mão (padroes/dia/marcadores_AAAA-MM-DD.json); 15/11: pode ser uma lista
+  // (o mesmo jogador com Over numa estatística e Under em outra)
+  const ms = Array.isArray(j?.marcador) ? j.marcador : [j?.marcador];
+  return ms.map((m) => umChip(m, x, rel, margem)).join("");
+}
+
+function umChip(m, x, rel, margem) {
   if (!m?.chip) return "";
   const over = m.lado !== "under";
   const e = x?.est?.pts;
