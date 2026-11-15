@@ -87,8 +87,9 @@ function lerCompacto(p) {
         if (!l || L == null || !(preco > 1)) continue;
         (pares.get(L) || pares.set(L, { L }).get(L))[l] = preco;
       }
-      // soMais: marcos ("8+" na Betcoin) — só o Mais; a aba Casa × Painel usa, a Casas × DK não
-      return { nome: String(nome || ""), pares: [...pares.values()].filter((q) => q.O && q.U), soMais: [...pares.values()].filter((q) => q.O && !q.U), opcoes: odds.map(([n, preco]) => ({ nome: String(n || ""), preco })) };
+      // soMais: um lado só — marcos ("8+" na Betcoin, só o Mais) ou lado suspenso ao vivo (Overtime "-", 14/11: pode ser
+      // só o Mais ou só o Menos); a aba Casa × Painel usa, a Casas × DK não
+      return { nome: String(nome || ""), pares: [...pares.values()].filter((q) => q.O && q.U), soMais: [...pares.values()].filter((q) => !q.O !== !q.U), opcoes: odds.map(([n, preco]) => ({ nome: String(n || ""), preco })) };
     }),
   }));
   return { em: p?.em || Date.now(), eventos, erros: p?.erros || 0, amostra: p?.amostra || null };

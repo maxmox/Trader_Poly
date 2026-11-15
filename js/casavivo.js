@@ -65,7 +65,7 @@ function linhasDaColeta(coletas, dia) {
   for (const r of out) { const k = `${r.casa}|${r.g.id}|${r.j.aid}|${r.k}`; (grupos.get(k) || grupos.set(k, []).get(k)).push(r); }
   const linhas = [...grupos.values()].map((gr) => {
     // marco (só o Mais, Betcoin "8+") só entra se não houver linha com os dois lados; entre marcos, o de odd mais perto de 2
-    const eq = (x) => (x.U ? Math.abs(1 / x.O - 1 / x.U) : 9 + Math.abs(1 / x.O - 0.5));
+    const eq = (x) => (x.O && x.U ? Math.abs(1 / x.O - 1 / x.U) : 9 + Math.abs(1 / (x.O || x.U) - 0.5));
     const r = gr.reduce((a, b) => (eq(b) < eq(a) ? b : a));
     return { ...r, escada: gr.length };
   });
@@ -149,7 +149,9 @@ function jogoHtml(g, s, linhas, d) {
     const suspeito = evm >= EV_SUSPEITO;
     const forte = evm >= 0.05 && !suspeito && cm?.n !== 2;
     return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td><b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)} <span class="muted">${NOME_K[r.k]}</span></td>
-      <td class="n">${r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>` : `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`}</td>
+      <td class="n">${r.O && r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>`
+        : /marco/i.test(r.mercado || "") ? `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`
+        : `${num(r.L)} <span class="muted" title="o outro lado está suspenso na casa">· ${r.O ? `só Mais ${num(r.O, 2)}` : `só Menos ${num(r.U, 2)}`}</span>`}</td>
       <td class="n"><b>${num(justa)}</b> <span class="muted">± ${num(ch.dp)}</span>${sinal}</td>
       <td class="n"><b style="color:${cor}">${dif > 0 ? "▲ +" : "▼ −"}${num(Math.abs(dif))}</b></td>
       <td class="n">${chanceHtml(ch, evO, evU)}${suspeito ? `<br><small style="color:var(--warn)" title="Com a linha ao vivo da casa, EV tão alto quase sempre é algo que o modelo não sabe (rotação, lesão, papel). Nas apostas de 10–11/11 o Painel dava 70% de chance em média e acertou 37%.">⚠ EV alto demais: confira rotação e notícia</small>` : ""}</td></tr>`;

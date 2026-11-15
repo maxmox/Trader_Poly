@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trader Poly — coletor de casas (CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime, Cloudbet)
 // @namespace    https://maxmox.github.io/Trader_Poly
-// @version      1.25
+// @version      1.26
 // @downloadURL  https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @updateURL    https://maxmox.github.io/Trader_Poly/js/campeon.user.js
 // @description  Na CampeonBet, JogaBrasil, 99play, VelvetSpin, Betcoin, DonBet, Overtime e Cloudbet: "Capturar esta tela" lê as props que JÁ ESTÃO NA TELA (nenhuma consulta extra ao site) e "Abrir a comparação" manda para a aba "Casa × Painel" do Trader Poly (1.18; "Casas × DK" num botão à parte). Fora dessas duas casas (e dos quadros embutidos nelas) não faz nada.
@@ -26,7 +26,7 @@
 //   quando o quadro está embutido numa das casas (location.ancestorOrigins); a caixa azul fica na página de fora e pede a
 //   leitura aos quadros por postMessage. v1.11: de volta ao document-idle, sem mexer em nada da página.
 (() => {
-  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.25";
+  const SITE = "https://maxmox.github.io/Trader_Poly", CHAVE = "traderpoly_capturas", VERSAO = "1.26";
   // 99play (v1.9, 25/10/2026): mesma plataforma da CampeonBet (Altenar) — mesmos quadros e tabela; odd com vírgula
   const casaDe = (s) => (/(^|\.|\/\/)campeonbet\.[a-z]+/i.test(s) ? "campeon" : /(^|\.|\/\/)jogabrasil\.[a-z]+/i.test(s) ? "jogabrasil" : /(^|\.|\/\/)99play\.[a-z]+/i.test(s) ? "play99" : /(^|\.|\/\/)velvetspin\.[a-z]+/i.test(s) ? "velvet" : /(^|\.|\/\/)betcoin\.[a-z]+/i.test(s) ? "betcoin" : /(^|\.|\/\/)donbet\.[a-z]+/i.test(s) ? "donbet" : /(^|\.|\/\/)overtimemarkets\.[a-z]+|(^|\.|\/\/)overtime\.io\b/i.test(s) ? "overtime" : /(^|\.|\/\/)cloudbet\.[a-z]+/i.test(s) ? "cloudbet" : null);
   // Cloudbet (v1.24, 13/11/2026, pelos prints do usuário; cloudbet.com/pt-br/sports/basketball/usa-nba/<id>?markets-tab=playerProps):
@@ -249,7 +249,9 @@
       if (tituloOT(x)) { tit = x; continue; }
       if (!tit || !nomeOT(x)) continue;
       const [a, b, c, d] = S.slice(i + 1, i + 5);
-      if (L1(a) && a === c && P2(b) && P2(d)) { pares.push([tit, x, num(a), num(b), num(d)]); i += 4; }
+      // v1.26 (Diagnóstico de 14/11): lado suspenso "-" (Matković 4,5 só Mais 1,46) não derruba a linha: guarda o lado aberto
+      const ok = (z) => P2(z) || z === "-";
+      if (L1(a) && a === c && ok(b) && ok(d) && (P2(b) || P2(d))) { pares.push([tit, x, num(a), P2(b) ? num(b) : null, P2(d) ? num(d) : null]); i += 4; }
     }
     return pares;
   }
