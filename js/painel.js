@@ -82,24 +82,49 @@ export function seloMin(j, rel = null) {
 // contra a linha justa (arremessador com 35%+ de catch-and-shoot, frio, jogo parelho), resto do jogo a partir do
 // intervalo: defesa que cede +0,09 desvio em pontos e +0,20 em cestas de 3 × defesa que fecha −0,12 e −0,03 (com 45%+:
 // +0,15/+0,24); no fim do Q1 só o lado "fecha" pesa; fim do Q3 e blowout sem efeito. Marcador, não entra na justa.
-export function matchupChip(j, x = null, rel = null, margem = null) {
+export function matchupChip(j, x = null, rel = null, margem = null, ctx = null) {
   // 14/11/2026: só os marcadores escolhidos à mão (padroes/dia/marcadores_AAAA-MM-DD.json); 15/11: pode ser uma lista
   // (o mesmo jogador com Over numa estatística e Under em outra)
   const ms = Array.isArray(j?.marcador) ? j.marcador : [j?.marcador];
-  return ms.map((m) => umChip(m, x, rel, margem)).join("");
+  return ms.map((m) => umChip(m, x, rel, margem, ctx)).join("");
 }
 
-function umChip(m, x, rel, margem) {
+// Cenário do jogo para o chip (17/11/2026, ideia do usuário: juntar o chip ao vivo com blowout → Under e parelho → Over).
+// Chips de 15–16/11 (68): Over de titular com o jogo parelho no intervalo 6/7, em blowout 1/7. Liga: titular com 16+ no fim
+// do Q3 rende ~0,4 do normal no resto, parelho ~1,24; reserva no blowout 1,2–1,3 (vira Over), em jogo parelho abaixo.
+// Do Q2 em diante: parelho = |placar| ≤ 6 ou chance de clutch ≥ 50%; blowout = chance de blowout (a favor + contra) ≥ 40%
+// ou |placar| ≥ 16 no 2º tempo. O chip fica sempre visível; só ganha destaque (a favor) ou aviso (contra).
+function cenarioChip(rel, margem, ctx) {
+  if (!rel || rel.fim || rel.p < 2 || margem == null) return null;
+  const ch = ctx?.ch;
+  const a = Math.abs(margem);
+  const blow = (ch ? ch.bmais + ch.bmenos >= 40 : false) || (rel.t >= 1440 && a >= 16);
+  const par = !blow && (a <= 6 || (ch ? ch.clutch >= 50 : false));
+  return blow ? "blowout" : par ? "parelho" : null;
+}
+
+function umChip(m, x, rel, margem, ctx) {
   if (!m?.chip) return "";
   const over = m.lado !== "under";
   const e = x?.est?.pts;
   const frio = !!e && e.deveria >= 1.5 && e.feito / e.deveria <= 0.7;
   // catch-and-shoot: o teste 2024-27 só mostrou efeito com ele frio e jogo parelho, do Q1 ao Q3 → chip cheio
-  const ativo = m.chip === "C&S" && frio && rel != null && rel.t >= 540 && rel.t < 2160 && (!over || (margem != null && Math.abs(margem) <= 8));
+  const csAtivo = m.chip === "C&S" && frio && rel != null && rel.t >= 540 && rel.t < 2160 && (!over || (margem != null && Math.abs(margem) <= 8));
+  // cenário: titular Over ↔ parelho, Under ↔ blowout; reserva ao contrário. O aviso contra o parelho só no 2º tempo.
+  const cen = ctx ? cenarioChip(rel, margem, ctx) : null;
+  let fav = false, contra = false;
+  if (cen) {
+    const querBlow = ctx.tit ? !over : over;
+    fav = (cen === "blowout") === querBlow;
+    contra = !fav && (cen === "blowout" || rel.t >= 1440);
+  }
+  const ativo = csAtivo || fav;
   const cor = over ? "var(--good)" : "var(--bad)";
-  const txt = `${over ? "🎯" : "🧱"} ${m.chip} ${over ? "↑" : "↓"}${ativo ? (over ? " · frio, parelho" : " · frio") : ""}`;
-  const tip = `${m.motivo || ""}${m.chip === "C&S" ? (over ? " — vale mais com ele frio e jogo parelho (intervalo/começo do Q3); blowout anula." : " — frio contra defesa que fecha tende a continuar frio.") : ""} Marcador escolhido à mão; não entra na linha justa.`;
-  return ` <span class="mu-chip${ativo ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
+  const sufixo = csAtivo ? (over ? " · frio, parelho" : " · frio") : fav ? ` · ${cen} ✓` : contra ? ` · ⚠ ${cen}` : "";
+  const txt = `${over ? "🎯" : "🧱"} ${m.chip} ${over ? "↑" : "↓"}${sufixo}`;
+  const cenTip = cen ? ` — jogo ${cen === "blowout" ? "com cara de blowout" : "parelho"} agora; ${ctx.tit ? "titular" : "reserva"}: ${fav ? "o cenário joga a favor do chip" : contra ? "o cenário joga contra o chip" : "neutro"}.` : "";
+  const tip = `${m.motivo || ""}${m.chip === "C&S" ? (over ? " — vale mais com ele frio e jogo parelho (intervalo/começo do Q3); blowout anula." : " — frio contra defesa que fecha tende a continuar frio.") : ""}${cenTip} Marcador escolhido à mão; não entra na linha justa.`;
+  return ` <span class="mu-chip${ativo ? " forte" : ""}${contra ? " contra" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
 }
 
 // Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
@@ -696,7 +721,7 @@ function celQuarto(real, esp, q, rel) {
 
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot, mg }) => {
+  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot, mg, ch }) => {
     const notaMin = cmin ? `<small style="color:${COR_O}" title="${esc(`quente em pontos (${cmin.faixa}) com o time ${cmin.est}: o técnico costuma deixar em quadra; ${b?.starter ? "titular" : "reserva"} nessa situação joga em média ${num(cmin.min)} min a mais que os companheiros (mesmo sinal em 3 testes)`)}">+${num(cmin.min)} min (quente, time ${cmin.est})</small>` : "";
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
@@ -704,7 +729,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -818,7 +843,7 @@ function jogoHtml(g, s) {
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
     const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
-    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot, rinfo, mg: margem });
+    (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot, rinfo, mg: margem, ch: chance[j.time] });
   }
   // cenário do time (quente com os companheiros frios): junta aos insights e marca os minutos a mais
   const cen = cenarioTime(PAINEL.tim, rel, Object.values(porTime).flat().filter((p) => p.b).map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
