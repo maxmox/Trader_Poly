@@ -1,13 +1,13 @@
 // Simulador do Painel (padroes.html, aba "Simulador", 18/11/2026, pedido do usuário): o MESMO quadro do Painel,
 // congelado num momento de um jogo já encerrado (Q1 6:00, fim do Q1, Q2 6:00, intervalo, Q3 6:00, Q4 6:00). O exercício
 // é bater a nossa linha justa: até 3 apostas por quadro (1 u cada desde 18/11, pedido do usuário; ou nenhuma), Over/Under contra a justa daquele
-// momento, pagamento 1:1. Depois de salvar: ver o gabarito ou ir ao próximo quadro (sorteado entre os jogos do time
+// momento, numa linha de 0,5 em 0,5 com a odd justa da nossa chance (18/11, 2ª versão). Depois de salvar: ver o gabarito ou ir ao próximo quadro (sorteado entre os jogos do time
 // escolhido). Placar com acertos e erros por estatística, momento, lado, tamanho, time, ritmo e placar.
 // Base: data/padroes/sim/ (nba_pbp/simulador_base.py) = análise do dia na ÚLTIMA versão gravada ANTES do início de cada
 // jogo (as republicações com o jogo rolando já tinham linha ao vivo). O lance a lance da ESPN é cortado no momento e o
 // box é refeito por ele (contarAte bate com o box em 310/312; minutos pelas substituições). Fica neste navegador.
 import { esc } from "./formato.js";
-import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes } from "./painel.js";
+import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes, chanceJusta } from "./painel.js";
 import { contarAte, segundosPorPeriodo, tempoDe } from "./jogada.js";
 
 export const MOMENTOS = [
@@ -39,13 +39,42 @@ const chanceBase = (mk, k, lado, est) => {
 const oddDe = (mk, k, lado, est) => Math.round(100 / chanceBase(mk, k, lado, est)) / 100;
 const estDe = (j) => (j ? `${j.quadra ? 1 : 0}${j.tit ? 1 : 0}` : null);
 const odd2 = (v) => num(v, 2);
-// aposta com a odd da base (as antigas, de antes de 18/11, foram pagas 1:1: refeitas aqui)
+// aposta com a odd da base (as antigas, de antes de 18/11, foram pagas 1:1: refeitas aqui); desde 18/11 (2ª versão) a
+// aposta guarda a odd e a chance da linha que o usuário escolheu (p = chance de ganhar sem contar o empate)
 function pagar(a) {
   const odd = a.odd ?? oddDe(a.momento, a.k, a.lado, a.estado);
-  return { ...a, odd, p: chanceBase(a.momento, a.k, a.lado, a.estado), lucro: a.res === "G" ? a.stake * (odd - 1) : a.res === "P" ? -a.stake : 0 };
+  return { ...a, odd, p: a.p ?? chanceBase(a.momento, a.k, a.lado, a.estado), lucro: a.res === "G" ? a.stake * (odd - 1) : a.res === "P" ? -a.stake : 0 };
 }
 
-const S = { el: null, espn: null, indice: null, base: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
+// 18/11 (2ª versão, usuário: "transforma a projeção em odd de Over e Under, linhas de 0,5 em 0,5"): a aposta é numa
+// LINHA (padrão = a ,5 mais perto da justa; − / + de 0,5 em 0,5, linha inteira devolve no empate) com a odd justa do
+// modelo = chance pela dispersão em volta da justa (a mesma da Casa × Painel), recalibrada por momento nestes jogos
+// (base_lado.json → recal; o modelo dava o Over baixo: "sempre Over" +12% a +17%; recalibrado, fora da amostra ≈ 0).
+const R_KS = ["pts", "reb", "ast", "tpm", "pra"], R_ES = ["10", "01", "00"];
+const lgt = (p) => { p = Math.min(0.995, Math.max(0.005, p)); return Math.log(p / (1 - p)); };
+const sgm = (x) => 1 / (1 + Math.exp(-x));
+function recal(mk, k, est, rem, p) {
+  const w = S.recal?.w?.[mk];
+  if (!w) return p;
+  const x = [lgt(p), ...R_KS.map((kk) => (kk === k ? 1 : 0)), ...R_ES.map((e) => (e === est ? 1 : 0)), rem < 0.5 ? 1 : 0, rem >= 0.5 && rem < 1 ? 1 : 0];
+  return sgm(x.reduce((s1, v, i) => s1 + v * (w[i] ?? 0), 0));
+}
+const linhaPadrao = (e) => (e?.justa == null ? null : Math.max(Math.floor(e.justa) + 0.5, e.feito + 0.5));
+// {O: {p, odd} | null, U: {p, odd} | null, push} na linha L para o jogador aid na estatística k
+function oddsLinha(aid, k, L) {
+  const j = S.q?.ctx?.jogadores?.[aid], e = j?.est?.[k];
+  if (!e || e.justa == null || L == null) return null;
+  const c = chanceJusta(aid, S.q.m.t, k, e, L);
+  if (!c) return null;
+  const est = estDe(j), rem = e.justa - e.feito;
+  const pO = recal(S.q.m.k, k, est, rem, c.over);
+  const pGE = c.push > 0 ? Math.max(pO, recal(S.q.m.k, k, est, rem, Math.min(1, c.over + c.push))) : pO;
+  const push = pGE - pO, pU = 1 - pGE;
+  const lado = (p) => (p < 0.04 ? null : { p, odd: Math.round((100 * (1 - push)) / p) / 100 });
+  return { O: lado(pO), U: lado(pU), push };
+}
+
+const S = { el: null, espn: null, indice: null, base: null, recal: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
 
 // ---------- armazenamento (neste navegador) ----------
 function ler() {
@@ -165,7 +194,7 @@ async function abrir(q) {
   const r = painelCongelado(g, sc);
   const comp = s.header.competitions[0];
   S.q = { ...q, g, m, r, ctx: r.ctx, final: lerBox(s), placarFinal: Object.fromEntries(comp.competitors.map((c) => [c.team.abbreviation, c.score])), ot: (comp.status?.period || 4) > 4 };
-  S.slots = STAKES.map(() => ({ aid: "", k: "pts", lado: "", palp: "" }));
+  S.slots = STAKES.map(() => ({ aid: "", k: "pts", lado: "", palp: "", L: null }));
   S.foco = 0;
   S.salvo = false;
   const D = ler();
@@ -191,7 +220,21 @@ function infoSlot(x) {
   if (!x.aid) return `<span class="muted">clique numa célula do quadro ou escolha o jogador</span>`;
   const j = S.q.ctx.jogadores[x.aid], e = j?.est?.[x.k];
   if (linhaDe(e) == null) return `<span style="color:var(--bad)">sem linha justa nesta estatística</span>`;
-  return `linha justa <b>${num(linhaDe(e))}</b> · pré ${num(e.pre)} · tem ${e.feito} em ${num(j.min, 0)} min${e.deveria != null ? ` (deveria ${num(e.deveria)})` : ""}`;
+  return `nossa justa <b>${num(linhaDe(e))}</b> · pré ${num(e.pre)} · tem ${e.feito} em ${num(j.min, 0)} min${e.deveria != null ? ` (deveria ${num(e.deveria)})` : ""}`;
+}
+// linha da aposta: a escolhida ou a ,5 mais perto da justa
+const linhaSlot = (x) => {
+  const e = S.q?.ctx?.jogadores?.[x.aid]?.est?.[x.k];
+  if (!e || e.justa == null) return null;
+  return x.L != null && x.L >= e.feito + 0.5 ? x.L : linhaPadrao(e);
+};
+function ladoHtml(x, trava) {
+  const L = x.aid ? linhaSlot(x) : null, od = L != null ? oddsLinha(x.aid, x.k, L) : null;
+  const e = S.q.ctx.jogadores[x.aid]?.est?.[x.k];
+  const menos = L == null || L - 0.5 < (e?.feito ?? 0) + 0.5 || S.salvo ? " disabled" : "";
+  const bt = (lado, nm) => { const o = od?.[lado]; return `<button type="button" data-lado="${lado}" aria-pressed="${x.lado === lado}"${trava || (o ? "" : " disabled")}>${nm} <small>${o ? `@${odd2(o.odd)}` : "—"}</small></button>`; };
+  return `<span class="sim-linha"><button type="button" class="sim-lmenos" title="linha − 0,5"${menos}>−</button><b>${L == null ? "–" : num(L)}</b><button type="button" class="sim-lmais" title="linha + 0,5"${L == null || S.salvo ? " disabled" : ""}>+</button></span>
+      <span class="sim-lado">${bt("O", "Over")}${bt("U", "Under")}</span>`;
 }
 
 function desenharApostas(msg = "") {
@@ -203,7 +246,7 @@ function desenharApostas(msg = "") {
       <b class="sim-stake">${num(STAKES[i], STAKES[i] % 1 ? 1 : 0)} u</b>
       <select class="sim-j" aria-label="Jogador"${trava}><option value="">— sem aposta —</option>${ops.replace(`value="${x.aid}"`, `value="${x.aid}" selected`)}</select>
       <select class="sim-k" aria-label="Estatística"${trava}>${ESTATS.map(([k, n]) => `<option value="${k}"${k === x.k ? " selected" : ""}>${n}</option>`).join("")}</select>
-      <span class="sim-lado"><button type="button" data-lado="O" aria-pressed="${x.lado === "O"}"${trava}>Over <small>@${odd2(oddDe(S.q.m.k, x.k, "O", estDe(S.q.ctx.jogadores[x.aid])))}</small></button><button type="button" data-lado="U" aria-pressed="${x.lado === "U"}"${trava}>Under <small>@${odd2(oddDe(S.q.m.k, x.k, "U", estDe(S.q.ctx.jogadores[x.aid])))}</small></button></span>
+      ${ladoHtml(x, trava)}
       <input class="sim-palp" type="text" inputmode="decimal" autocomplete="off" placeholder="seu número (opcional)" value="${esc(x.palp)}"${trava}>
       ${S.salvo ? "" : `<button type="button" class="sim-limpa" title="limpar esta aposta">×</button>`}
       <div class="sim-info">${infoSlot(x)}</div></div>`).join("");
@@ -212,7 +255,7 @@ function desenharApostas(msg = "") {
     ? `<span class="sim-ok">✓ Registrado no placar</span><button type="button" id="sim-ver">Ver gabarito</button><button type="button" id="sim-prox" class="prim">Próximo quadro →</button>`
     : `<button type="button" id="sim-salvar" class="prim">${nAp ? `Salvar ${nAp} aposta${nAp > 1 ? "s" : ""}` : "Não apostar neste quadro"}</button>`;
   el.innerHTML = `<h2 style="margin:0 0 4px">Suas apostas neste quadro</h2>
-    <p class="hint" style="margin:0 0 6px">Bata a nossa linha justa: clique numa célula do quadro (ou escolha abaixo), marque Over ou Under. A linha é a justa deste momento. Cada lado paga a odd justa da taxa base (a justa é média: o final fica abaixo dela mais da metade das vezes, por isso o Under paga menos); escolher sempre o mesmo lado dá ≈ 0. Até 3 apostas de 1 u cada, ou nenhuma. O "seu número" é opcional: serve para medir se a sua estimativa erra menos que a nossa.</p>
+    <p class="hint" style="margin:0 0 6px">Bata a nossa projeção: clique numa célula do quadro (ou escolha abaixo). A linha começa na ,5 mais perto da nossa justa e anda de 0,5 em 0,5 (− / +; linha inteira devolve no empate). Cada lado paga a odd justa da nossa chance naquela linha, sem margem: apostar sempre no mesmo lado dá ≈ 0, o lucro vem de ler melhor que a projeção. Até 3 apostas de 1 u cada, ou nenhuma. O "seu número" é opcional: mede se a sua estimativa erra menos que a nossa justa.</p>
     ${slots}<div class="sim-acoes">${acoes}<span class="muted">${esc(msg)}</span></div>`;
 }
 
@@ -223,6 +266,7 @@ function salvar() {
     const e = S.q.ctx.jogadores[x.aid]?.est?.[x.k];
     if (linhaDe(e) == null) return desenharApostas(`${S.q.ctx.jogadores[x.aid]?.nome}: sem linha justa em ${nomeK(x.k)}.`);
     if (!x.lado) return desenharApostas("Marque Over ou Under em cada aposta.");
+    if (!oddsLinha(x.aid, x.k, linhaSlot(x))?.[x.lado]) return desenharApostas(`${S.q.ctx.jogadores[x.aid]?.nome}: sem odd nesse lado (chance abaixo de 4%).`);
     const ch = `${x.aid}|${x.k}`;
     if (vistos.has(ch)) return desenharApostas("A mesma aposta aparece duas vezes.");
     vistos.add(ch);
@@ -231,17 +275,17 @@ function salvar() {
   const base = { quando: new Date().toISOString(), data: S.q.data, jogo_id: S.q.id, jogo: `${g.fora} @ ${g.casa}`, momento: m.k };
   const D = ler();
   ap.forEach((x, i) => {
-    const j = ctx.jogadores[x.aid], e = j.est[x.k], linha = linhaDe(e);
+    const j = ctx.jogadores[x.aid], e = j.est[x.k], linha = linhaSlot(x), od = oddsLinha(x.aid, x.k, linha);
     const b = S.q.final[x.aid];
     const final = !b || b.dnp ? null : b[x.k];
     const d = final == null ? null : x.lado === "O" ? final - linha : linha - final;
     const res = d == null ? "A" : d > 0 ? "G" : d < 0 ? "P" : "D";
     const estado = estDe(j);
-    const odd = oddDe(m.k, x.k, x.lado, estado);
+    const odd = od[x.lado].odd, p = od[x.lado].p / (1 - od.push); // chance de ganhar entre os que não empatam
     const palp = x.palp === "" ? null : Number(String(x.palp).replace(",", "."));
     D.apostas.push({
       ...base, id: `${Date.now()}-${i}`, aid: x.aid, nome: j.nome, time: j.time, adv: j.time === g.fora ? g.casa : g.fora,
-      k: x.k, lado: x.lado, stake: x.stake, linha, pre: e.pre, feito: e.feito, deveria: e.deveria, min: j.min, margem: j.margem,
+      k: x.k, lado: x.lado, stake: x.stake, linha, justa: linhaDe(e), p, pre: e.pre, feito: e.feito, deveria: e.deveria, min: j.min, margem: j.margem,
       palpite: palp != null && isFinite(palp) ? palp : null, final, res, odd, estado, lucro: res === "G" ? x.stake * (odd - 1) : res === "P" ? -x.stake : 0,
     });
   });
@@ -258,9 +302,9 @@ function gabarito() {
   const el = S.el.querySelector("#sim-gab");
   const { g, ctx, final, placarFinal } = S.q;
   const minhas = ler().apostas.filter((a) => a.jogo_id === S.q.id && a.momento === S.q.m.k).map(pagar);
-  const resTxt = (a) => (a.res === "G" ? `<span class="sim-g">✓ acertou</span>` : a.res === "P" ? `<span class="sim-p">✗ errou</span>` : a.res === "A" ? `<span class="muted">anulada (não jogou)</span>` : `<span class="muted">empate</span>`);
+  const resTxt = (a) => (a.res === "G" ? `<span class="sim-g">✓ acertou</span>` : a.res === "P" ? `<span class="sim-p">✗ errou</span>` : a.res === "A" ? `<span class="muted">anulada (não jogou)</span>` : `<span class="muted">empate (devolvida)</span>`);
   const tabMinhas = minhas.length ? `<table class="sim-tab"><thead><tr><th>Aposta</th><th>Linha</th><th>Final</th><th>Resultado</th><th>Lucro</th></tr></thead><tbody>${minhas.map((a) =>
-    `<tr><td><b>${esc(a.nome)}</b> ${nomeK(a.k)} ${a.lado === "O" ? "Over" : "Under"} @${odd2(a.odd)} <small class="muted">${num(a.stake, a.stake % 1 ? 1 : 0)} u${a.palpite != null ? ` · seu número ${num(a.palpite)}` : ""}</small></td><td>${num(a.linha)}</td><td><b>${a.final ?? "–"}</b></td><td>${resTxt(a)}</td><td>${u(a.lucro)}</td></tr>`).join("")}</tbody></table>`
+    `<tr><td><b>${esc(a.nome)}</b> ${nomeK(a.k)} ${a.lado === "O" ? "Over" : "Under"} @${odd2(a.odd)} <small class="muted">${num(a.stake, a.stake % 1 ? 1 : 0)} u${a.palpite != null ? ` · seu número ${num(a.palpite)}` : ""}</small></td><td>${num(a.linha)}${a.justa != null && a.justa !== a.linha ? `<small>justa ${num(a.justa)}</small>` : ""}</td><td><b>${a.final ?? "–"}</b></td><td>${resTxt(a)}</td><td>${u(a.lucro)}</td></tr>`).join("")}</tbody></table>`
     : `<p class="muted">Sem aposta neste quadro.</p>`;
   // todos os jogadores: final × justa (verde = terminou acima da justa → Over; vermelho = abaixo → Under)
   const porTime = {};
@@ -331,8 +375,9 @@ function desenharPlacar() {
   const cp = L.filter((a) => a.palpite != null && a.final != null);
   const palpH = cp.length ? (() => {
     const eu = cp.reduce((s1, a) => s1 + Math.abs(a.palpite - a.final), 0) / cp.length;
-    const nos = cp.reduce((s1, a) => s1 + Math.abs(a.linha - a.final), 0) / cp.length;
-    const perto = cp.filter((a) => Math.abs(a.palpite - a.final) < Math.abs(a.linha - a.final)).length;
+    const jj = (a) => a.justa ?? a.linha;
+    const nos = cp.reduce((s1, a) => s1 + Math.abs(jj(a) - a.final), 0) / cp.length;
+    const perto = cp.filter((a) => Math.abs(a.palpite - a.final) < Math.abs(jj(a) - a.final)).length;
     return `<div><small class="muted">seu número × nossa justa (${cp.length})</small><b>${num(eu, 2)} × ${num(nos, 2)}</b><small class="muted">erro médio · mais perto em ${perto}/${cp.length}</small></div>`;
   })() : "";
   const ac = tot.g + tot.p ? Math.round((100 * tot.g) / (tot.g + tot.p)) : null;
@@ -383,8 +428,8 @@ function ligar() {
     const sl = t.closest(".sim-slot");
     if (!sl || S.salvo) return;
     const x = S.slots[Number(sl.dataset.i)];
-    if (t.classList.contains("sim-j")) x.aid = t.value;
-    if (t.classList.contains("sim-k")) x.k = t.value;
+    if (t.classList.contains("sim-j")) { x.aid = t.value; x.L = null; }
+    if (t.classList.contains("sim-k")) { x.k = t.value; x.L = null; }
     S.foco = Number(sl.dataset.i);
     desenharApostas();
   });
@@ -423,7 +468,11 @@ function ligar() {
       const i = Number(sl.dataset.i);
       S.foco = i;
       if (b?.dataset.lado) S.slots[i].lado = S.slots[i].lado === b.dataset.lado ? "" : b.dataset.lado;
-      if (b?.classList.contains("sim-limpa")) S.slots[i] = { aid: "", k: "pts", lado: "", palp: "" };
+      if (b?.classList.contains("sim-limpa")) S.slots[i] = { aid: "", k: "pts", lado: "", palp: "", L: null };
+      if (b?.classList.contains("sim-lmenos") || b?.classList.contains("sim-lmais")) {
+        const L = linhaSlot(S.slots[i]);
+        if (L != null) S.slots[i].L = L + (b.classList.contains("sim-lmais") ? 0.5 : -0.5);
+      }
       if (b || !t.closest("select, input")) desenharApostas();
       return;
     }
@@ -432,7 +481,7 @@ function ligar() {
     if (td && S.q && !S.salvo && S.q.ctx.jogadores[td.dataset.aid]) {
       let i = S.slots[S.foco]?.aid ? S.slots.findIndex((x) => !x.aid) : S.foco;
       if (i < 0) i = S.foco;
-      S.slots[i] = { ...S.slots[i], aid: td.dataset.aid, k: td.dataset.k };
+      S.slots[i] = { ...S.slots[i], aid: td.dataset.aid, k: td.dataset.k, L: null };
       S.foco = S.slots.findIndex((x) => !x.aid);
       if (S.foco < 0) S.foco = i;
       desenharApostas();
@@ -448,7 +497,9 @@ export async function mostrarSimulador(el, espn) {
   el.innerHTML = `<p class="muted">carregando a base do simulador…</p>`;
   try {
     S.indice = await json("data/padroes/sim/indice.json");
-    S.base = (await json("data/padroes/sim/base_lado.json").catch(() => null))?.base || null;
+    const bl = await json("data/padroes/sim/base_lado.json").catch(() => null);
+    S.base = bl?.base || null;
+    S.recal = bl?.recal || null;
   } catch (e) {
     el.innerHTML = `<p class="erro">Base do simulador indisponível (${esc(e.message)}).</p>`;
     S.el = null;

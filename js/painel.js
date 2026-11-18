@@ -321,6 +321,14 @@ export function chanceLinha(tab, aid, t, partes, feito, L) {
   return { over, under: Math.max(0, 1 - over - push), push, dp: Math.sqrt(varr) };
 }
 
+// Simulador (18/11, pedido do usuário: "transforma a projeção em odd de Over e Under"): chance numa linha L para o
+// jogador do quadro congelado, a mesma conta da Casa × Painel (dispersão dele e da liga em volta da justa; PRA com a
+// dispersão própria). e = {feito, justa} do ctx; t = segundos de jogo.
+export function chanceJusta(aid, t, k, e, L) {
+  if (!e || e.justa == null || !PAINEL.cal) return null;
+  return chanceLinha(PAINEL.cal, aid, t, [[k, Math.max(e.justa - e.feito, 0)]], e.feito, L);
+}
+
 // Antes do jogo (11/11, nba_pbp/pre_jogo_chance.py): a chance pela dispersão com a linha como média PERDE da odd sem
 // margem da DK (101 mil linhas; EV ≥ 5% do modelo: rebotes Under −7,6%, pontos −0,6%) — a linha é ~mediana e a DK já
 // precifica a forma. Então, pré-jogo, a chance vem da DK: na mesma linha = odd sem margem dela; noutra linha = média que

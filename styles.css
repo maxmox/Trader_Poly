@@ -588,6 +588,9 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 .sim-slot .sim-palp { width: 150px; }
 .sim-stake { min-width: 44px; font-size: 16px; }
 .sim-lado { display: inline-flex; gap: 4px; }
+.sim-linha { display: inline-flex; align-items: center; gap: 4px; }
+.sim-linha b { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.sim-linha button { padding: 2px 9px; }
 .sim-lado button[aria-pressed="true"][data-lado="O"] { background: var(--good-bg); color: var(--good); border-color: var(--good); }
 .sim-lado button[aria-pressed="true"][data-lado="U"] { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .sim-info { flex-basis: 100%; font-size: 12.5px; color: var(--ink-2); padding-left: 52px; }
