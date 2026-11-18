@@ -468,6 +468,15 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
       // de quarto (fim do Q1, intervalo, fim do Q3): ali a base marca 'em quadra' quem COMEÇA o quarto seguinte (o site não sabe).
       const fe = c && agora && rel.t % 720 !== 0 && cal.tab.estado?.f ? cal.tab.estado.f[c[0]]?.[agora.quadra ? 1 : 0]?.[box?.starter ? 1 : 0]?.[Math.abs(cal.mg ?? cal.pm ?? 0) >= (cal.tab.estado.blow ?? 15) ? 1 : 0] : null;
       if (fe) minResto = Math.min(minResto * fe, (JOGO_S - rel.t) / 60);
+      // 18/11 (nba_pbp/calibrar_jogador.py, usuário: "calibrar jogador por jogador, dentro do time e da rotação"): formato
+      // dos minutos que faltam do PRÓPRIO jogador por quarto × em quadra/no banco × placar (|placar| ≥ 12), fora das viradas.
+      // CLE: viés por jogador × situação fora da amostra minutos −12%, pontos −4 a −7%, PRA −5 a −10% (ex.: Mitchell e Allen
+      // no banco no Q4 parelho voltam mais — 1,26/1,28; reservas do CLE no Q4 parelho jogam menos).
+      const fjm = c && agora && rel.t % 720 !== 0 ? cal.tab.jogador?.jogadores?.[j.aid]?.m : null;
+      if (fjm) {
+        const v = fjm[Math.min(3, Math.floor(rel.t / 720))]?.[agora.quadra ? 1 : 0]?.[Math.abs(cal.mg ?? cal.pm ?? 0) >= (cal.tab.jogador.bl ?? 12) ? 1 : 0];
+        if (v) minResto = Math.min(minResto * v, (JOGO_S - rel.t) / 60);
+      }
     }
   }
   const minAgora = minEsp * Math.min(1, rel.t / JOGO_S);
@@ -505,7 +514,8 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
   // formato individual de pontos (11/11, pedido do usuário; nba_pbp/calibrar_individual.py): o que ELE faz do quarto
   // atual até o fim e conforme o placar, além da liga (já com estrelas e faltas); só 80+ jogos, encolhido pelo que
   // repetiu entre metades dos jogos (correlação ~0,2), produto travado em 0,75–1,30. Rebotes/assistências/3PM não ganharam.
-  const fi = c ? cal.tab.individual?.jogadores?.[j.aid]?.pts : null;
+  // quem tem a calibração por jogador (minutos) fica sem o formato individual antigo de pontos: os dois mediam o mesmo
+  const fi = c && !cal.tab.jogador?.jogadores?.[j.aid] ? cal.tab.individual?.jogadores?.[j.aid]?.pts : null;
   if (fi && est.pts?.justa != null) {
     const q = Math.min(3, Math.floor(rel.t / 720)), a = Math.abs(cal.pm);
     const f = Math.min(1.3, Math.max(0.75, (fi[0]?.[q] ?? 1) * (fi[1]?.[a <= 5.5 ? 0 : a <= 15.5 ? 1 : 2] ?? 1)));
