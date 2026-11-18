@@ -611,3 +611,9 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 .sim-tab tr.grupo td { background: var(--bg); text-align: left; }
 .sim-tab-gab td { white-space: nowrap; }
 @media (max-width: 640px) { .sim-info { padding-left: 0; } .sim-slot .sim-palp { width: 100%; } }
+
+/* Matchup e hierarquia (Painel/Simulador, 18/11/2026) */
+.hq-time { margin: 10px 0 14px; }
+.hq-def { margin: 4px 0 6px; font-size: 13px; }
+.hq-tab { min-width: 680px; }
+.hq-tab td small, .hq-tab th small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }

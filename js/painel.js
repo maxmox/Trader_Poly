@@ -721,7 +721,7 @@ function celQuarto(real, esp, q, rel) {
 
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot, mg, ch }) => {
+  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot, mg, ch, hv }) => {
     const notaMin = cmin ? `<small style="color:${COR_O}" title="${esc(`quente em pontos (${cmin.faixa}) com o time ${cmin.est}: o técnico costuma deixar em quadra; ${b?.starter ? "titular" : "reserva"} nessa situação joga em média ${num(cmin.min)} min a mais que os companheiros (mesmo sinal em 3 testes)`)}">+${num(cmin.min)} min (quente, time ${cmin.est})</small>` : "";
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
@@ -729,7 +729,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${hierChip(hv)}<small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small></td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -853,6 +853,9 @@ function jogoHtml(g, s) {
     p.cmin = c?.min ? c : null;
     for (const [k, nome] of ESTATS) if (p.ins[k]) lista.push({ j: p.j, nome, x: p.ins[k] });
   }
+  // hierarquia ao vivo (18/11): arremessos e pontos de hoje ÷ o normal dele por minuto (últimos 30 jogos)
+  const contHoje = contarAte(plays, 99);
+  for (const p of Object.values(porTime).flat()) p.hv = hierVivo(p.j, p.b, contHoje[String(p.j.aid)], p.x);
   const semBase = Object.entries(box).filter(([id, b]) => !vistos.has(id) && !b.dnp && b.min > 0).map(([, b]) => b);
   // contexto para o registro das entradas (o que o Painel mostrava na hora)
   let sinais = [];
@@ -900,7 +903,7 @@ function jogoHtml(g, s) {
   const estTxt = estado === "parado" ? `■ parado · ${PAINEL.parada}` : estado === "rolando" ? "● bola rolando" : "";
   return `<div class="placar-vivo ${estado}"><span class="pt">${esc(g.fora)} <b>${placar[g.fora] ?? "–"}</b></span><span class="px">×</span><span class="pt"><b>${placar[g.casa] ?? "–"}</b> ${esc(g.casa)}</span>
     <span class="pq">${quandoTxt(st)}</span>${estTxt ? `<span class="pn-estado">${estTxt}</span>` : ""}${aviso}</div>${chanceH}${rotH}${insH}
-    ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t), rel)).join("")}`;
+    ${siglas.map((t) => tabelaTime(t, porTime[t] || [], semBase.filter((b) => b.sigla === t), rel)).join("")}${hierHtml(g, porTime, rel)}`;
 }
 
 function seletor(dia) {
@@ -916,6 +919,76 @@ function seletor(dia) {
     const txt = est && est !== "pre" ? `${esc(g.fora)} <b>${sc[g.fora] ?? ""}</b>–<b>${sc[g.casa] ?? ""}</b> ${esc(g.casa)}` : `${esc(g.fora)} @ ${esc(g.casa)}`;
     return `<button type="button" data-jogo="${g.id}" aria-pressed="${g.id === PAINEL.sel}" class="${cls}" title="${par ? `parado: ${par}` : est === "in" ? "bola rolando" : ""}"><i class="pt-dot"></i>${txt} <small>${q}</small></button>`;
   }).join("")}</div>`;
+}
+
+// ---------- matchup e hierarquia (18/11/2026, ideia do usuário; nba_pbp/hierarquia.py) ----------
+// Por zona de arremesso (garrafão, meia, 3 catch-and-shoot, 3 criado) a defesa adversária nos últimos 10 jogos: volume
+// cedido por posse ÷ liga (para onde ela empurra os arremessos) e aproveitamento cedido ÷ liga. MATCHUP = aproveitamento
+// pesado pelos pontos dele em cada zona (ranking 1–30, 1 = a defesa mais fácil para ele); HIERARQUIA = volume pesado pelos
+// arremessos dele (positivo = deve arremessar mais que o normal); pontos = os dois juntos + LL. Medido em 22,9 mil
+// jogadores-jogo (2025-27, por minuto): a defesa muda de fato onde se arremessa (inclinação 0,43–0,47 nas zonas) e o
+// aproveitamento (0,46 nos pontos), mas a linha da DK já precifica (Over igual em todas as faixas). Ao vivo, "rei da noite"
+// (arremessos E pontos ≥ 1,4× o normal por minuto, testado no fim do 1º tempo em 30,6 mil jogadores-jogo 2024-27): no 2º
+// tempo arremessa 1,06×, pontua 1,08× por minuto e joga 1,11× os minutos; 2º tempo ≥ 1,5× o normal em 32% × 22% de quem
+// está no ritmo. Quente SEM arremessar mais volta ao normal (1,00): o que segue é o volume (a hierarquia), não a mão quente.
+const HZ = [["perto", "garrafão"], ["meia", "meia"], ["3cs", "3 C&S"], ["3pu", "3 criado"]];
+const pctS = (v, c = 0) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(100 * v), c)}%`;
+const corRk = (rk) => (rk <= 10 ? "var(--good)" : rk >= 21 ? "var(--bad)" : "var(--ink-2)");
+const corDv = (v, lim = 0.03) => (v >= lim ? "var(--good)" : v <= -lim ? "var(--bad)" : "var(--ink-2)");
+function hierVivo(j, b, c, x) {
+  const h = j.hier;
+  if (!h || !b || b.dnp || b.naoEntrou || !(b.min > 0)) return null;
+  const fga = c?.fga ?? 0;
+  const rf = h.fga_min > 0 ? fga / (h.fga_min * b.min) : null, rp = h.pts_min > 0 ? b.pts / (h.pts_min * b.min) : null;
+  const base = b.min >= 8 && fga >= 5;
+  return {
+    fga, rf, rp,
+    rei: base && rf >= 1.4 && rp >= 1.4,
+    volume: base && rf >= 1.4 && rp < 1.4,
+    banco: !b.starter && b.min >= 6 && x?.minAgora > 0 && b.min >= 1.25 * x.minAgora && rp >= 1.2,
+  };
+}
+function hierChip(hv) {
+  if (!hv) return "";
+  const t = `arremessos ${num(hv.rf, 2)}× e pontos ${num(hv.rp, 2)}× o normal dele por minuto`;
+  if (hv.rei) return ` <span class="chip" style="color:var(--good);border:1px solid var(--good);background:transparent" title="👑 rei da noite: ${t}. No 2º tempo, quem está assim no intervalo arremessa 1,06×, pontua 1,08× por minuto e joga 1,11× os minutos (explode em 32% × 22%).">👑</span>`;
+  if (hv.banco) return ` <span class="chip" style="color:var(--good);border:1px solid var(--good);background:transparent" title="reserva tomando minutos: já jogou 25%+ acima do esperado até aqui e está produzindo (${t}). Reservas assim no intervalo jogam 1,13× os minutos no 2º tempo.">⇧ banco</span>`;
+  return "";
+}
+function hierHtml(g, porTime, rel) {
+  const times = [g.fora, g.casa];
+  const todos = times.flatMap((t) => (porTime[t] || []).filter((p) => p.j.hier));
+  if (!todos.length) return "";
+  const comecou = rel.p > 0;
+  const zonasDef = (lista) => {
+    const h = lista.find((p) => p.j.hier)?.j.hier;
+    if (!h) return "";
+    const it = HZ.map(([z, n]) => [n, h.zonas[z][1], h.zonas[z][2]]);
+    const vol = it.filter(([, v]) => Math.abs(v - 1) >= 0.08).sort((a, b) => Math.abs(b[1] - 1) - Math.abs(a[1] - 1)).map(([n, v]) => `<span style="color:${corDv(v - 1)}">${n} ${pctS(v - 1)}</span>`);
+    const ef = it.filter(([, , e]) => Math.abs(e - 1) >= 0.08).sort((a, b) => Math.abs(b[2] - 1) - Math.abs(a[2] - 1)).map(([n, , e]) => `<span style="color:${corDv(e - 1)}">${n} ${pctS(e - 1)}</span>`);
+    return `${vol.length ? `volume: ${vol.join(" · ")}` : "volume parecido com a liga"}${ef.length ? ` &nbsp;|&nbsp; aproveitamento: ${ef.join(" · ")}` : ""}`;
+  };
+  const tabela = (t) => {
+    const ps = (porTime[t] || []).filter((p) => p.j.hier).sort((a, b) => b.j.hier.fga_j - a.j.hier.fga_j);
+    if (!ps.length) return "";
+    const adv = t === g.fora ? g.casa : g.fora;
+    const linhas = ps.map((p, i) => {
+      const h = p.j.hier, hv = p.hv;
+      const zs = HZ.filter(([z]) => h.zonas[z][0] >= 0.15).map(([z, n]) => `${n} ${Math.round(100 * h.zonas[z][0])}%`).join(" · ");
+      const hoje = !comecou ? `<span class="muted">–</span>` : !hv ? `<span class="muted">${p.b?.naoEntrou ? "não entrou" : "–"}</span>`
+        : `<b style="color:${corDv((hv.rf ?? 1) - 1, 0.15)}">${hv.fga}</b> arr. <small>${hv.rf == null ? "" : `${num(hv.rf, 2)}× · pts ${num(hv.rp, 2)}×`}</small>${hv.rei ? " 👑" : hv.banco ? " ⇧ banco" : hv.volume ? ` <small style="color:var(--good)">volume</small>` : ""}`;
+      return `<tr><td><b>${esc(p.j.nome)}</b><small>${i + 1}º do time em arremessos · ${num(h.fga_j)} por jogo · ${zs}</small></td>
+        <td style="color:${corRk(h.rk_mat)}"><b>${h.rk_mat}º</b><small>aproveitamento ${pctS(h.mat, 1)}</small></td>
+        <td style="color:${corDv(h.hier)}"><b>${pctS(h.hier, 1)}</b><small>${h.rk_hier}º em volume</small></td>
+        <td style="color:${corDv(0.46 * h.efe, 0.02)}"><b>${pctS(0.46 * h.efe, 1)}</b><small>índice ${pctS(h.efe, 1)} · ${h.rk_efe}º</small></td>
+        <td>${hoje}</td></tr>`;
+    }).join("");
+    return `<div class="hq-time"><p class="hq-def"><b>${esc(t)}</b> <small class="muted">ataca contra ${esc(adv)} — ${esc(adv)} nos últimos 10 jogos:</small> ${zonasDef(ps)}</p>
+      <div class="tbl-wrap"><table class="hq-tab"><thead><tr><th>Jogador <small>(ordem = quem mais arremessa)</small></th><th>Matchup<small>1º = defesa mais fácil p/ ele</small></th><th>Hierarquia<small>arremessos vs normal</small></th><th>Pontos<small>esperado (medido)</small></th><th>Hoje<small>arremessos · × normal/min</small></th></tr></thead><tbody>${linhas}</tbody></table></div></div>`;
+  };
+  return `<details class="def-box hq-box" data-k="hier"${aberto("hier")}><summary class="muted">Matchup e hierarquia: quem a defesa favorece e quem está assumindo hoje</summary>
+    ${times.map(tabela).join("")}
+    <p class="hint"><b>Matchup</b> = quão bem a defesa adversária defende as zonas de onde ELE pontua (aproveitamento cedido por zona nos últimos 10 jogos ÷ liga, pesado pelos pontos dele em cada zona nos últimos 30); posição entre as 30 defesas, 1º = a mais fácil para ele (<span style="color:var(--good)">1º–10º</span> / <span style="color:var(--bad)">21º–30º</span>). <b>Hierarquia</b> = para onde a defesa empurra os arremessos (volume cedido por zona ÷ liga, pesado pelos arremessos dele): positivo = ele deve arremessar mais que o normal mesmo que o matchup seja ruim. <b>Pontos</b> = os dois juntos + lances livres, já encolhido pelo que se mediu (só 46% do índice aparece no jogo). Medido em 22,9 mil jogadores-jogo 2025-27: a defesa muda mesmo onde se arremessa e o aproveitamento, mas a linha da DK já precifica isso antes do jogo — serve para ler o jogo, não como vantagem pré-jogo. <b>Hoje</b>: arremessos e pontos por minuto ÷ o normal dele. 👑 <b>rei da noite</b> = arremessos E pontos ≥ 1,4× (8+ min, 5+ arremessos): no intervalo, quem está assim arremessa 1,06×, pontua 1,08× por minuto e joga 1,11× os minutos no 2º tempo, e explode (2º tempo ≥ 1,5× o normal) em 32% × 22% de quem está no ritmo; quente sem arremessar mais volta ao normal. ⇧ <b>banco</b> = reserva jogando 25%+ acima do esperado e produzindo (no 2º tempo joga 1,13× os minutos). A linha justa já usa o começo dele em pontos; o volume de arremessos não entra nela.</p></details>`;
 }
 
 // 14/11/2026 (pedido do usuário): quadro de consulta embaixo do Painel — o que cada defesa cede nos últimos 10 jogos
