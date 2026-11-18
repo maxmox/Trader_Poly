@@ -307,16 +307,41 @@ export function phiDe(tab, k, t, mu, aid) {
   for (const d of [0, -1, 1, -2, 2, -3, 3]) if (linha[fb + d] != null) { v = linha[fb + d]; break; }
   return (v ?? 1) * (dp.jogadores?.[aid]?.[i] ?? 1);
 }
+// Recalibração da chance ao vivo (18/11/2026, nba_pbp/recalibrar_chance.py → calibra_justa.json "recal_chance"):
+// a dispersão em volta da justa dava o Over BAIXO perto da justa (base grande, linha ,5 mais perto: pontos 38,8% ×
+// real 42,4%, PRA 40,8 × 44,0) e errava o Q4 com placar aberto (titular em quadra 24,5% × 32%; titular no banco alto).
+// Logística por estatística: logit(P) × (linha acima da justa) + faixa de tempo + estado (quadra/banco × titular) +
+// placar ≥ 15 (× quadra) + os mesmos no Q4 + falta < 0,5 / 0,5–1. Pares × ímpares: log-loss pontos 0,4591 → 0,4556,
+// PRA 0,4481 → 0,4428, Q4 0,4911 → 0,4811; nos 87 jogos do simulador (fora do ajuste) pontos real − modelo +3,1 → +1,3 pp.
+// ctx = {quadra, tit, mg}; só para uma estatística (combinações P+A etc. ficam sem).
+const lgt = (p) => { p = Math.min(0.997, Math.max(0.003, p)); return Math.log(p / (1 - p)); };
+function recalChance(tab, k, t, ctx, p, acima, rem) {
+  const w = tab?.recal_chance?.w?.[k];
+  if (!w || !ctx || !(t > 0)) return p;
+  const tb = t < 720 ? 0 : t < 1440 ? 1 : t < 1800 ? 2 : t < 2160 ? 3 : t < 2520 ? 4 : 5;
+  const qd = ctx.quadra ? 1 : 0, ti = ctx.tit ? 1 : 0, est = qd * 2 + ti, blow = Math.abs(ctx.mg ?? 0) >= 15 ? 1 : 0, q4 = tb >= 4 ? 1 : 0;
+  const lg = lgt(p);
+  const x = [lg, lg * (acima ? 1 : 0), ...[0, 1, 2, 3, 4, 5].map((i) => (tb === i ? 1 : 0)), ...[0, 1, 2].map((e) => (est === e ? 1 : 0)), blow, blow * qd,
+    ...[0, 1, 2].map((e) => q4 * (est === e ? 1 : 0)), q4 * blow, q4 * blow * qd, rem < 0.5 ? 1 : 0, rem >= 0.5 && rem < 1 ? 1 : 0];
+  const z = x.reduce((s, v, i) => s + v * (w[i] ?? 0), 0);
+  return 1 / (1 + Math.exp(-z));
+}
 // Chance de Over/Under numa linha L com o que ele já fez (feito) e o que falta (lista de [k, μ]); combinações somam
-// as variâncias. Devolve {over, under, push, dp}.
-export function chanceLinha(tab, aid, t, partes, feito, L) {
+// as variâncias. Com ctx (ao vivo) a chance passa pela recalibração. Devolve {over, under, push, dp}.
+export function chanceLinha(tab, aid, t, partes, feito, L, ctx = null) {
   const mu = partes.reduce((s, [, m]) => s + Math.max(m, 0.05), 0);
   const varr = partes.reduce((s, [k, m]) => s + phiDe(tab, k, t, Math.max(m, 0.05), aid) * Math.max(m, 0.05), 0);
   const phi = varr / mu;
   const alvo = L - feito;
   if (alvo < 0) return { over: 1, under: 0, push: 0, dp: Math.sqrt(varr) };
-  const over = chanceAcima(mu, phi, Math.floor(alvo) + 1);
-  const ateL = chanceAcima(mu, phi, Math.ceil(alvo)); // P(resto ≥ alvo)
+  let over = chanceAcima(mu, phi, Math.floor(alvo) + 1);
+  let ateL = chanceAcima(mu, phi, Math.ceil(alvo)); // P(resto ≥ alvo)
+  if (ctx && partes.length === 1) {
+    const k = partes[0][0], rem = partes[0][1], acima = L > feito + rem;
+    const o2 = recalChance(tab, k, t, ctx, over, acima, rem);
+    ateL = Number.isInteger(alvo) ? Math.max(o2, recalChance(tab, k, t, ctx, ateL, acima, rem)) : o2;
+    over = o2;
+  }
   const push = Number.isInteger(alvo) ? Math.max(0, ateL - over) : 0;
   return { over, under: Math.max(0, 1 - over - push), push, dp: Math.sqrt(varr) };
 }
@@ -324,9 +349,9 @@ export function chanceLinha(tab, aid, t, partes, feito, L) {
 // Simulador (18/11, pedido do usuário: "transforma a projeção em odd de Over e Under"): chance numa linha L para o
 // jogador do quadro congelado, a mesma conta da Casa × Painel (dispersão dele e da liga em volta da justa; PRA com a
 // dispersão própria). e = {feito, justa} do ctx; t = segundos de jogo.
-export function chanceJusta(aid, t, k, e, L) {
+export function chanceJusta(aid, t, k, e, L, ctx = null) {
   if (!e || e.justa == null || !PAINEL.cal) return null;
-  return chanceLinha(PAINEL.cal, aid, t, [[k, Math.max(e.justa - e.feito, 0)]], e.feito, L);
+  return chanceLinha(PAINEL.cal, aid, t, [[k, Math.max(e.justa - e.feito, 0)]], e.feito, L, ctx);
 }
 
 // Antes do jogo (11/11, nba_pbp/pre_jogo_chance.py): a chance pela dispersão com a linha como média PERDE da odd sem

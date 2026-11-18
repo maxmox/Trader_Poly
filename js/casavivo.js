@@ -107,14 +107,15 @@ function jogoHtml(g, s, linhas, d) {
   const quentes = quentesDoJogo(g, box);
   for (const j of g.jogadores) {
     const b = box[j.aid];
-    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), mg: margem(j.time), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
+    const ag = agoraDe(s?.plays || [], j.aid, b, rel, st);
+    est.set(j.aid, { b, ag, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), ag, { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), mg: margem(j.time), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
   }
   let sinais = [];
   try { sinais = sinaisJogo(g, s, d); } catch { /* sem sinais */ }
   const sinalDe = (aid, k) => sinais.find((x) => x.j.aid === aid && x.k === k);
   const idade = Math.round((Date.now() - Math.min(...linhas.map((r) => r.em || Date.now()))) / 60e3);
   const rows = linhas.map((r) => {
-    const { b, x } = est.get(r.j.aid);
+    const { b, ag, x } = est.get(r.j.aid);
     if (b?.dnp) return { r, fora: "não está jogando" };
     if ((b?.pf ?? 0) >= 6) return { r, fora: "eliminado (6 faltas)" };
     const partes = r.ks.map((k) => x.est[k]);
@@ -130,7 +131,7 @@ function jogoHtml(g, s, linhas, d) {
     const antes = st?.type?.state !== "in" && st?.type?.state !== "post";
     const pre = antes && dk ? chanceLinhaPre(d.cal, r.j.aid, r.k, dk.l, dk.over, r.L) : null;
     // antes do jogo sem linha da DK não há como estimar vantagem (a dispersão sozinha perdeu da DK): sem chance
-    const ch = antes ? pre || { semDK: true, dp: chanceLinha(d.cal, r.j.aid, 0, mus, feito, r.L).dp } : chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L);
+    const ch = antes ? pre || { semDK: true, dp: chanceLinha(d.cal, r.j.aid, 0, mus, feito, r.L).dp } : chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L, ag ? { quadra: ag.quadra, tit: !!b?.starter, mg: margem(r.j.time) } : null);
     const evO = r.O && !ch.semDK ? ch.over * r.O + ch.push - 1 : null, evU = r.U && !ch.semDK ? ch.under * r.U + ch.push - 1 : null;
     return { r, feito, justa, sn, ch, evO, evU, ks };
   });

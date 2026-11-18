@@ -64,7 +64,7 @@ const linhaPadrao = (e) => (e?.justa == null ? null : Math.max(Math.floor(e.just
 function oddsLinha(aid, k, L) {
   const j = S.q?.ctx?.jogadores?.[aid], e = j?.est?.[k];
   if (!e || e.justa == null || L == null) return null;
-  const c = chanceJusta(aid, S.q.m.t, k, e, L);
+  const c = chanceJusta(aid, S.q.m.t, k, e, L, { quadra: j.quadra, tit: j.tit, mg: j.margem });
   if (!c) return null;
   const est = estDe(j), rem = e.justa - e.feito;
   const pO = recal(S.q.m.k, k, est, rem, c.over);

@@ -59,7 +59,7 @@ for (const q of idx.jogos) {
         for (const d of [-1, 0, 1]) {
           const Lm = Math.floor(e.justa) + 0.5 + d;
           if (Lm < e.feito + 0.5) continue;
-          const c = P.chanceJusta(aid, m.t, k, e, Lm);
+          const c = P.chanceJusta(aid, m.t, k, e, Lm, { quadra: j.quadra, tit: j.tit, mg: j.margem }); // já com a recalibração da base grande
           if (c) LIN.push({ m: m.k, k, o: c.over, y: b[k] > Lm ? 1 : 0, est: `${j.quadra ? 1 : 0}${j.tit ? 1 : 0}`, rem: e.justa - e.feito });
         }
       }
