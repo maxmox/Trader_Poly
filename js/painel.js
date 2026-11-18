@@ -863,8 +863,12 @@ function jogoHtml(g, s) {
   PAINEL.ctx = {
     data: new Date().toISOString().slice(0, 10), jogo_id: g.id, jogo: `${g.fora} @ ${g.casa}`, quando: quandoTxt(st), t: Math.round(rel.t), chance,
     sinais: Object.fromEntries(sinais.map((x) => [`${x.j.aid}|${x.k}`, x])),
-    jogadores: Object.fromEntries(Object.values(porTime).flat().map(({ j, b, x, ins }) => [j.aid, {
+    jogadores: Object.fromEntries(Object.values(porTime).flat().map(({ j, b, x, ins, quadra, hv }) => [j.aid, {
       nome: j.nome, time: j.time, min: b?.min ?? 0, margem: margemDe(j.time), ins,
+      // 18/11 (testes de estratégia contra a justa): o que mais o quadro sabia do jogador
+      minAgora: +x.minAgora.toFixed(1), minResto: +x.minResto.toFixed(1), minEsp: +(x.minEsp || 0).toFixed(1), pf: b?.pf ?? 0, tit: !!b?.starter,
+      quadra, naoEntrou: !!b?.naoEntrou, fga: contHoje[String(j.aid)]?.fga ?? 0, tpa: contHoje[String(j.aid)]?.tpa ?? 0, fta: contHoje[String(j.aid)]?.fta ?? 0,
+      rf: hv?.rf ?? null, rp: hv?.rp ?? null, rank: estrelasDe(g)[j.aid] ?? null, conf: j.min_conf ?? null, pos: j.pos ?? null,
       est: Object.fromEntries(ESTATS.map(([k]) => [k, { feito: x.est[k].feito, justa: x.est[k].justa == null ? null : +x.est[k].justa.toFixed(2), pre: x.est[k].pre ?? null, deveria: x.est[k].deveria == null ? null : +x.est[k].deveria.toFixed(2) }])),
     }])),
   };
