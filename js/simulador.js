@@ -10,7 +10,7 @@ import { esc } from "./formato.js";
 import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes } from "./painel.js";
 import { contarAte, segundosPorPeriodo, tempoDe } from "./jogada.js";
 
-const MOMENTOS = [
+export const MOMENTOS = [
   { k: "q1m", nome: "Q1 · 6:00", t: 360, p: 1 },
   { k: "q1f", nome: "fim do Q1", t: 720, p: 1, fim: true },
   { k: "q2m", nome: "Q2 · 6:00", t: 1080, p: 2 },
@@ -26,8 +26,19 @@ const num = (v, c = 1) => (v == null || !isFinite(v) ? "–" : Number(v).toFixed
 const u = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), 2)} u`;
 const nomeK = (k) => ESTATS.find((e) => e[0] === k)?.[1] ?? k;
 const dataBR = (d) => d.split("-").reverse().slice(0, 2).join("/");
+// 18/11: pagamento pela taxa base (data/padroes/sim/base_lado.json, scripts/sim_base_lado.mjs): a justa é média e o final
+// fica abaixo dela mais da metade das vezes (Under 53–57% até o intervalo, 72% no Q4 6:00) → cada lado paga 1 ÷ a chance
+// base dele naquele momento e estatística; "sempre o mesmo lado" fica ≈ 0 e o lucro mede leitura, não o lado.
+const chanceBase = (mk, k, lado) => { const pO = S.base?.[`${mk}|${k}`]?.[0] ?? 0.5; return lado === "O" ? pO : 1 - pO; };
+const oddDe = (mk, k, lado) => Math.round(100 / chanceBase(mk, k, lado)) / 100;
+const odd2 = (v) => num(v, 2);
+// aposta com a odd da base (as antigas, de antes de 18/11, foram pagas 1:1: refeitas aqui)
+function pagar(a) {
+  const odd = a.odd ?? oddDe(a.momento, a.k, a.lado);
+  return { ...a, odd, p: chanceBase(a.momento, a.k, a.lado), lucro: a.res === "G" ? a.stake * (odd - 1) : a.res === "P" ? -a.stake : 0 };
+}
 
-const S = { el: null, espn: null, indice: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
+const S = { el: null, espn: null, indice: null, base: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
 
 // ---------- armazenamento (neste navegador) ----------
 function ler() {
@@ -185,7 +196,7 @@ function desenharApostas(msg = "") {
       <b class="sim-stake">${num(STAKES[i], STAKES[i] % 1 ? 1 : 0)} u</b>
       <select class="sim-j" aria-label="Jogador"${trava}><option value="">— sem aposta —</option>${ops.replace(`value="${x.aid}"`, `value="${x.aid}" selected`)}</select>
       <select class="sim-k" aria-label="Estatística"${trava}>${ESTATS.map(([k, n]) => `<option value="${k}"${k === x.k ? " selected" : ""}>${n}</option>`).join("")}</select>
-      <span class="sim-lado"><button type="button" data-lado="O" aria-pressed="${x.lado === "O"}"${trava}>Over</button><button type="button" data-lado="U" aria-pressed="${x.lado === "U"}"${trava}>Under</button></span>
+      <span class="sim-lado"><button type="button" data-lado="O" aria-pressed="${x.lado === "O"}"${trava}>Over <small>@${odd2(oddDe(S.q.m.k, x.k, "O"))}</small></button><button type="button" data-lado="U" aria-pressed="${x.lado === "U"}"${trava}>Under <small>@${odd2(oddDe(S.q.m.k, x.k, "U"))}</small></button></span>
       <input class="sim-palp" type="text" inputmode="decimal" autocomplete="off" placeholder="seu número (opcional)" value="${esc(x.palp)}"${trava}>
       ${S.salvo ? "" : `<button type="button" class="sim-limpa" title="limpar esta aposta">×</button>`}
       <div class="sim-info">${infoSlot(x)}</div></div>`).join("");
@@ -194,7 +205,7 @@ function desenharApostas(msg = "") {
     ? `<span class="sim-ok">✓ Registrado no placar</span><button type="button" id="sim-ver">Ver gabarito</button><button type="button" id="sim-prox" class="prim">Próximo quadro →</button>`
     : `<button type="button" id="sim-salvar" class="prim">${nAp ? `Salvar ${nAp} aposta${nAp > 1 ? "s" : ""}` : "Não apostar neste quadro"}</button>`;
   el.innerHTML = `<h2 style="margin:0 0 4px">Suas apostas neste quadro</h2>
-    <p class="hint" style="margin:0 0 6px">Bata a nossa linha justa: clique numa célula do quadro (ou escolha abaixo), marque Over ou Under. A linha é a justa deste momento; pagamento 1:1. Até 3 apostas de 1 u cada, ou nenhuma. O "seu número" é opcional: serve para medir se a sua estimativa erra menos que a nossa.</p>
+    <p class="hint" style="margin:0 0 6px">Bata a nossa linha justa: clique numa célula do quadro (ou escolha abaixo), marque Over ou Under. A linha é a justa deste momento. Cada lado paga a odd justa da taxa base (a justa é média: o final fica abaixo dela mais da metade das vezes, por isso o Under paga menos); escolher sempre o mesmo lado dá ≈ 0. Até 3 apostas de 1 u cada, ou nenhuma. O "seu número" é opcional: serve para medir se a sua estimativa erra menos que a nossa.</p>
     ${slots}<div class="sim-acoes">${acoes}<span class="muted">${esc(msg)}</span></div>`;
 }
 
@@ -218,11 +229,12 @@ function salvar() {
     const final = !b || b.dnp ? null : b[x.k];
     const d = final == null ? null : x.lado === "O" ? final - linha : linha - final;
     const res = d == null ? "A" : d > 0 ? "G" : d < 0 ? "P" : "D";
+    const odd = oddDe(m.k, x.k, x.lado);
     const palp = x.palp === "" ? null : Number(String(x.palp).replace(",", "."));
     D.apostas.push({
       ...base, id: `${Date.now()}-${i}`, aid: x.aid, nome: j.nome, time: j.time, adv: j.time === g.fora ? g.casa : g.fora,
       k: x.k, lado: x.lado, stake: x.stake, linha, pre: e.pre, feito: e.feito, deveria: e.deveria, min: j.min, margem: j.margem,
-      palpite: palp != null && isFinite(palp) ? palp : null, final, res, lucro: res === "G" ? x.stake : res === "P" ? -x.stake : 0,
+      palpite: palp != null && isFinite(palp) ? palp : null, final, res, odd, lucro: res === "G" ? x.stake * (odd - 1) : res === "P" ? -x.stake : 0,
     });
   });
   D.quadros.push({ ...base, n: ap.length });
@@ -237,10 +249,10 @@ function salvar() {
 function gabarito() {
   const el = S.el.querySelector("#sim-gab");
   const { g, ctx, final, placarFinal } = S.q;
-  const minhas = ler().apostas.filter((a) => a.jogo_id === S.q.id && a.momento === S.q.m);
+  const minhas = ler().apostas.filter((a) => a.jogo_id === S.q.id && a.momento === S.q.m.k).map(pagar);
   const resTxt = (a) => (a.res === "G" ? `<span class="sim-g">✓ acertou</span>` : a.res === "P" ? `<span class="sim-p">✗ errou</span>` : a.res === "A" ? `<span class="muted">anulada (não jogou)</span>` : `<span class="muted">empate</span>`);
   const tabMinhas = minhas.length ? `<table class="sim-tab"><thead><tr><th>Aposta</th><th>Linha</th><th>Final</th><th>Resultado</th><th>Lucro</th></tr></thead><tbody>${minhas.map((a) =>
-    `<tr><td><b>${esc(a.nome)}</b> ${nomeK(a.k)} ${a.lado === "O" ? "Over" : "Under"} <small class="muted">${num(a.stake, a.stake % 1 ? 1 : 0)} u${a.palpite != null ? ` · seu número ${num(a.palpite)}` : ""}</small></td><td>${num(a.linha)}</td><td><b>${a.final ?? "–"}</b></td><td>${resTxt(a)}</td><td>${u(a.lucro)}</td></tr>`).join("")}</tbody></table>`
+    `<tr><td><b>${esc(a.nome)}</b> ${nomeK(a.k)} ${a.lado === "O" ? "Over" : "Under"} @${odd2(a.odd)} <small class="muted">${num(a.stake, a.stake % 1 ? 1 : 0)} u${a.palpite != null ? ` · seu número ${num(a.palpite)}` : ""}</small></td><td>${num(a.linha)}</td><td><b>${a.final ?? "–"}</b></td><td>${resTxt(a)}</td><td>${u(a.lucro)}</td></tr>`).join("")}</tbody></table>`
     : `<p class="muted">Sem aposta neste quadro.</p>`;
   // todos os jogadores: final × justa (verde = terminou acima da justa → Over; vermelho = abaixo → Under)
   const porTime = {};
@@ -284,8 +296,9 @@ function agrupar(L, f, ordem) {
   for (const a of L) {
     const k = f(a);
     if (k == null) continue;
-    const x = m.get(k) || { n: 0, g: 0, p: 0, uu: 0, lucro: 0 };
+    const x = m.get(k) || { n: 0, g: 0, p: 0, uu: 0, lucro: 0, esp: 0 };
     x.n++; if (a.res === "G") x.g++; if (a.res === "P") x.p++;
+    if (a.res === "G" || a.res === "P") x.esp += a.p;
     x.uu += a.stake; x.lucro += a.lucro;
     m.set(k, x);
   }
@@ -296,14 +309,16 @@ function agrupar(L, f, ordem) {
 function linhaPlacar(rot, x) {
   const ac = x.g + x.p ? x.g / (x.g + x.p) : null, roi = x.uu ? x.lucro / x.uu : 0;
   const cor = x.lucro > 0 ? "sim-g" : x.lucro < 0 ? "sim-p" : "";
-  return `<tr><td>${esc(rot)}</td><td>${x.n}</td><td>${x.g}–${x.p}</td><td>${ac == null ? "–" : `${Math.round(100 * ac)}%`}</td><td class="${cor}">${u(x.lucro)}</td><td class="${cor}">${x.uu ? `${roi > 0 ? "+" : roi < 0 ? "−" : ""}${Math.round(Math.abs(100 * roi))}%` : "–"}</td></tr>`;
+  const base = x.g + x.p ? x.esp / (x.g + x.p) : null;
+  return `<tr><td>${esc(rot)}</td><td>${x.n}</td><td>${x.g}–${x.p}</td><td>${ac == null ? "–" : `${Math.round(100 * ac)}%`}<small>base ${base == null ? "–" : `${Math.round(100 * base)}%`}</small></td><td class="${cor}">${u(x.lucro)}</td><td class="${cor}">${x.uu ? `${roi > 0 ? "+" : roi < 0 ? "−" : ""}${Math.round(Math.abs(100 * roi))}%` : "–"}</td></tr>`;
 }
 function desenharPlacar() {
   const el = S.el.querySelector("#sim-placar");
   const D = ler();
-  const L = D.apostas.filter((a) => a.res !== "A");
+  const L = D.apostas.filter((a) => a.res !== "A").map(pagar);
   if (!D.quadros.length) { el.innerHTML = `<div class="panel"><h2 style="margin:0">Placar do simulador</h2><p class="muted">Nenhum quadro jogado ainda.</p></div>`; return; }
-  const tot = agrupar(L, () => "total")[0]?.[1] || { n: 0, g: 0, p: 0, uu: 0, lucro: 0 };
+  const tot = agrupar(L, () => "total")[0]?.[1] || { n: 0, g: 0, p: 0, uu: 0, lucro: 0, esp: 0 };
+  const baseTot = tot.g + tot.p ? Math.round((100 * tot.esp) / (tot.g + tot.p)) : null;
   const sem = D.quadros.filter((q) => !q.n).length;
   const cp = L.filter((a) => a.palpite != null && a.final != null);
   const palpH = cp.length ? (() => {
@@ -317,12 +332,12 @@ function desenharPlacar() {
     const rows = agrupar(L, f, ordem);
     return rows.length ? `<div><h3 class="sim-h3">${tit}</h3><table class="sim-tab"><thead><tr><th></th><th>Ap.</th><th>G–P</th><th>Acerto</th><th>Lucro</th><th>ROI</th></tr></thead><tbody>${rows.map(([k, x]) => linhaPlacar(k, x)).join("")}</tbody></table></div>` : "";
   }).join("");
-  const ult = D.apostas.slice(-15).reverse().map((a) => `<tr><td><small class="muted">${dataBR(a.data)} · ${esc(a.jogo)} · ${esc(MOM[a.momento]?.nome || "")}</small><br><b>${esc(a.nome)}</b> ${nomeK(a.k)} ${a.lado === "O" ? "Over" : "Under"} ${num(a.linha)} <small class="muted">${num(a.stake, a.stake % 1 ? 1 : 0)} u · tinha ${a.feito}</small></td><td><b>${a.final ?? "–"}</b></td><td>${a.res === "G" ? `<span class="sim-g">✓</span>` : a.res === "P" ? `<span class="sim-p">✗</span>` : `<span class="muted">${a.res === "A" ? "anulada" : "empate"}</span>`}</td><td>${u(a.lucro)}</td></tr>`).join("");
+  const ult = D.apostas.slice(-15).reverse().map(pagar).map((a) => `<tr><td><small class="muted">${dataBR(a.data)} · ${esc(a.jogo)} · ${esc(MOM[a.momento]?.nome || "")}</small><br><b>${esc(a.nome)}</b> ${nomeK(a.k)} ${a.lado === "O" ? "Over" : "Under"} ${num(a.linha)} @${odd2(a.odd)} <small class="muted">${num(a.stake, a.stake % 1 ? 1 : 0)} u · tinha ${a.feito}</small></td><td><b>${a.final ?? "–"}</b></td><td>${a.res === "G" ? `<span class="sim-g">✓</span>` : a.res === "P" ? `<span class="sim-p">✗</span>` : `<span class="muted">${a.res === "A" ? "anulada" : "empate"}</span>`}</td><td>${u(a.lucro)}</td></tr>`).join("");
   el.innerHTML = `<div class="panel"><h2 style="margin:0 0 6px">Placar do simulador</h2>
     <div class="sim-resumo">
       <div><small class="muted">quadros</small><b>${D.quadros.length}</b><small class="muted">${sem} sem aposta</small></div>
       <div><small class="muted">apostas</small><b>${tot.n}</b><small class="muted">${tot.g} acertos · ${tot.p} erros</small></div>
-      <div><small class="muted">acerto</small><b>${ac == null ? "–" : `${ac}%`}</b><small class="muted">contra a linha justa (1:1)</small></div>
+      <div><small class="muted">acerto</small><b>${ac == null ? "–" : `${ac}%`}</b><small class="muted">base dos lados que você escolheu ${baseTot == null ? "–" : `${baseTot}%`}</small></div>
       <div><small class="muted">resultado</small><b class="${tot.lucro > 0 ? "sim-g" : tot.lucro < 0 ? "sim-p" : ""}">${u(tot.lucro)}</b><small class="muted">ROI ${tot.uu ? `${tot.lucro < 0 ? "−" : tot.lucro > 0 ? "+" : ""}${Math.abs(Math.round((100 * tot.lucro) / tot.uu))}%` : "–"} em ${num(tot.uu, 1)} u</small></div>
       ${palpH}
     </div>
@@ -425,6 +440,7 @@ export async function mostrarSimulador(el, espn) {
   el.innerHTML = `<p class="muted">carregando a base do simulador…</p>`;
   try {
     S.indice = await json("data/padroes/sim/indice.json");
+    S.base = (await json("data/padroes/sim/base_lado.json").catch(() => null))?.base || null;
   } catch (e) {
     el.innerHTML = `<p class="erro">Base do simulador indisponível (${esc(e.message)}).</p>`;
     S.el = null;
