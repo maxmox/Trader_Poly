@@ -429,6 +429,12 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
       const m0 = rot ? rot.min : base;
       if (c) minResto = Math.min(m0 * cal.tab.minutos[c[0]][c[1]][c[2]], (JOGO_S - rel.t) / 60);
       else minResto = base > 0 ? m0 * (1 + (q4 / base) * (ajQ4 - 1)) : 0; // placar no Q4 só sobre a parte do Q4
+      // 18/11/2026 (nba_pbp/calibrar_estado.py): estado AGORA — em quadra/banco × titular × placar já aberto (|placar| ≥ 15).
+      // Corrigiu os erros que o teste "eu contra a justa" achou (Q3 6:00 titular no banco −1,5 → −0,3 min; reserva com
+      // o placar aberto +1,5 → +0,4; Q2 6:00 reserva no banco −1,0 → 0; viés médio por estado 0,43 → 0,18 min). Fora das viradas
+      // de quarto (fim do Q1, intervalo, fim do Q3): ali a base marca 'em quadra' quem COMEÇA o quarto seguinte (o site não sabe).
+      const fe = c && agora && rel.t % 720 !== 0 && cal.tab.estado?.f ? cal.tab.estado.f[c[0]]?.[agora.quadra ? 1 : 0]?.[box?.starter ? 1 : 0]?.[Math.abs(cal.mg ?? cal.pm ?? 0) >= (cal.tab.estado.blow ?? 15) ? 1 : 0] : null;
+      if (fe) minResto = Math.min(minResto * fe, (JOGO_S - rel.t) / 60);
     }
   }
   const minAgora = minEsp * Math.min(1, rel.t / JOGO_S);
@@ -637,7 +643,7 @@ export function sinaisJogo(g, s, d) {
     if (!b || b.dnp || b.pf >= 6) continue;
     const minEsp = minEspDe(j);
     const mg = margemDe(j.time);
-    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]), agoraDe(s.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, mg, rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
+    js.push({ j, b, mg, x: estimar(j, b, rel, ajusteQ4(minEsp, mg, rel, d.pol?.times?.[j.time]), agoraDe(s.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, mg, rel), mg: mg, rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
   }
   const cen = cenarioTime(d.tim, rel, js.map(({ j, b, x }) => ({ aid: j.aid, time: j.time, tit: b.starter, est: x.est })));
   for (const { j, b, mg, x } of js) {
@@ -838,7 +844,7 @@ function jogoHtml(g, s) {
     const ag = agoraDe(plays, j.aid, b, rel, st);
     const rot = rotacaoAgora(j, rel, ag);
     const rinfo = rotacaoInfo(j, rel, ag);
-    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), ag, { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] });
+    const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), ag, { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), mg: margem, rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] });
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
     const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;

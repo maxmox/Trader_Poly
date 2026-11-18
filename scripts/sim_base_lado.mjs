@@ -47,9 +47,13 @@ for (const q of idx.jogos) {
         if (e.justa == null) continue;
         const L = Math.round(e.justa * 10) / 10;
         if (b[k] === L) continue;
-        const c = (cont[`${m.k}|${k}`] ||= [0, 0]);
-        c[0]++;
-        if (b[k] > L) c[1]++;
+        // por momento × estatística e, mais fino, × estado (em quadra/banco × titular/reserva): no Q4 6:00 quem está no
+        // banco quase não passa mais da justa — sem separar, "em quadra → Over" pagava +36% sem ler nada (18/11)
+        for (const ch of [`${m.k}|${k}`, `${m.k}|${k}|${j.quadra ? 1 : 0}${j.tit ? 1 : 0}`]) {
+          const c = (cont[ch] ||= [0, 0]);
+          c[0]++;
+          if (b[k] > L) c[1]++;
+        }
       }
     }
   }
@@ -57,4 +61,4 @@ for (const q of idx.jogos) {
 const base = Object.fromEntries(Object.entries(cont).map(([ch, [n, o]]) => [ch, [Math.round((o / n) * 1e4) / 1e4, n]]));
 fs.writeFileSync(path.join(SITE, "data/padroes/sim/base_lado.json"), JSON.stringify({ gerado_em: new Date().toISOString(), jogos, base }));
 console.log(`base_lado.json: ${jogos} jogos, ${Object.keys(base).length} células`);
-for (const m of MOMENTOS) console.log(m.nome.padEnd(10), ["pts", "reb", "ast", "tpm", "pra"].map((k) => `${k} ${Math.round(100 * (base[`${m.k}|${k}`]?.[0] ?? 0))}%`).join("  "));
+for (const m of MOMENTOS) console.log(m.nome.padEnd(10), ["pts", "reb", "ast", "tpm", "pra"].map((k) => `${k} ${Math.round(100 * (base[`${m.k}|${k}`]?.[0] ?? 0))}%`).join("  "), "| pts quadra·tit/quadra·res/banco·tit/banco·res", ["11", "10", "01", "00"].map((e) => `${Math.round(100 * (base[`${m.k}|pts|${e}`]?.[0] ?? 0))}%`).join("/"));

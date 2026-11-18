@@ -29,13 +29,20 @@ const dataBR = (d) => d.split("-").reverse().slice(0, 2).join("/");
 // 18/11: pagamento pela taxa base (data/padroes/sim/base_lado.json, scripts/sim_base_lado.mjs): a justa é média e o final
 // fica abaixo dela mais da metade das vezes (Under 53–57% até o intervalo, 72% no Q4 6:00) → cada lado paga 1 ÷ a chance
 // base dele naquele momento e estatística; "sempre o mesmo lado" fica ≈ 0 e o lucro mede leitura, não o lado.
-const chanceBase = (mk, k, lado) => { const pO = S.base?.[`${mk}|${k}`]?.[0] ?? 0.5; return lado === "O" ? pO : 1 - pO; };
-const oddDe = (mk, k, lado) => Math.round(100 / chanceBase(mk, k, lado)) / 100;
+// 18/11: e por estado (em quadra/banco × titular/reserva) quando a célula tem 100+ casos — no Q4 6:00 quem está no banco
+// quase não passa mais da justa; sem separar, "em quadra → Over" pagava muito sem leitura nenhuma
+const chanceBase = (mk, k, lado, est) => {
+  const fino = est != null ? S.base?.[`${mk}|${k}|${est}`] : null;
+  const pO = (fino && fino[1] >= 100 ? fino[0] : null) ?? S.base?.[`${mk}|${k}`]?.[0] ?? 0.5;
+  return lado === "O" ? pO : 1 - pO;
+};
+const oddDe = (mk, k, lado, est) => Math.round(100 / chanceBase(mk, k, lado, est)) / 100;
+const estDe = (j) => (j ? `${j.quadra ? 1 : 0}${j.tit ? 1 : 0}` : null);
 const odd2 = (v) => num(v, 2);
 // aposta com a odd da base (as antigas, de antes de 18/11, foram pagas 1:1: refeitas aqui)
 function pagar(a) {
-  const odd = a.odd ?? oddDe(a.momento, a.k, a.lado);
-  return { ...a, odd, p: chanceBase(a.momento, a.k, a.lado), lucro: a.res === "G" ? a.stake * (odd - 1) : a.res === "P" ? -a.stake : 0 };
+  const odd = a.odd ?? oddDe(a.momento, a.k, a.lado, a.estado);
+  return { ...a, odd, p: chanceBase(a.momento, a.k, a.lado, a.estado), lucro: a.res === "G" ? a.stake * (odd - 1) : a.res === "P" ? -a.stake : 0 };
 }
 
 const S = { el: null, espn: null, indice: null, base: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
@@ -196,7 +203,7 @@ function desenharApostas(msg = "") {
       <b class="sim-stake">${num(STAKES[i], STAKES[i] % 1 ? 1 : 0)} u</b>
       <select class="sim-j" aria-label="Jogador"${trava}><option value="">— sem aposta —</option>${ops.replace(`value="${x.aid}"`, `value="${x.aid}" selected`)}</select>
       <select class="sim-k" aria-label="Estatística"${trava}>${ESTATS.map(([k, n]) => `<option value="${k}"${k === x.k ? " selected" : ""}>${n}</option>`).join("")}</select>
-      <span class="sim-lado"><button type="button" data-lado="O" aria-pressed="${x.lado === "O"}"${trava}>Over <small>@${odd2(oddDe(S.q.m.k, x.k, "O"))}</small></button><button type="button" data-lado="U" aria-pressed="${x.lado === "U"}"${trava}>Under <small>@${odd2(oddDe(S.q.m.k, x.k, "U"))}</small></button></span>
+      <span class="sim-lado"><button type="button" data-lado="O" aria-pressed="${x.lado === "O"}"${trava}>Over <small>@${odd2(oddDe(S.q.m.k, x.k, "O", estDe(S.q.ctx.jogadores[x.aid])))}</small></button><button type="button" data-lado="U" aria-pressed="${x.lado === "U"}"${trava}>Under <small>@${odd2(oddDe(S.q.m.k, x.k, "U", estDe(S.q.ctx.jogadores[x.aid])))}</small></button></span>
       <input class="sim-palp" type="text" inputmode="decimal" autocomplete="off" placeholder="seu número (opcional)" value="${esc(x.palp)}"${trava}>
       ${S.salvo ? "" : `<button type="button" class="sim-limpa" title="limpar esta aposta">×</button>`}
       <div class="sim-info">${infoSlot(x)}</div></div>`).join("");
@@ -229,12 +236,13 @@ function salvar() {
     const final = !b || b.dnp ? null : b[x.k];
     const d = final == null ? null : x.lado === "O" ? final - linha : linha - final;
     const res = d == null ? "A" : d > 0 ? "G" : d < 0 ? "P" : "D";
-    const odd = oddDe(m.k, x.k, x.lado);
+    const estado = estDe(j);
+    const odd = oddDe(m.k, x.k, x.lado, estado);
     const palp = x.palp === "" ? null : Number(String(x.palp).replace(",", "."));
     D.apostas.push({
       ...base, id: `${Date.now()}-${i}`, aid: x.aid, nome: j.nome, time: j.time, adv: j.time === g.fora ? g.casa : g.fora,
       k: x.k, lado: x.lado, stake: x.stake, linha, pre: e.pre, feito: e.feito, deveria: e.deveria, min: j.min, margem: j.margem,
-      palpite: palp != null && isFinite(palp) ? palp : null, final, res, odd, lucro: res === "G" ? x.stake * (odd - 1) : res === "P" ? -x.stake : 0,
+      palpite: palp != null && isFinite(palp) ? palp : null, final, res, odd, estado, lucro: res === "G" ? x.stake * (odd - 1) : res === "P" ? -x.stake : 0,
     });
   });
   D.quadros.push({ ...base, n: ap.length });

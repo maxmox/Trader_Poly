@@ -107,7 +107,7 @@ function jogoHtml(g, s, linhas, d) {
   const quentes = quentesDoJogo(g, box);
   for (const j of g.jogadores) {
     const b = box[j.aid];
-    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
+    est.set(j.aid, { b, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), agoraDe(s?.plays || [], j.aid, b, rel, st), { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), mg: margem(j.time), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
   }
   let sinais = [];
   try { sinais = sinaisJogo(g, s, d); } catch { /* sem sinais */ }
