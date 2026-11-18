@@ -1,6 +1,6 @@
 // Simulador do Painel (padroes.html, aba "Simulador", 18/11/2026, pedido do usuário): o MESMO quadro do Painel,
 // congelado num momento de um jogo já encerrado (Q1 6:00, fim do Q1, Q2 6:00, intervalo, Q3 6:00, Q4 6:00). O exercício
-// é bater a nossa linha justa: até 3 apostas por quadro (2 u, 1,5 u e 1 u; ou nenhuma), Over/Under contra a justa daquele
+// é bater a nossa linha justa: até 3 apostas por quadro (1 u cada desde 18/11, pedido do usuário; ou nenhuma), Over/Under contra a justa daquele
 // momento, pagamento 1:1. Depois de salvar: ver o gabarito ou ir ao próximo quadro (sorteado entre os jogos do time
 // escolhido). Placar com acertos e erros por estatística, momento, lado, tamanho, time, ritmo e placar.
 // Base: data/padroes/sim/ (nba_pbp/simulador_base.py) = análise do dia na ÚLTIMA versão gravada ANTES do início de cada
@@ -19,7 +19,7 @@ const MOMENTOS = [
   { k: "q4m", nome: "Q4 · 6:00", t: 2520, p: 4 },
 ];
 const MOM = Object.fromEntries(MOMENTOS.map((m) => [m.k, m]));
-const STAKES = [2, 1.5, 1];
+const STAKES = [1, 1, 1]; // 18/11: as 3 com a mesma unidade (antes 2 / 1,5 / 1)
 const CHAVE = "traderpoly.simulador";
 const CHAVE_FILTRO = "traderpoly.sim.filtro";
 const num = (v, c = 1) => (v == null || !isFinite(v) ? "–" : Number(v).toFixed(c).replace(".", ","));
@@ -194,7 +194,7 @@ function desenharApostas(msg = "") {
     ? `<span class="sim-ok">✓ Registrado no placar</span><button type="button" id="sim-ver">Ver gabarito</button><button type="button" id="sim-prox" class="prim">Próximo quadro →</button>`
     : `<button type="button" id="sim-salvar" class="prim">${nAp ? `Salvar ${nAp} aposta${nAp > 1 ? "s" : ""}` : "Não apostar neste quadro"}</button>`;
   el.innerHTML = `<h2 style="margin:0 0 4px">Suas apostas neste quadro</h2>
-    <p class="hint" style="margin:0 0 6px">Bata a nossa linha justa: clique numa célula do quadro (ou escolha abaixo), marque Over ou Under. A linha é a justa deste momento; pagamento 1:1. Até 3 apostas (2 u, 1,5 u e 1 u) ou nenhuma. O "seu número" é opcional: serve para medir se a sua estimativa erra menos que a nossa.</p>
+    <p class="hint" style="margin:0 0 6px">Bata a nossa linha justa: clique numa célula do quadro (ou escolha abaixo), marque Over ou Under. A linha é a justa deste momento; pagamento 1:1. Até 3 apostas de 1 u cada, ou nenhuma. O "seu número" é opcional: serve para medir se a sua estimativa erra menos que a nossa.</p>
     ${slots}<div class="sim-acoes">${acoes}<span class="muted">${esc(msg)}</span></div>`;
 }
 
@@ -274,7 +274,6 @@ const DIMS = [
   ["Estatística", (a) => nomeK(a.k), ESTATS.map(([, n]) => n)],
   ["Momento", (a) => MOM[a.momento]?.nome, MOMENTOS.map((m) => m.nome)],
   ["Lado", (a) => (a.lado === "O" ? "Over" : "Under"), ["Over", "Under"]],
-  ["Tamanho", (a) => `${num(a.stake, a.stake % 1 ? 1 : 0)} u`, ["2 u", "1,5 u", "1 u"]],
   ["Ritmo dele no momento", ritmoDe, ["frio (≥ 15% abaixo)", "no ritmo", "quente (≥ 15% acima)", "pouca base (começo)"]],
   ["Placar do time dele", placarDe, ["perdendo 16+", "perdendo 7–15", "parelho (até 6)", "ganhando 7–15", "ganhando 16+"]],
   ["Justa × linha pré", comJusta, null],

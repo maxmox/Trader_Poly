@@ -599,9 +599,12 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 .sim-resumo { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 6px 0 14px; }
 .sim-resumo > div { display: grid; }
 .sim-resumo b { font-family: var(--display); font-size: 22px; }
-.sim-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px 18px; }
+.sim-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px 22px; }
+.sim-grade > div { min-width: 0; overflow-x: auto; }
 .sim-h3 { margin: 10px 0 4px; font-size: 14px; }
-.sim-tab { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sim-tab { width: 100%; min-width: 0; border-collapse: collapse; font-size: 13px; }
+.sim-tab th { white-space: nowrap; }
+.sim-tab-gab { min-width: 760px; }
 .sim-tab th, .sim-tab td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: top; }
 .sim-tab th:first-child, .sim-tab td:first-child { text-align: left; }
 .sim-tab td small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; }
