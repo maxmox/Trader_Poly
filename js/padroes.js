@@ -6,6 +6,7 @@
 import { $, esc } from "./formato.js";
 import { mostrarPainel, seloMin, confMin, matchupChip } from "./painel.js";
 import { mostrarCasaVivo } from "./casavivo.js";
+import { mostrarSimulador } from "./simulador.js";
 import { ouvirCampeon } from "./campeon.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra, consertarResumo } from "./jogada.js";
 
@@ -249,6 +250,8 @@ function trocarAba(nova) {
   $("#jogos").hidden = nova !== "jog";
   $("#painel").hidden = nova !== "painel";
   $("#casa").hidden = nova !== "casa";
+  $("#sim").hidden = nova !== "sim";
+  if (nova === "sim") mostrarSimulador($("#sim"), espn); // 18/11/2026: Painel congelado em jogos encerrados
   if (nova === "casa") { $("#casa").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; mostrarCasaVivo($("#casa"), DIA, espn); }
   if (nova === "painel") { $("#painel").innerHTML ||= `<p class="muted">buscando o jogo…</p>`; mostrarPainel($("#painel"), DIA, espn); }
   if (nova === "jog") mostrarJogadores();
@@ -264,7 +267,7 @@ function trocarAba(nova) {
   ouvirCampeon(() => trocarAba("casa"));
   addEventListener("storage", (e) => { if (e.key === "casas-coleta" && aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); });
   const pedida = new URLSearchParams(location.search).get("aba");
-  if (["painel", "casa"].includes(pedida)) trocarAba(pedida);
+  if (["painel", "casa", "sim"].includes(pedida)) trocarAba(pedida);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     if (aba === "jog") mostrarJogadores();
