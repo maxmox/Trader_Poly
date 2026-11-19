@@ -279,6 +279,11 @@ function trocarAba(nova) {
   const sel = $("#data");
   sel.innerHTML = datas.map((d) => `<option value="${d}">${d.split("-").reverse().join("/")}</option>`).join("");
   sel.onchange = () => mostrar(sel.value);
-  if (datas.length) mostrar(datas[0]);
+  // Rodada da NBA = data nos EUA, virando só às 6 h de Nova York (jogos da costa oeste terminam depois da meia-noite):
+  // a análise do dia seguinte publicada de madrugada não pode tirar da tela a rodada que ainda está rolando.
+  const rodada = new Date(Date.now() - 6 * 3600e3).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const padrao = datas.find((d) => d <= rodada) ?? datas[datas.length - 1];
+  if (padrao) sel.value = padrao;
+  if (datas.length) mostrar(padrao);
   else $("#jogos").innerHTML = `<p class="muted">Ainda não há análise publicada.</p>`;
 })();
