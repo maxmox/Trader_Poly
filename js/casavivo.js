@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome, porSobrenome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, horaAnalise } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -72,6 +72,7 @@ function linhasDaColeta(coletas, dia) {
   return { linhas, sem: [...new Set(sem)] };
 }
 
+export function limparDadosCasa() { ST.dados = null; }
 async function carregarDados() {
   if (ST.dados) return ST.dados;
   const ler = (u) => (u.includes("/-.json") ? Promise.resolve({}) : fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}))); // insights antigos desligados (11/11)
@@ -182,7 +183,7 @@ export async function mostrarCasaVivo(el, dia, espn) {
     el.innerHTML = `<section class="panel"><h2>Casa × Painel</h2>
       <p class="muted">Linha da casa (capturada pelo coletor) × <b>linha justa do Painel agora</b> (o que ele já fez + ritmo × minutos que faltam — o mesmo número da aba Painel). <b>Justa − linha</b>: ▲ azul = justa acima da linha da casa, ▼ laranja = abaixo. Ordem padrão: maior EV no topo (os jogos também, pelo melhor EV). <b>± desvio</b> e <b>chance</b>: ao vivo, o que falta é tratado como contagem com a dispersão própria do jogador (concentrado × tudo-ou-nada, medida nos jogos de 2024-27) — com a mesma projeção, quem é concentrado acerta mais linhas baixas. <b>Antes do jogo</b> a chance vem da odd sem margem da DraftKings (marca "DK"): no teste de 11/11 a nossa dispersão com a linha como média perdeu da DK antes do jogo. EV = chance × odd − 1. Na casa: capture (D) e clique em <b>"Abrir a comparação"</b> (coletor 1.19).</p>
       <p class="muted"><b>Selo dos minutos</b> ao lado do nome (passe o mouse para ver o motivo): <span class="selo-min" style="color:var(--good);border-color:var(--good)">min ✓</span> confiável, <span class="selo-min" style="color:var(--warn);border-color:var(--warn)">min ~</span> atenção, <span class="selo-min n2" style="color:var(--bad);border-color:var(--bad)">min ?</span> incerto (em casos assim ~1 em 5 joga 70% ou menos do previsto): a linha justa depende dos minutos — confira a rotação antes. Linha com minutos incertos não ganha o fundo verde. <b>EV de 30%+</b> também não: ao vivo, contra a linha da casa, quase sempre é informação que falta ao modelo (nas apostas de 10–11/11, com EV a favor o Painel dava 70% de chance em média e acertou 37%) — o Painel não está calibrado contra linhas ao vivo; use para confirmar a sua leitura.</p>
-      ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · <a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
+      ${casas.length ? `<p class="muted">${resumo} · atualizado às ${hora} · análise das ${horaAnalise(dia)} (a mesma do Painel se o horário bater) ·<a href="#" id="cv-limpar">limpar as coletas</a></p>` : `<div class="vazio"><b>Nenhuma captura ainda.</b><span>Capture na casa com o coletor e abra no Painel.</span></div>`}
       ${jogos.length ? `<div class="chips" role="group" aria-label="Ordem">Ordenar por: ${[["ev", "maior EV"], ["dif", "maior diferença"], ["nome", "jogador"]].map(([k, t]) => `<button type="button" class="chip" data-ordem="${k}" aria-pressed="${ORDEM === k}" style="${ORDEM === k ? "background:var(--accent);color:var(--panel);border-color:var(--accent)" : ""}">${t}</button>`).join(" ")} <span class="muted">· verde = EV ≥ 5%</span></div>` : ""}
       ${jogos.map((g) => jogoHtml(g, ST.resumos.get(g.id), linhas.filter((r) => r.g.id === g.id), d)).sort((a, b) => (ORDEM === "ev" ? b.melhor - a.melhor : 0)).map((x) => x.html).join("")}
       ${sem.length ? `<details><summary class="muted">${sem.length} mercados sem par (jogador fora da análise do dia, estatística sem projeção ou mercado parcial)</summary><p class="muted">${sem.slice(0, 150).map(esc).join(" · ")}</p></details>` : ""}

@@ -4,8 +4,8 @@
 // FORÇA ALTA (o resto estava no nível do acaso). Linhas e projeções ficam na página de props; a aba "Blowout e clutch"
 // saiu (o Painel mostra em destaque).
 import { $, esc } from "./formato.js";
-import { mostrarPainel, seloMin, confMin, matchupChip } from "./painel.js";
-import { mostrarCasaVivo } from "./casavivo.js";
+import { mostrarPainel, seloMin, confMin, matchupChip, recarregarTabelas } from "./painel.js";
+import { mostrarCasaVivo, limparDadosCasa } from "./casavivo.js";
 import { mostrarSimulador } from "./simulador.js";
 import { ouvirCampeon } from "./campeon.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra, consertarResumo } from "./jogada.js";
@@ -230,9 +230,30 @@ async function mostrarJogadores() {
   }
 }
 
+// 21/11/2026 (usuário: a justa da Casa × Painel não batia com a do Painel): a análise do dia era lida UMA vez, ao abrir a
+// página. Com as atualizações automáticas antes de cada jogo (linhas DK e minutos novos), a janela aberta antes ficava com
+// a versão velha e a janela nova (aberta pelo coletor) com a nova: mesma conta, dados diferentes (até ~1,5 na justa).
+// Agora a página confere a versão publicada (ETag) a cada 2 min e ao voltar para a aba, e recarrega se mudou.
+let DIA_ARQ = null, DIA_TAG = null;
+const tagDe = (r) => r?.headers?.get("etag") || r?.headers?.get("last-modified") || null;
+async function conferirVersao() {
+  if (!DIA_ARQ || document.hidden) return;
+  const r = await fetch(`data/padroes/${DIA_ARQ}.json`, { method: "HEAD", cache: "no-store" }).catch(() => null);
+  const t = r?.ok ? tagDe(r) : null;
+  if (t && DIA_TAG && t !== DIA_TAG) {
+    recarregarTabelas();
+    limparDadosCasa();
+    mostrar(DIA_ARQ);
+  }
+}
+
 async function mostrar(dia) {
   try {
-    const d = await json(`data/padroes/${dia}.json`);
+    DIA_ARQ = dia;
+    const r = await fetch(`data/padroes/${dia}.json`, { cache: "no-cache" });
+    if (!r.ok) throw new Error(`${dia}.json: ${r.status}`);
+    const d = await r.json();
+    DIA_TAG = tagDe(r);
     $("#gerado").textContent = `gerado em ${new Date(d.gerado_em).toLocaleString("pt-BR")}`;
     DIA = d;
     resumos.clear();
@@ -262,6 +283,7 @@ function trocarAba(nova) {
   setInterval(() => { if (aba === "jog") mostrarJogadores(); }, 60e3);
   setInterval(() => { if (aba === "painel") mostrarPainel($("#painel"), DIA, espn); }, 30e3);
   setInterval(() => { if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); }, 30e3);
+  setInterval(conferirVersao, 120e3);
   // aba Casa × Painel: captura chegando pelo endereço (#campeon=…, coletor "Abrir a comparação") ou gravada pela página
   // de props em outra janela (evento storage) → mostra na hora
   ouvirCampeon(() => trocarAba("casa"));
@@ -270,6 +292,7 @@ function trocarAba(nova) {
   if (["painel", "casa", "sim"].includes(pedida)) trocarAba(pedida);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
+    conferirVersao();
     if (aba === "jog") mostrarJogadores();
     if (aba === "painel") mostrarPainel($("#painel"), DIA, espn);
     if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn);
