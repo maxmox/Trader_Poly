@@ -460,8 +460,18 @@ table.painel { min-width: 920px; }
 table.painel th { text-align: center; }
 table.painel th:first-child { text-align: left; }
 table.painel td { vertical-align: middle; padding: 6px 6px; }
-table.painel td.pj { white-space: nowrap; }
-table.painel td.pj small, table.painel td.pmin small { display: block; font-size: 11px; color: var(--ink-3); }
+/* 21/11/2026: nome numa linha e os chips (rotação, matchup, hierarquia) quebrando embaixo — a coluna não empurra o PRA
+   para fora da tela */
+table.painel td.pj { white-space: normal; min-width: 150px; max-width: 230px; }
+table.painel td.pj .pj-nome { display: block; white-space: nowrap; }
+table.painel td.pj .pj-sub { display: block; line-height: 1.7; }
+table.painel td.pj .pj-sub small { display: inline; margin-right: 2px; }
+table.painel td.pj .pj-sub > span { margin-left: 0; margin-right: 4px; }
+table.painel td.pmin small { display: block; font-size: 11px; color: var(--ink-3); }
+table.painel td.pj small { font-size: 11px; color: var(--ink-3); }
+/* Casa × Painel: o que ele já fez + em quadra/banco e rotação, discreto embaixo do nome */
+.campeon-tab small.cv-sub { color: var(--ink-3); font-size: 11px; margin-top: 1px; }
+.campeon-tab small.cv-sub b { color: var(--ink); font-weight: 700; }
 table.painel td.pmin { text-align: center; font-family: var(--mono); }
 table.painel td.pmin b { font-size: 16px; }
 .pc { text-align: center; min-width: 86px; border-left: 1px solid var(--line); }

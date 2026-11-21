@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome, porSobrenome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, horaAnalise } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, horaAnalise, rotacaoInfo, rotacaoAgora } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -73,6 +73,18 @@ function linhasDaColeta(coletas, dia) {
 }
 
 export function limparDadosCasa() { ST.dados = null; }
+
+// 21/11/2026 (pedido do usuário, discreto): em quadra/banco há quanto tempo e a rotação típica (mesma conta da lateral do
+// Painel): "sai ~X" / "volta ~X" só com rotação regular; ⚠ passou da saída típica (vermelho); saída em até 2 min (amarelo)
+const mmss = (s) => { const x = Math.max(0, Math.round(s)); return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, "0")}`; };
+function rotTexto(j, rel, ag) {
+  const ri = rotacaoInfo(j, rel, ag), ra = rotacaoAgora(j, rel, ag);
+  let t = ag.quadra ? `em quadra há ${mmss(ag.dur)}` : `banco há ${mmss(ag.dur)}`;
+  if (ag.quadra && ra?.tipo === "passou") return `<span style="color:var(--bad)">${t} · ⚠ +${mmss(ra.s)} além do normal</span>`;
+  if (ag.quadra && ri?.sai != null) t += ` · sai ~${mmss(ri.sai)}`;
+  if (!ag.quadra && ri?.volta != null) t += ` · volta ~${mmss(ri.volta)}`;
+  return ra?.tipo === "prestes" ? `<span style="color:var(--warn)">${t}</span>` : t;
+}
 async function carregarDados() {
   if (ST.dados) return ST.dados;
   const ler = (u) => (u.includes("/-.json") ? Promise.resolve({}) : fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}))); // insights antigos desligados (11/11)
@@ -140,7 +152,11 @@ function jogoHtml(g, s, linhas, d) {
   const cmp = { ev: (a, b) => evMax(b) - evMax(a) || Math.abs(b.dif) - Math.abs(a.dif), dif: (a, b) => Math.abs(b.dif) - Math.abs(a.dif), nome: (a, b) => a.r.j.nome.localeCompare(b.r.j.nome) || a.r.k.localeCompare(b.r.k) }[ORDEM] || ((a, b) => evMax(b) - evMax(a));
   const ok = rows.filter((w) => !w.fora).map((w) => ({ ...w, dif: w.justa - w.r.L })).sort(cmp);
   const fora = rows.filter((w) => w.fora);
-  const corpo = ok.map(({ r, justa, dif, sn, ch, evO, evU }) => {
+  const corpo = ok.map(({ r, feito, justa, dif, sn, ch, evO, evU }) => {
+    const { b, ag } = est.get(r.j.aid);
+    const dot = ag ? `<span class="dot${ag.quadra ? " on" : ""}" title="${ag.quadra ? "em quadra" : "no banco"}"></span>` : "";
+    const naoEntrou = b && !b.min && !ag?.quadra;
+    const sub = b ? `<small class="cv-sub">tem <b>${num(feito, 0)}</b>${naoEntrou ? " · ainda não entrou" : ag ? ` · ${rotTexto(r.j, rel, ag)}` : ""}</small>` : "";
     const cor = dif > 0 ? "var(--sig-o)" : "var(--sig-u)";
     const sinal = sn ? ` <span title="sinal do Painel: alvo ${num(justa + sn.uj)}" style="color:${sn.ef > 0 ? "var(--sig-o)" : "var(--sig-u)"}">${sn.ef > 0 ? "↑" : "↓"} alvo ${num(justa + sn.uj)}</span>` : "";
     // minutos incertos (12/11, feedback do usuário: Jarace Walker): sem fundo verde, e o aviso fica na linha
@@ -150,7 +166,7 @@ function jogoHtml(g, s, linhas, d) {
     const evm = Math.max(evO ?? -9, evU ?? -9);
     const suspeito = evm >= EV_SUSPEITO;
     const forte = evm >= 0.05 && !suspeito && cm?.n !== 2;
-    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td><b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)} <span class="muted">${NOME_K[r.k]}</span></td>
+    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
       <td class="n">${r.O && r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>`
         : /marco/i.test(r.mercado || "") ? `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`
         : `${num(r.L)} <span class="muted" title="o outro lado está suspenso na casa">· ${r.O ? `só Mais ${num(r.O, 2)}` : `só Menos ${num(r.U, 2)}`}</span>`}</td>
