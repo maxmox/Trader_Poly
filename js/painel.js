@@ -521,6 +521,15 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
     const f = Math.min(1.3, Math.max(0.75, (fi[0]?.[q] ?? 1) * (fi[1]?.[a <= 5.5 ? 0 : a <= 15.5 ? 1 : 2] ?? 1)));
     est.pts.justa = est.pts.feito + (est.pts.justa - est.pts.feito) * f;
   }
+  // fim parelho individual (21/11/2026, pedido do usuário: "tem jogador que assume no final parelho e tem jogador que
+  // some"; nba_pbp/clutch_justa.py): no Q4 com |placar| ≤ 6, o resto de PONTOS e CESTAS DE 3 × o fator dele, medido por
+  // cima de toda a conta (liga, estrelas, faltas, minutos por jogador) e encolhido (k 80). Melhorou fora da amostra nos 3
+  // testes (pares→ímpares, ímpares→pares, 2024-26→2026-27); rebotes e assistências não → ficam fora. PRA herda pela soma.
+  const fcl = c && rel.t > 2160 && rel.t < 2880 && Math.abs(cal.mg ?? cal.pm ?? 99) <= (cal.tab.clutch?.par ?? 6) ? cal.tab.clutch?.jogadores?.[j.aid] : null;
+  if (fcl) for (const k of ["pts", "tpm"]) {
+    const e = est[k];
+    if (e?.justa != null && fcl[k]) e.justa = e.feito + (e.justa - e.feito) * fcl[k];
+  }
   // começo dele × momento × placar (11/11: o que sobrou dos insights antigos medido contra a justa nova; repete entre
   // metades dos jogos, correlação +0,62) e quente com o time frio/meio/normal (só pontos e cestas de 3)
   if (c && rel.t >= 720 && min >= 4) {
