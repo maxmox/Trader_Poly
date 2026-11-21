@@ -729,6 +729,33 @@ export function sinaisHtml(sinais) {
 const COR_O = "var(--sig-o)", COR_U = "var(--sig-u)";
 let PAINEL = { sel: null, sb: null, sum: null, pol: null, carregando: false };
 try { PAINEL.sel = localStorage.getItem("traderpoly.painel") || null; } catch { /* sem armazenamento */ }
+try { PAINEL.mup = localStorage.getItem("traderpoly.painel.mup") === "1"; } catch { PAINEL.mup = false; }
+
+// ---------- matchup por posição e tipo (21/11/2026, pedido do usuário; nba_pbp/matchup_pos.py) ----------
+// Só um INDICADOR, ligado pelo botão "Matchup": quanto se espera que ele faça a mais/a menos que o normal dele por causa
+// do que essa defesa cedeu nos últimos 10 jogos à MESMA POSIÇÃO (G/F/C), por tipo (pontos por zona, rebote ofensivo e
+// defensivo, assistência para 3 / garrafão / meia). Já calibrado (o real andou ~0,13–0,32 do que a conta crua dá, em 26 mil
+// jogadores-jogo de 2025-27): +0,5 = meio ponto a mais esperado. NÃO muda a justa nem a projeção; a linha pré-jogo já
+// precifica parte disso. Cor quando passa de 1 desvio do comum (verde = a mais, vermelho = a menos).
+const MUP_DESVIO = { pts: 0.23, reb: 0.12, ast: 0.08, tpm: 0.034 };
+const sinalN = (v, c) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), c)}`;
+function mupHtml(j) {
+  const m = j.mup;
+  if (!PAINEL.mup || !m) return "";
+  const it = (k, rot, c) => {
+    const v = m[k] ?? 0, z = v / MUP_DESVIO[k];
+    const cor = z >= 1 ? "var(--good)" : z <= -1 ? "var(--bad)" : "var(--ink-3)";
+    return `<span style="color:${cor}${Math.abs(z) >= 2 ? ";font-weight:600" : ""}">${rot} ${sinalN(v, c)}</span>`;
+  };
+  const z = m.z || {};
+  const tit = `Matchup (posição ${m.pos}; defesa nos últimos 10 jogos contra ${m.pos}, por posse, × liga; calibrado). `
+    + `Pontos: garrafão ${sinalN(z.perto ?? 0, 2)}, meia ${sinalN(z.meia ?? 0, 2)}, 3 C&S ${sinalN(z["3cs"] ?? 0, 2)}, 3 criado ${sinalN(z["3pu"] ?? 0, 2)}, LL ${sinalN(z.ll ?? 0, 2)}. `
+    + `Rebotes: ofensivo ${sinalN(m.oreb ?? 0, 2)}, defensivo ${sinalN(m.dreb ?? 0, 2)}. `
+    + `Assistências: para 3 ${sinalN(m.a3 ?? 0, 2)}, garrafão ${sinalN(m.ap ?? 0, 2)}, meia ${sinalN(m.am ?? 0, 2)}. `
+    + `Não muda a justa: é o argumento do matchup em relação ao normal dele.`;
+  return `<span class="pj-mu" title="${esc(tit)}">${it("pts", "pts", 1)} ${it("reb", "reb", 1)}<small class="muted">(of ${sinalN(m.oreb ?? 0, 1)}/def ${sinalN(m.dreb ?? 0, 1)})</small> ${it("ast", "ast", 1)}<small class="muted">(3 ${sinalN(m.a3 ?? 0, 1)}/aro ${sinalN(m.ap ?? 0, 1)})</small> ${it("tpm", "3PM", 2)}</span>`;
+}
+const botaoMup = () => `<button type="button" class="btn-mup${PAINEL.mup ? " on" : ""}" data-mup title="Mostrar embaixo do nome o que o matchup (defesa × posição dele, por tipo) indica a mais/a menos que o normal. Não muda a justa.">Matchup ${PAINEL.mup ? "ligado" : "desligado"}</button>`;
 
 function quandoTxt(st) {
   const e = st?.type?.state;
@@ -778,7 +805,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${hierChip(hv)}</span></td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${hierChip(hv)}</span>${mupHtml(j)}</td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -1148,10 +1175,16 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
     PAINEL.parada = paradaDe(g.id, sumG?.header?.competitions?.[0]?.status, sumG?.plays);
     PAINEL.rail = "";
     const corpo = jogoHtml(g, sumG);
-    vivo.innerHTML = `<aside class="pn-rail pn-esq"><div class="rail-tit">Jogos do dia</div>${seletor(dia)}<small class="muted">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small></aside><aside class="pn-rail pn-dir">${PAINEL.rail || ""}</aside><div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small></div>${corpo}${defesaHtml(g)}${LEGENDA()}`;
+    vivo.innerHTML = `<aside class="pn-rail pn-esq"><div class="rail-tit">Jogos do dia</div>${seletor(dia)}<small class="muted">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small>${botaoMup()}</aside><aside class="pn-rail pn-dir">${PAINEL.rail || ""}</aside><div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small>${botaoMup()}</div>${corpo}${defesaHtml(g)}${LEGENDA()}`;
     ligarDetalhes(vivo);
     const bar = document.querySelector(".bar"); // a barra de jogos gruda logo abaixo do cabeçalho fixo do site
     if (bar) document.documentElement.style.setProperty("--bar-h", `${bar.offsetHeight}px`);
+    for (const b of vivo.querySelectorAll("[data-mup]")) b.onclick = () => {
+      PAINEL.mup = !PAINEL.mup;
+      try { localStorage.setItem("traderpoly.painel.mup", PAINEL.mup ? "1" : "0"); } catch { /* sem armazenamento */ }
+      PAINEL.carregando = false;
+      mostrarPainel(el, dia, espn, false);
+    };
     for (const b of vivo.querySelectorAll("[data-jogo]")) b.onclick = () => {
       PAINEL.sel = b.dataset.jogo;
       try { localStorage.setItem("traderpoly.painel", PAINEL.sel); } catch { /* sem armazenamento */ }

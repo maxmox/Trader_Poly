@@ -467,6 +467,11 @@ table.painel td.pj .pj-nome { display: block; white-space: nowrap; }
 table.painel td.pj .pj-sub { display: block; line-height: 1.7; }
 table.painel td.pj .pj-sub small { display: inline; margin-right: 2px; }
 table.painel td.pj .pj-sub > span { margin-left: 0; margin-right: 4px; }
+table.painel td.pj .pj-mu { display: block; font-size: 11px; line-height: 1.5; white-space: normal; }
+table.painel td.pj .pj-mu small { font-size: 10px; margin: 0 2px 0 1px; }
+.btn-mup { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink-3); cursor: pointer; }
+.btn-mup.on { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+.pn-esq .btn-mup { display: block; margin-top: 6px; }
 table.painel td.pmin small { display: block; font-size: 11px; color: var(--ink-3); }
 table.painel td.pj small { font-size: 11px; color: var(--ink-3); }
 /* Casa × Painel: o que ele já fez + em quadra/banco e rotação, discreto embaixo do nome */
