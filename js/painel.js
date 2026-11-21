@@ -498,6 +498,7 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
     const e = est[k], f = fe[k]?.[c[0]]?.[c[1]];
     if (e?.justa != null && f) e.justa = e.feito + (e.justa - e.feito) * f;
   }
+  let fMinFaltas = 1;
   // faltas (11/11, usuário: pivô caçado por faltas no Q1): fator por grande/outro × quarto × faixa de faltas; grande = C/PF
   // ou 0,24+ rebote por minuto pela linha (pega pivôs registrados como F); também corrige os rebotes dos grandes (~0,9)
   const ff = c ? cal.tab.faltas : null;
@@ -509,6 +510,23 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
     for (const k of ["pts", "reb", "ast", "tpm"]) {
       const e = est[k], f = ff.f[k]?.[grande]?.[q]?.[fb];
       if (e?.justa != null && f) e.justa = e.feito + (e.justa - e.feito) * f;
+    }
+    // faltas pelo TIPO de jogador (21/11/2026, pedido do usuário: "tem jogador que com 2 faltas no Q1 não muda nada e tem
+    // jogador que acabou o jogo"; nba_pbp/faltas_justa.py): em problema de faltas (faixa ≥ 2: Q1 2+, Q2 3+, Q3 4+, Q4 5+),
+    // faltas por 36 min dele nos 40 jogos anteriores (quem não consegue defender sem fazer falta) × grande × titular → resto
+    // de pontos e rebotes × fator, por cima do fator da liga. Fora da amostra melhorou pontos e PRA nos 3 testes; o
+    // histórico individual cru em problema de faltas não repetiu (poucos jogos por jogador). Minutos: só no "fim ~X".
+    const ft = cal.tab.faltas_tipo;
+    if (ft && j.pf36 != null && fb >= (ft.faixa ?? 2) && (box?.pf ?? 0) < 6) {
+      const fx = j.pf36 < ft.cortes_pf36[0] ? 0 : j.pf36 < ft.cortes_pf36[1] ? 1 : 2;
+      const tf = ft.tipos?.[`${fx}${grande}${box?.starter || minEsp >= 28 ? 1 : 0}`];
+      if (tf) {
+        for (const k of ["pts", "reb"]) {
+          const e = est[k];
+          if (e?.justa != null && tf[k]) e.justa = e.feito + (e.justa - e.feito) * tf[k];
+        }
+        if (tf.min) fMinFaltas = tf.min;
+      }
     }
   }
   // formato individual de pontos (11/11, pedido do usuário; nba_pbp/calibrar_individual.py): o que ELE faz do quarto
@@ -547,7 +565,7 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
   if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
     est.pra.justa = est.pts.justa + est.reb.justa + est.ast.justa;
   }
-  return { minEsp, minAgora, minResto, espQ, est, rot, agora, calibrada: !!c };
+  return { minEsp, minAgora, minResto: minResto * fMinFaltas, espQ, est, rot, agora, calibrada: !!c };
 }
 
 // Box score da ESPN → { id: {min, pts, reb, ast, tpm, pra, pf, starter, sigla, nome} }
