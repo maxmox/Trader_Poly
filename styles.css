@@ -675,3 +675,6 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 .cal-t td, .cal-t th { padding: 4px 8px; font-size: 13px; }
 .cal-t tr.cal-fora td { opacity: 0.45; }
 .cal-nome { font: inherit; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted var(--ink-3); }
+.cv-cal { white-space: nowrap; }
+.cv-cal .cv-sub { display: block; }
+.cv-cal-fraco { opacity: 0.6; font-weight: 400; }

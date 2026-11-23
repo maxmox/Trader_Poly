@@ -51,5 +51,45 @@ fs.writeFileSync(path.join(out, "meta.json"), JSON.stringify({
   jog, nomes: ent.nomes, est_m: est,
 }));
 for (const k of KS) fs.writeFileSync(path.join(out, `${k}.json`), JSON.stringify({ d: d[k], p: p[k] }));
+// Células para a Casa × Painel (23/11/2026, pedido do usuário): por estatística × titular × linha DK × quadra × placar
+// do time (até 6 / 7–14 / 15+) × momento, janela de ±2 min em volta de cada momento da grade: n (linhas), Over real,
+// esperado e o erro-padrão da diferença (real − esperado) agrupado por jogo. Chave "k|tit|dk|quadra|placar".
+const JAN = 120;
+const cel = {};
+ent.jog.forEach((j, i) => {
+  const jj = jog[i];
+  KS.forEach((k, ki) => {
+    const dk = (jj[8] >> ki) & 1;
+    for (let m = 0; m < NM; m++) {
+      const x = d[k][i * NM + m];
+      if (x == null) continue;
+      const e = est[i * NM + m];
+      const chave = `${k}|${j.tit ? 1 : 0}|${dk}|${e & 1}|${e >> 1}`;
+      const arr = (cel[chave] ||= ent.grade.map(() => ({ n: 0, o: 0, p: 0, g: new Map(), pj: new Set() })));
+      const t = ent.grade[m], o = x > 0 ? 1 : 0, pp = p[k][i * NM + m] / 1000;
+      ent.grade.forEach((tc, mc) => {
+        if (Math.abs(tc - t) > JAN) return;
+        const c = arr[mc];
+        c.n++; c.o += o; c.p += pp; c.pj.add(i);
+        const gg = c.g.get(j.g) || [0, 0]; gg[0]++; gg[1] += o - pp; c.g.set(j.g, gg);
+      });
+    }
+  });
+});
+const celOut = {};
+for (const [chave, arr] of Object.entries(cel)) {
+  celOut[chave] = arr.map((c) => {
+    if (!c.n) return [0, 0, 0, 0];
+    const dif = (c.o - c.p) / c.n;
+    let s2 = 0;
+    for (const [n, z] of c.g.values()) s2 += (z - n * dif) ** 2;
+    return [c.pj.size, Math.round((1000 * c.o) / c.n), Math.round((1000 * c.p) / c.n), Math.round((1000 * Math.sqrt(s2)) / c.n)];
+  });
+}
+fs.writeFileSync(path.join(out, "celulas.json"), JSON.stringify({
+  gerado: new Date().toISOString().slice(0, 16), grade: ent.grade, janela_s: JAN, dias: [ent.jog[0].d, ent.jog[ent.jog.length - 1].d],
+  leia: "c[k|titular|linha DK|em quadra|placar 0:≤6 1:7–14 2:15+][momento] = [n jogadores-jogo, Over real ‰, esperado ‰, erro-padrão da diferença ‰ (por jogo)]",
+  c: celOut,
+}));
 const tam = (f) => (fs.statSync(path.join(out, f)).size / 1024).toFixed(0);
-console.log(`${ent.jog.length} jogadores-jogo × ${NM} momentos em ${((Date.now() - t0) / 1000).toFixed(0)} s → ${out} (meta ${tam("meta.json")} KB, pts ${tam("pts.json")} KB)`);
+console.log(`células ${Object.keys(celOut).length} (${tam("celulas.json")} KB); ${ent.jog.length} jogadores-jogo × ${NM} momentos em ${((Date.now() - t0) / 1000).toFixed(0)} s → ${out} (meta ${tam("meta.json")} KB, pts ${tam("pts.json")} KB)`);
