@@ -272,6 +272,9 @@ function trocarAba(nova) {
   $("#painel").hidden = nova !== "painel";
   $("#casa").hidden = nova !== "casa";
   $("#sim").hidden = nova !== "sim";
+  $("#cal").hidden = nova !== "cal";
+  // 23/11/2026: calibração da justa minuto a minuto (carregada só ao abrir; erro nela não derruba as outras abas)
+  if (nova === "cal") import("./calibracao.js").then((m) => m.mostrarCalibracao($("#cal"))).catch((e) => { $("#cal").innerHTML = `<p class="erro">Não consegui abrir a calibração (${esc(e.message)}).</p>`; });
   if (nova === "sim") mostrarSimulador($("#sim"), espn); // 18/11/2026: Painel congelado em jogos encerrados
   if (nova === "casa") { $("#casa").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; mostrarCasaVivo($("#casa"), DIA, espn); }
   if (nova === "painel") { $("#painel").innerHTML ||= `<p class="muted">buscando o jogo…</p>`; mostrarPainel($("#painel"), DIA, espn); }
@@ -289,7 +292,7 @@ function trocarAba(nova) {
   ouvirCampeon(() => trocarAba("casa"));
   addEventListener("storage", (e) => { if (e.key === "casas-coleta" && aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); });
   const pedida = new URLSearchParams(location.search).get("aba");
-  if (["painel", "casa", "sim"].includes(pedida)) trocarAba(pedida);
+  if (["painel", "casa", "sim", "cal"].includes(pedida)) trocarAba(pedida);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     conferirVersao();

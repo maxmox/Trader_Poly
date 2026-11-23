@@ -635,3 +635,43 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 .hq-def { margin: 4px 0 6px; font-size: 13px; }
 .hq-tab { min-width: 680px; }
 .hq-tab td small, .hq-tab th small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* Aba Calibração (23/11/2026): justa × final minuto a minuto */
+.cal-intro p { margin: 6px 0; font-size: 13px; max-width: 900px; }
+.cal-over { color: var(--good); font-weight: 600; }
+.cal-under { color: var(--bad); font-weight: 600; }
+.cal-filtros input { font: inherit; font-size: 14px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 170px; }
+.cal-filtros select:disabled { opacity: 0.5; }
+.cal-limpa { font: inherit; font-size: 12px; color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; cursor: pointer; align-self: end; }
+.cal-aviso { font-size: 12px; }
+.cal-resumo p { margin: 4px 0; }
+.cal-ler { min-height: 1.5em; font-size: 14px; }
+.cal-graf { margin: 10px 0 4px; overflow: hidden; }
+.cal-graf svg { display: block; max-width: 100%; height: auto; touch-action: pan-y; }
+.cal-h3 { font-size: 15px; margin: 14px 0 4px; }
+.cal-leg { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--ink-2); margin: 2px 0 4px; }
+.cal-leg span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-sw { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--good); }
+.cal-sw-e { border-top: 2px dashed var(--ink-2); }
+.cal-sw-v { border-top-color: var(--accent); }
+.cal-grid { stroke: var(--line); stroke-width: 1; }
+.cal-ref { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 2 3; }
+.cal-q { stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; }
+.cal-tx { fill: var(--ink-2); font-size: 11px; font-family: var(--body); }
+.cal-tx3 { fill: var(--ink-3); }
+.cal-real { fill: none; stroke: var(--good); stroke-width: 2; stroke-linejoin: round; }
+.cal-esp { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-dasharray: 6 4; }
+.cal-band-r { fill: var(--good-bg); opacity: 0.85; }
+.cal-pt { fill: var(--good); stroke: var(--panel); stroke-width: 1.5; }
+.cal-vies { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.cal-band-v { fill: var(--accent-soft); opacity: 0.9; }
+.cal-pt-v { fill: var(--accent); stroke: var(--panel); stroke-width: 1.5; }
+.cal-zona-o { fill: var(--good-bg); opacity: 0.35; }
+.cal-zona-u { fill: var(--bad-bg); opacity: 0.35; }
+.cal-cruz { stroke: var(--ink-3); stroke-width: 1; pointer-events: none; }
+.cal-hit { fill: transparent; cursor: crosshair; }
+.cal-det { margin: 8px 0; }
+.cal-det summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+.cal-t td, .cal-t th { padding: 4px 8px; font-size: 13px; }
+.cal-t tr.cal-fora td { opacity: 0.45; }
+.cal-nome { font: inherit; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted var(--ink-3); }
