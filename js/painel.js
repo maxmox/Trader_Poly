@@ -225,6 +225,37 @@ export function rotacaoChip(r) {
   return ` <span class="rot-chip${r.forte ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${txt}</span>`;
 }
 
+// P(começa o quarto seguinte) na virada (23/11/2026, nba_pbp/minutagem_viva.py → calibra_justa.json `viradas`): nos jogos
+// anteriores (hist, pesos do MV2) que terminaram o quarto no mesmo estado (em quadra/no banco), quantos começaram o seguinte,
+// encolhido para o grupo (quarto × estado × titular hoje) com k jogos; logística com blowout (|placar| ≥ 15) e faltas.
+// Fora da amostra (3 cortes): log-loss 0,448 → 0,401 (só o grupo → com o histórico dele). Intervalo: titular começa o Q3 ~98%.
+export function pComeca(j, t, quadra, minEsp, box, cal, vt) {
+  const hist = j.rotacao?.hist || [];
+  const pesos = hist.map((h) => Math.exp(-0.5 * ((sobreS(h, 0, 2880) - minEsp) / 5) ** 2) + 0.05);
+  const wmax = Math.max(...pesos);
+  let s = 0, w = 0, n = 0;
+  hist.forEach((h, i) => {
+    let fim = false, com = false;
+    for (let k = 0; k + 1 < h.length; k += 2) {
+      if (h[k] < t && t <= h[k + 1]) fim = true;
+      if (h[k] <= t && t < h[k + 1]) com = true;
+    }
+    if (fim !== quadra) return;
+    s += pesos[i] * (com ? 1 : 0);
+    w += pesos[i];
+    n += pesos[i] / wmax;
+  });
+  const qv = Math.round(t / 720), tit = box?.starter ? 1 : 0;
+  const grp = (qv - 1) * 4 + (quadra ? 2 : 0) + tit;
+  const pri = vt.P0[grp];
+  const pk = w > 0 ? (n * (s / w) + vt.k * pri) / (n + vt.k) : pri;
+  const x = Math.min(1 - 1e-4, Math.max(1e-4, pk));
+  const blow = Math.abs(cal.mg ?? cal.pm ?? 0) >= vt.blow ? 1 : 0;
+  const prob = (box?.pf ?? 0) >= vt.lim[qv] ? 1 : 0;
+  const z = vt.w[grp] + vt.w[12] * Math.log(x / (1 - x)) + vt.w[13] * blow + vt.w[14] * prob + vt.w[15] * blow * tit;
+  return 1 / (1 + Math.exp(-z));
+}
+
 export function minRestoRotacao(j, rel, agora, minEsp, base) {
   // 11/11 (nba_pbp/minutos_vivo2.py): até 20 jogos anteriores, cada um pesado pela semelhança do total de minutos com o
   // previsto de hoje (mesmo papel; σ 5 min), na escala dos minutos previstos (nossa projeção + média recente + mercado).
@@ -399,7 +430,7 @@ export function chanceLinhaPre(tab, aid, k, Ldk, pOverDk, L) {
 export function agoraDe(plays, aid, b, rel, st) {
   if (st?.type?.state !== "in" || !b || rel.p > 4) return null;
   const e = emQuadra(plays, String(aid), b.starter);
-  const seg = segundosPorPeriodo(plays, String(aid), { p: rel.p, resta: 720 * rel.p - rel.t });
+  const seg = segundosPorPeriodo(plays, String(aid), { p: rel.p, resta: 720 * rel.p - rel.t }, b.starter);
   const jogou = seg.slice(0, 4).reduce((a, x) => a + x, 0) / 60;
   return { quadra: e.quadra, dur: Math.max(0, rel.t - (e.desde || 0)), jogou: jogou || b.min || 0 };
 }
@@ -468,6 +499,7 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
   const c = cal?.tab?.minutos && cal.pm != null && rel.p >= 1 && rel.p <= 4 && !rel.fim ? celulaCal(cal.tab, rel.t, cal.pm, minEsp) : null;
   // minutos que ainda deve jogar: o esperado dos quartos que faltam (o atual pela parte que falta), Q4 ajustado pelo placar
   let minResto = 0, rot = null;
+  const nm = c ? cal.tab.nivel_min ?? null : null;
   if (!rel.fim && !fora && minEsp) {
     if (rel.p > 4) minResto = (minEsp / JOGO_S) * rel.resta * 1.2; // prorrogação: quem joga muito fica
     else {
@@ -479,28 +511,66 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
         base += m;
         if (q === 4) q4 = m;
       }
-      rot = minRestoRotacao(j, rel, agora, minEsp, base);
-      const m0 = rot ? rot.min : base;
-      if (c) minResto = Math.min(m0 * cal.tab.minutos[c[0]][c[1]][c[2]], (JOGO_S - rel.t) / 60);
-      else minResto = base > 0 ? m0 * (1 + (q4 / base) * (ajQ4 - 1)) : 0; // placar no Q4 só sobre a parte do Q4
+      const cap = (JOGO_S - rel.t) / 60;
+      // 23/11/2026 (nba_pbp/minutagem_viva.py, sessão 2 da calibração ao vivo): nível dos minutos que faltam refeito na base
+      // viva — a cadeia estava BAIXA (real ÷ previsto 1,02 no Q1, ~1,10 no Q2, 1,11–1,27 no Q3: as tabelas eram de antes do
+      // hist sem garbage time e da correção dos minutos do titular). nivel_min.f multiplica `minutos`, nivel_min.e o `estado`.
+      const fMin = c ? cal.tab.minutos[c[0]][c[1]][c[2]] * (nm?.f?.[c[0]]?.[c[1]]?.[c[2]] ?? 1) : null;
+      const tit = box?.starter ? 1 : 0;
       // 18/11/2026 (nba_pbp/calibrar_estado.py): estado AGORA — em quadra/banco × titular × placar já aberto (|placar| ≥ 15).
       // Corrigiu os erros que o teste "eu contra a justa" achou (Q3 6:00 titular no banco −1,5 → −0,3 min; reserva com
-      // o placar aberto +1,5 → +0,4; Q2 6:00 reserva no banco −1,0 → 0; viés médio por estado 0,43 → 0,18 min). Fora das viradas
-      // de quarto (fim do Q1, intervalo, fim do Q3): ali a base marca 'em quadra' quem COMEÇA o quarto seguinte (o site não sabe).
-      const fe = c && agora && rel.t % 720 !== 0 && cal.tab.estado?.f ? cal.tab.estado.f[c[0]]?.[agora.quadra ? 1 : 0]?.[box?.starter ? 1 : 0]?.[Math.abs(cal.mg ?? cal.pm ?? 0) >= (cal.tab.estado.blow ?? 15) ? 1 : 0] : null;
-      if (fe) minResto = Math.min(minResto * fe, (JOGO_S - rel.t) / 60);
+      // o placar aberto +1,5 → +0,4; Q2 6:00 reserva no banco −1,0 → 0; viés médio por estado 0,43 → 0,18 min).
+      const fEst = (x) => {
+        const e = cal.tab.estado;
+        const b = Math.abs(cal.mg ?? cal.pm ?? 0) >= (e?.blow ?? 15) ? 1 : 0;
+        const f = e?.f ? e.f[c[0]]?.[x]?.[tit]?.[b] : null;
+        return f ? f * (nm?.e?.[c[0]]?.[x]?.[tit]?.[b] ?? 1) : null;
+      };
       // 18/11 (nba_pbp/calibrar_jogador.py, usuário: "calibrar jogador por jogador, dentro do time e da rotação"): formato
-      // dos minutos que faltam do PRÓPRIO jogador por quarto × em quadra/no banco × placar (|placar| ≥ 12), fora das viradas.
+      // dos minutos que faltam do PRÓPRIO jogador por quarto × em quadra/no banco × placar (|placar| ≥ 12).
       // CLE: viés por jogador × situação fora da amostra minutos −12%, pontos −4 a −7%, PRA −5 a −10% (ex.: Mitchell e Allen
       // no banco no Q4 parelho voltam mais — 1,26/1,28; reservas do CLE no Q4 parelho jogam menos).
-      const fjm = c && agora && rel.t % 720 !== 0 ? cal.tab.jogador?.jogadores?.[j.aid]?.m : null;
-      if (fjm) {
-        const v = fjm[Math.min(3, Math.floor(rel.t / 720))]?.[agora.quadra ? 1 : 0]?.[Math.abs(cal.mg ?? cal.pm ?? 0) >= (cal.tab.jogador.bl ?? 12) ? 1 : 0];
-        if (v) minResto = Math.min(minResto * v, (JOGO_S - rel.t) / 60);
+      const fJog = (x) => {
+        const fjm = cal.tab.jogador?.jogadores?.[j.aid]?.m;
+        return fjm ? fjm[Math.min(3, Math.floor(rel.t / 720))]?.[x]?.[Math.abs(cal.mg ?? cal.pm ?? 0) >= (cal.tab.jogador.bl ?? 12) ? 1 : 0] : null;
+      };
+      const comFatores = (m, x) => {
+        const fe = fEst(x);
+        if (fe) m = Math.min(m * fe, cap);
+        const fj = fJog(x);
+        if (fj) m = Math.min(m * fj, cap);
+        return m;
+      };
+      // VIRADA (fim do Q1, intervalo, fim do Q3; 23/11, sessão 2): o site só sabe quem TERMINOU o quarto em quadra, não quem
+      // começa o seguinte → P(começa) pelo histórico dele (+ grupo, blowout, faltas) e mistura dos dois estados, cada um com
+      // estado e jogador (antes desligados aqui). Fim do Q3: |erro| dos minutos 3,38 → 2,85 e viés por jogador 1,9 → 0,9.
+      const vt = c && agora && rel.t > 0 && rel.t < JOGO_S && rel.t % 720 === 0 ? cal.tab.viradas : null;
+      let mist = null;
+      if (vt) {
+        const r1 = minRestoRotacao(j, rel, { ...agora, quadra: true, dur: 0 }, minEsp, base);
+        const r0 = minRestoRotacao(j, rel, { ...agora, quadra: false, dur: agora.quadra ? 0 : agora.dur }, minEsp, base);
+        if (r1 && r0) {
+          const P = pComeca(j, rel.t, !!agora.quadra, minEsp, box, cal, vt);
+          let m = P * comFatores(Math.min(r1.min * fMin, cap), 1) + (1 - P) * comFatores(Math.min(r0.min * fMin, cap), 0);
+          const fv = vt.f?.[rel.t / 720 - 1]?.[tit];
+          if (fv) m = Math.min(m * fv, cap);
+          mist = { min: m, rot: { min: P * r1.min + (1 - P) * r0.min, n: r1.n, p: P } };
+        }
+      }
+      if (mist) {
+        minResto = mist.min;
+        rot = mist.rot;
+      } else {
+        rot = minRestoRotacao(j, rel, agora, minEsp, base);
+        const m0 = rot ? rot.min : base;
+        if (c) minResto = Math.min(m0 * fMin, cap);
+        else minResto = base > 0 ? m0 * (1 + (q4 / base) * (ajQ4 - 1)) : 0; // placar no Q4 só sobre a parte do Q4
+        if (c && agora && rel.t % 720 !== 0) minResto = comFatores(minResto, agora.quadra ? 1 : 0);
       }
     }
   }
   const minAgora = minEsp * Math.min(1, rel.t / JOGO_S);
+  const rho = c && nm?.rho0 && rel.t >= 720 ? (nm.rho0[box?.starter ? 1 : 0]?.[c[2]] ?? 1) : 1; // só do Q2 em diante (o Q1 não muda)
   const est = {};
   for (const [k] of ESTATS) {
     const L = linhaPre(j, k);
@@ -509,7 +579,9 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
     const taxa0 = L.v / minEsp;
     const K = c && k !== "pra" ? (cal.tab.K?.[k] ?? 1e9) : PESO_HOJE;
     const w = min > 0 ? min / (min + K) : 0;
-    let taxa = (1 - w) * taxa0 + (min > 0 ? w * (feito / min) : 0);
+    // ρ0 (23/11, nivel_min.rho0[titular][papel]): o nível novo dos minutos mudou os minutos do começo; a taxa pré-jogo
+    // (linha ÷ minutos previstos) é dividida por ele para a justa do começo ficar igual (deveria continua com a taxa antiga)
+    let taxa = (1 - w) * (taxa0 / rho) + (min > 0 ? w * (feito / min) : 0);
     if (c && k !== "pra") taxa *= (cal.tab.nivel?.[k] ?? 1) * (cal.tab.ritmo?.[k]?.[c[0]]?.[c[1]]?.[c[2]] ?? 1);
     est[k] = { feito, deveria: taxa0 * min, justa: feito + taxa * minResto, pre: L.v, fonte: L.fonte };
   }
@@ -639,7 +711,7 @@ export function lerBox(s) {
     for (const [id, b] of Object.entries(out)) {
       if (b.dnp) continue;
       const x = c[id] || {};
-      const min = segundosPorPeriodo(plays, id, agora).reduce((a, v) => a + v, 0) / 60;
+      const min = segundosPorPeriodo(plays, id, agora, b.starter).reduce((a, v) => a + v, 0) / 60;
       Object.assign(b, { min: Math.round(min * 10) / 10, pts: x.pts || 0, reb: x.reb || 0, ast: x.ast || 0, tpm: x.tpm || 0, pf: x.pf || 0 });
       b.pra = b.pts + b.reb + b.ast;
       if (min > 0 || x.pts || x.reb || x.ast) delete b.naoEntrou;
@@ -981,7 +1053,7 @@ function jogoHtml(g, s) {
     const x = estimar(j, b, rel, ajusteQ4(minEsp, margem, rel, PAINEL.pol?.times?.[j.time]), ag, { tab: PAINEL.cal, pm: placarProj(g, j.time, margem, rel), mg: margem, rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] });
     const quadra = st.type?.state === "in" && b ? emQuadra(plays, String(j.aid), b.starter).quadra : null;
     // minutos reais em cada quarto pelas substituições (soma conferida com o box: 161/161 a menos de 1 min, 08/11)
-    const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }).map((v) => v / 60) : null;
+    const mq = b && st.type?.state !== "pre" ? segundosPorPeriodo(plays, String(j.aid), rel.fim ? null : { p: rel.p, resta: rel.p > 4 ? rel.resta : 720 * rel.p - rel.t }, b.starter).map((v) => v / 60) : null;
     const ins = Object.fromEntries(ESTATS.map(([k]) => [k, b ? insightDe(PAINEL.ins, k, x.est[k], rel, chance[j.time]) : null]));
     (porTime[j.time] ||= []).push({ j, b, x, quadra, mq, ins, rot, rinfo, mg: margem, ch: chance[j.time] });
   }

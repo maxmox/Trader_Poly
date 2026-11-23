@@ -146,7 +146,10 @@ export function variaveis(st, regua, margem, fora) {
 // Entre períodos a ESPN não registra trocas: ele começa o período em quadra se a 1ª jogada dele no período não for a
 // entrada (aparece numa jogada ou sai antes de entrar). Sem nenhuma jogada no período = não jogou o período.
 // `agora` = {p, resta}: o período em andamento conta só até o relógio atual.
-export function segundosPorPeriodo(plays, id, agora) {
+// `titular` (23/11/2026, sessão 2 da calibração ao vivo): o titular está em quadra desde o 0:00 do Q1 até a 1ª saída,
+// mesmo sem ter aparecido numa jogada (antes contava 0 s: 53% dos titulares a 0:30 e 5% a 3:00 → justa de pontos
+// 2–7% baixa no começo). Nos outros períodos, sem jogada dele no período, continua 0 (o site não sabe quem começou).
+export function segundosPorPeriodo(plays, id, agora, titular = false) {
   const dur = (p) => (p > 4 ? 300 : 720);
   const porP = new Map();
   for (const x of plays || []) {
@@ -159,7 +162,7 @@ export function segundosPorPeriodo(plays, id, agora) {
   for (let p = 1; p <= ultimo; p++) {
     const L = porP.get(p) || [];
     const fim = p === agora?.p ? dur(p) - agora.resta : dur(p);
-    let quadra = null, desde = 0, soma = 0;
+    let quadra = p === 1 && titular ? true : null, desde = 0, soma = 0;
     for (const x of L) {
       const ids = (x.participants || []).map((y) => y.athlete?.id);
       if (!ids.includes(id)) continue;

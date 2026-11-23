@@ -123,7 +123,7 @@ export function congelar(s, m) {
           const id = String(a.athlete.id);
           if (a.didNotPlay && a.reason && !/coach/i.test(a.reason)) return { ...a, stats: [] }; // inativo/lesão: já se sabia
           const x = cont[id] || {};
-          const seg = segundosPorPeriodo(plays, id, agora).reduce((s1, v) => s1 + v, 0);
+          const seg = segundosPorPeriodo(plays, id, agora, !!a.starter).reduce((s1, v) => s1 + v, 0);
           if (!seg && !x.pts && !x.reb && !x.ast && !x.pf) return { ...a, didNotPlay: false, stats: [] };
           return { ...a, didNotPlay: false, stats: [String(Math.round(seg / 60)), String(x.pts || 0), String(x.reb || 0), String(x.ast || 0), `${x.tpm || 0}-${x.tpa || 0}`, String(x.pf || 0)] };
         }),
