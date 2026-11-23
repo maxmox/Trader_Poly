@@ -684,6 +684,18 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
       if (e?.justa != null && f && e.fonte === "DK") e.justa = e.feito + (e.justa - e.feito) * f;
     }
   }
+  // sem linha DK com a taxa pelo Edgely (23/11/2026, sessão 5; simulador congelado, 125 jogos de 06–22/11 com a análise
+  // pré-jogo real): pontos do reserva sem linha terminavam abaixo da justa (resto real ÷ previsto 0,87–0,91) e do titular
+  // sem linha acima (1,15–1,17) → fator titular/reserva sobre o que falta (nivel_sem.pts = [0,89 reserva, 1,16 titular]), só
+  // pontos (rebotes, assistências e 3PM não ganharam nas duas metades dos jogos); metade × metade por jogo, viés jogador ×
+  // situação −2,3%/−11%. Na base viva o "sem linha" é a média recente (sem Edgely): o fator não entra lá.
+  const ns = c ? cal.tab.nivel_sem : null;
+  if (ns) {
+    for (const k of ["pts", "reb", "ast", "tpm"]) {
+      const e = est[k], f = ns[k]?.[box?.starter ? 1 : 0];
+      if (e?.justa != null && f && e.fonte !== "DK" && j.edgely?.[k] != null) e.justa = e.feito + (e.justa - e.feito) * f;
+    }
+  }
   // PRA calibrado = soma das três (foi assim que se mediu)
   if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
     est.pra.justa = est.pts.justa + est.reb.justa + est.ast.justa;
