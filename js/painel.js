@@ -670,6 +670,20 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
       e.justa = e.feito + (e.justa - e.feito) * f;
     }
   }
+  // nível do resto por quarto (23/11/2026, sessão 3 da calibração ao vivo; nba_pbp/ritmo_vivo.py): na base viva, quem tem linha
+  // DK terminava acima da justa em rebotes (+1 a +5%) e assistências (+2 a +4%; o `nivel` era de antes dos minutos novos) →
+  // fator por quarto sobre o que falta, só com linha DK (sem linha a fonte é outra: Edgely/média recente). Fora da amostra
+  // (pares→ímpares, ímpares→pares, 2024-26→2026-27) melhorou o viés por jogador × situação nos 3 cortes (ast 0,268→0,257,
+  // 0,276→0,264, 0,422→0,404; PRA 1,191→1,174, 1,123→1,116, 1,603→1,600). O ritmo do dia por VOLUME (arremessos/LL/3PA de
+  // hoje × eficiência normal) não ganhou da conta atual em nenhum corte: não entrou.
+  const nq = c ? cal.tab.nivel_q : null;
+  if (nq) {
+    const qv = Math.min(3, Math.floor(rel.t / 720));
+    for (const k of ["pts", "reb", "ast", "tpm"]) {
+      const e = est[k], f = nq[k]?.[qv];
+      if (e?.justa != null && f && e.fonte === "DK") e.justa = e.feito + (e.justa - e.feito) * f;
+    }
+  }
   // PRA calibrado = soma das três (foi assim que se mediu)
   if (c && ["pts", "reb", "ast"].every((k) => est[k].justa != null) && est.pra?.pre != null) {
     est.pra.justa = est.pts.justa + est.reb.justa + est.ast.justa;
@@ -694,6 +708,11 @@ export function lerBox(s) {
       const n = (lab) => Number(v[ix(lab)]) || 0;
       const tpm = Number(String(v[ix("3PT")] || "0").split("-")[0]) || 0;
       const b = { min: n("MIN"), pts: n("PTS"), reb: n("REB"), ast: n("AST"), tpm, pf: n("PF"), starter: !!a.starter, sigla: t.team.abbreviation, nome: a.athlete.displayName };
+      // tentativas (23/11/2026, sessão 3; o volume ainda não entra na justa — fica para o matchup ao vivo): "FG"/"3PT"/"FT" = "certas-tentadas"
+      const tent = (lab) => (ix(lab) >= 0 ? Number(String(v[ix(lab)] ?? "").split("-")[1]) : NaN);
+      if (Number.isFinite(tent("FG"))) b.fga = tent("FG");
+      if (Number.isFinite(tent("3PT"))) b.tpa = tent("3PT");
+      if (Number.isFinite(tent("FT"))) b.fta = tent("FT");
       b.pra = b.pts + b.reb + b.ast;
       out[a.athlete.id] = b;
     }
@@ -712,7 +731,7 @@ export function lerBox(s) {
       if (b.dnp) continue;
       const x = c[id] || {};
       const min = segundosPorPeriodo(plays, id, agora, b.starter).reduce((a, v) => a + v, 0) / 60;
-      Object.assign(b, { min: Math.round(min * 10) / 10, pts: x.pts || 0, reb: x.reb || 0, ast: x.ast || 0, tpm: x.tpm || 0, pf: x.pf || 0 });
+      Object.assign(b, { min: Math.round(min * 10) / 10, pts: x.pts || 0, reb: x.reb || 0, ast: x.ast || 0, tpm: x.tpm || 0, pf: x.pf || 0, fga: x.fga || 0, tpa: x.tpa || 0, fta: x.fta || 0 });
       b.pra = b.pts + b.reb + b.ast;
       if (min > 0 || x.pts || x.reb || x.ast) delete b.naoEntrou;
     }

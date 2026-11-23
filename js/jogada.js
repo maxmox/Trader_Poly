@@ -46,7 +46,7 @@ export function consertarResumo(s) {
 // Estatísticas por atleta somando as jogadas até o fim do período `ate` (1 = fim do Q1, 2 = intervalo, 3 = fim do 3º).
 export function contarAte(plays, ate) {
   const out = {};
-  const de = (id) => (out[id] ??= { pts: 0, fga: 0, reb: 0, ast: 0, tpm: 0, pf: 0, tpa: 0, fta: 0, tov: 0, stl: 0, blk: 0 });
+  const de = (id) => (out[id] ??= { pts: 0, fga: 0, fgm: 0, reb: 0, ast: 0, tpm: 0, pf: 0, tpa: 0, fta: 0, ftm: 0, tov: 0, stl: 0, blk: 0 });
   for (const p of plays || []) {
     if ((p.period?.number ?? 99) > ate) break;
     const tipo = p.type?.text || "";
@@ -61,12 +61,13 @@ export function contarAte(plays, ate) {
     if (p.shootingPlay && !p.scoringPlay && ids[1] && / blocks /.test(p.text || "")) de(ids[1]).blk += 1;
     if (/free throw/i.test(tipo)) {
       de(ids[0]).fta += 1;
-      if (p.scoringPlay) de(ids[0]).pts += 1;
+      if (p.scoringPlay) { de(ids[0]).pts += 1; de(ids[0]).ftm += 1; }
     } else if (p.shootingPlay) {
       const a = de(ids[0]);
       a.fga += 1;
       if (p.pointsAttempted === 3) a.tpa += 1;
       if (p.scoringPlay) {
+        a.fgm += 1;
         a.pts += p.scoreValue || 0;
         if (p.scoreValue === 3) a.tpm += 1;
         if (ids[1] && /assist/i.test(p.text || "")) de(ids[1]).ast += 1;
