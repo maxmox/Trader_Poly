@@ -144,7 +144,7 @@ function jogoHtml(g, s, linhas, d) {
     const antes = st?.type?.state !== "in" && st?.type?.state !== "post";
     const pre = antes && dk ? chanceLinhaPre(d.cal, r.j.aid, r.k, dk.l, dk.over, r.L) : null;
     // antes do jogo sem linha da DK não há como estimar vantagem (a dispersão sozinha perdeu da DK): sem chance
-    const ch = antes ? pre || { semDK: true, dp: chanceLinha(d.cal, r.j.aid, 0, mus, feito, r.L).dp } : chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L, ag ? { quadra: ag.quadra, tit: !!b?.starter, mg: margem(r.j.time) } : null);
+    const ch = antes ? pre || { semDK: true, dp: chanceLinha(d.cal, r.j.aid, 0, mus, feito, r.L).dp } : chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L, ag ? { quadra: ag.quadra, tit: !!b?.starter, mg: margem(r.j.time), pre: dk } : null);
     const evO = r.O && !ch.semDK ? ch.over * r.O + ch.push - 1 : null, evU = r.U && !ch.semDK ? ch.under * r.U + ch.push - 1 : null;
     return { r, feito, justa, sn, ch, evO, evU, ks };
   });

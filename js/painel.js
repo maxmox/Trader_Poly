@@ -326,8 +326,29 @@ function recalChance(tab, k, t, ctx, p, acima, rem) {
   const z = x.reduce((s, v, i) => s + v * (w[i] ?? 0), 0);
   return 1 / (1 + Math.exp(-z));
 }
+// Correção da chance por FASE do jogo (23/11/2026, pedido do usuário: "o motor erra no começo, viés Under"; o jogo
+// congelado em 0:30, 1:00 … até o Q4 nos 118 jogos do simulador, a conta do site × o final). Na linha da casa o modelo
+// dava Over 1,5–3 pp abaixo do real no Q1/Q2 (via Under em 60–78% das linhas da DK com 30 s de jogo, real Over ~49%) e
+// ficava confiante demais na virada do fim do Q3 (log-loss PRA 0,706 → 0,676). logit P = a + b·logit(modelo) [+ c·logit
+// da DK pré-jogo levada à linha]; a DK pesa ~0,3 nos primeiros 2:30 e some depois; só nas células que ganharam fora da
+// amostra (pares → ímpares e o inverso). ctx.pre = {l, over} da DK (sem ela, a versão só com o modelo).
+function faseDe(t) {
+  if (t === 720) return 3;
+  if (t === 1440) return 5;
+  if (t === 2160) return 7;
+  return t < 180 ? 0 : t < 360 ? 1 : t < 720 ? 2 : t < 1440 ? 4 : t < 2160 ? 6 : 8;
+}
+function misturaFase(tab, k, t, aid, ctx, L, p) {
+  const mf = tab?.mistura_fase;
+  if (!mf || !(t > 0) || t >= 2880) return p;
+  const pre = ctx?.pre?.l != null && ctx.pre.over > 0 && ctx.pre.over < 1 ? chanceLinhaPre(tab, aid, k, ctx.pre.l, ctx.pre.over, L) : null;
+  const w = mf[pre ? "dk" : "sem"]?.[k]?.[faseDe(t)];
+  if (!w) return p;
+  const z = w[0] + w[1] * lgt(p) + (pre ? w[2] * lgt(pre.over) : 0);
+  return 1 / (1 + Math.exp(-z));
+}
 // Chance de Over/Under numa linha L com o que ele já fez (feito) e o que falta (lista de [k, μ]); combinações somam
-// as variâncias. Com ctx (ao vivo) a chance passa pela recalibração. Devolve {over, under, push, dp}.
+// as variâncias. Com ctx (ao vivo) a chance passa pela recalibração e pela correção da fase. Devolve {over, under, push, dp}.
 export function chanceLinha(tab, aid, t, partes, feito, L, ctx = null) {
   const mu = partes.reduce((s, [, m]) => s + Math.max(m, 0.05), 0);
   const varr = partes.reduce((s, [k, m]) => s + phiDe(tab, k, t, Math.max(m, 0.05), aid) * Math.max(m, 0.05), 0);
@@ -338,8 +359,8 @@ export function chanceLinha(tab, aid, t, partes, feito, L, ctx = null) {
   let ateL = chanceAcima(mu, phi, Math.ceil(alvo)); // P(resto ≥ alvo)
   if (ctx && partes.length === 1) {
     const k = partes[0][0], rem = partes[0][1], acima = L > feito + rem;
-    const o2 = recalChance(tab, k, t, ctx, over, acima, rem);
-    ateL = Number.isInteger(alvo) ? Math.max(o2, recalChance(tab, k, t, ctx, ateL, acima, rem)) : o2;
+    const o2 = misturaFase(tab, k, t, aid, ctx, L, recalChance(tab, k, t, ctx, over, acima, rem));
+    ateL = Number.isInteger(alvo) ? Math.max(o2, misturaFase(tab, k, t, aid, ctx, L - 0.5, recalChance(tab, k, t, ctx, ateL, acima, rem))) : o2;
     over = o2;
   }
   const push = Number.isInteger(alvo) ? Math.max(0, ateL - over) : 0;
@@ -558,6 +579,22 @@ export function estimar(j, box, rel, ajQ4, agora = null, cal = null) {
       const r = e.feito / e.deveria, fb = r < 0.6 ? 0 : r < 0.85 ? 1 : r < 1.15 ? 2 : r < 1.4 ? 3 : 4;
       let f = cal.tab.comeco?.[k]?.[co]?.[fb]?.[mb] ?? 1;
       if (cal.quente && cal.tab.time?.[k]) f *= cal.tab.time[k][co]?.[cal.quente[0]]?.[cal.quente[1]] ?? 1;
+      e.justa = e.feito + (e.justa - e.feito) * f;
+    }
+  }
+  // formato do COMEÇO (23/11/2026, pedido do usuário: "o motor erra no começo, viés Under"; nba_pbp/comeco_formato.py, 44,5
+  // mil jogadores-jogo 2024-27): ritmo do resto ÷ ritmo do jogo inteiro pelos minutos que ele já jogou. A justa supõe ritmo
+  // igual em todo minuto; quem entra frio (rende menos nos 1os minutos) acelera depois → justa baixa no começo. Liga: pontos
+  // +1,1–1,3% com 0,5–6 min jogados; por jogador só PONTOS e 3PM (repetiram entre metades e temporadas, r +0,2 a +0,3; viés
+  // por jogador fora da amostra −1,4% a −2,6% em pontos), encolhido k 100. Só no Q1: do fim do Q1 em diante o fator
+  // "começo" (feito ÷ deveria) já mede o resto contra a justa.
+  const cf = c && rel.t < 720 && min >= 0.5 ? cal.tab.comeco_formato : null;
+  if (cf) {
+    const fb = cf.mb.filter((x) => min >= x).length;
+    for (const k of ["pts", "reb", "ast", "tpm"]) {
+      const e = est[k];
+      if (e?.justa == null) continue;
+      const f = (cf.liga?.[k]?.[fb] ?? 1) * (cf.jogadores?.[j.aid]?.[k]?.[fb] ?? 1);
       e.justa = e.feito + (e.justa - e.feito) * f;
     }
   }
