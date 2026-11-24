@@ -123,5 +123,27 @@ fs.writeFileSync(path.join(out, "celulas.json"), JSON.stringify({
   jog: jogOut, time: timeOut,
   leia_jt: "jog[aid|k] e time[time|k|linha DK|placar 0/1/2 ou *] = [n jogadores-jogo, Over real ‰, esperado ‰, erro-padrão ‰ por jogo, jogos], jogo todo",
 }));
+// Simulador (24/11/2026, pedido do usuário: ao lado da justa, só a calibração do JOGADOR = o nível "jog" acima, sem time
+// nem liga). Por jogador-jogo e estatística: [n momentos, Over, soma do esperado em %]; o simulador soma só os jogos dele
+// ANTERIORES ao do quadro (sem olhar o futuro) e faz o erro-padrão por jogo como fechar().
+const porJog = {};
+ent.jog.forEach((j, i) => {
+  const lin = [j.g, j.d];
+  KS.forEach((k) => {
+    let n = 0, o = 0, ps = 0;
+    for (let m = 0; m < NM; m++) {
+      const x = d[k][i * NM + m];
+      if (x == null) continue;
+      n++; o += x > 0 ? 1 : 0; ps += p[k][i * NM + m];
+    }
+    lin.push(n, o, Math.round(ps / 10));
+  });
+  (porJog[j.a] ||= []).push(lin);
+});
+fs.writeFileSync(path.join(out, "jogadores.json"), JSON.stringify({
+  gerado: new Date().toISOString().slice(0, 16), ks: KS,
+  leia: "j[aid] = [[jogo, dia UTC, e por estatística na ordem de ks: n momentos, Over, soma do Over esperado em %], …]",
+  j: porJog,
+}));
 const tam = (f) => (fs.statSync(path.join(out, f)).size / 1024).toFixed(0);
 console.log(`células ${Object.keys(celOut).length} (${tam("celulas.json")} KB); ${ent.jog.length} jogadores-jogo × ${NM} momentos em ${((Date.now() - t0) / 1000).toFixed(0)} s → ${out} (meta ${tam("meta.json")} KB, pts ${tam("pts.json")} KB)`);

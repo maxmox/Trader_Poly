@@ -949,7 +949,7 @@ function celula(e, ins, aid, k) {
   return `<td class="pc${forte ? " forte" : ""}" style="--cor:${cor}" ${alvo}>
     <div class="pc-top"><b class="pc-feito" style="color:${r == null ? "var(--ink)" : cor}">${e.feito}</b><span class="pc-dev">/ ${num(e.deveria)}</span></div>
     <div class="pbar" title="feito ÷ deveria: ${r == null ? "–" : num(r, 2)}"><i style="width:${larg}%;background:${cor}"></i><em></em></div>
-    <div class="pc-fim">${seta}<b>${num(e.justa)}</b> <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div>${insH}</td>`;
+    <div class="pc-fim">${seta}<b>${num(e.justa)}</b>${PAINEL.extraCel?.(aid, k) ?? ""} <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div>${insH}</td>`;
 }
 
 // minutos de um quarto: real / esperado antes do jogo; quarto encerrado com 2+ min de diferença ganha cor; o atual tem borda
@@ -1302,10 +1302,12 @@ export async function tabelasPainel() {
 
 // Simulador (18/11/2026, pedido do usuário): o MESMO quadro do Painel com um summary congelado num momento do jogo
 // (js/simulador.js monta o summary). Devolve o HTML, a lateral da rotação e o contexto (feito/justa/pré por jogador).
-export function painelCongelado(g, s) {
-  const antes = { parada: PAINEL.parada, rail: PAINEL.rail, ctx: PAINEL.ctx };
+// extraCel(aid, k) → HTML ao lado da justa em cada célula (24/11/2026: calibração do jogador no Simulador)
+export function painelCongelado(g, s, extraCel = null) {
+  const antes = { parada: PAINEL.parada, rail: PAINEL.rail, ctx: PAINEL.ctx, extraCel: PAINEL.extraCel };
   PAINEL.parada = "quadro congelado";
   PAINEL.rail = "";
+  PAINEL.extraCel = extraCel;
   try {
     const html = jogoHtml(g, s) + defesaHtml(g);
     return { html, rail: PAINEL.rail, ctx: PAINEL.ctx };

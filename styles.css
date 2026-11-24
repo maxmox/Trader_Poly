@@ -678,3 +678,7 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 .cv-cal { white-space: nowrap; }
 .cv-cal .cv-sub { display: block; }
 .cv-cal-fraco { opacity: 0.6; font-weight: 400; }
+
+/* Simulador (24/11/2026): calibração do jogador ao lado da justa (pp, discreta) */
+.sim-cal { font-family: var(--mono); font-size: 10px; margin-left: 3px; letter-spacing: -0.2px; }
+.pc-fim .sim-cal { font-weight: 500; }
