@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,9 +70,19 @@ jobs:
           v="${GITHUB_SHA::7}"
           sed -i -E "s#(src=\"js/[a-z0-9_]+\.js)\"#\1?v=$v\"#g" *.html
           sed -i -E "s#(from \"\./[a-z0-9_]+\.js)\"#\1?v=$v\"#g; s#(import\(\"\./[a-z0-9_]+\.js)\"#\1?v=$v\"#g" js/*.js
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .
+      # 24/11/2026: desde 23/11 ~metade das publicações falhava com "No artifacts named github-pages were found" logo
+      # depois do upload (o artefato existia: atraso do GitHub em listar o artefato recém-enviado; issue aberta em
+      # actions/deploy-pages, correção "retry artifact discovery" ainda não lançada) → 2ª tentativa 30 s depois
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - name: Esperar o artefato aparecer (o 1º deploy não o achou)
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+      - id: deploy2
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v5
