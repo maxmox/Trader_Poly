@@ -935,6 +935,40 @@ function quandoTxt(st) {
   return /END_PERIOD/.test(st?.type?.name || "") ? `fim do ${q}` : `${q} aos ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// Calibração do JOGADOR ao lado da justa (24/11/2026, pedido do usuário: "só a do jogador, não a do time nem a da liga";
+// primeiro no Simulador, no mesmo dia também no Painel):
+// o nível "jog" da coluna Calibração da Casa × Painel (Over contra a justa, real × esperado pelo modelo, o jogo todo, nesta
+// temporada; data/padroes/calibracao/jogadores.json, scripts/calibracao_dados.mjs), com a temporada inteira MENOS o
+// jogo do quadro (24/11, usuário: "pode usar a temporada inteira, só não usa o próprio jogo"). Mínimo 4 jogos, como lá.
+// semJogo = id do jogo que fica fora (o do quadro; ao vivo o jogo ainda não está na tabela, que é refeita às 13 h)
+export function calJog(aid, k, semJogo) {
+  const ki = PAINEL.cj?.ks?.indexOf(k) ?? -1, L = PAINEL.cj?.j?.[aid];
+  if (ki < 0 || !L) return null;
+  const id = String(semJogo ?? ""), c0 = 2 + 3 * ki;
+  let N = 0, O = 0, P = 0;
+  const gs = [];
+  for (const r of L) {
+    if (r[0] === id || !r[c0]) continue;
+    const n = r[c0], o = r[c0 + 1], pe = r[c0 + 2] / 100;
+    N += n; O += o; P += pe; gs.push([n, o - pe]);
+  }
+  if (gs.length < 4) return { n: gs.length };
+  const dif = (O - P) / N;
+  let s2 = 0;
+  for (const [n, z] of gs) s2 += (z - n * dif) ** 2;
+  return { n: gs.length, over: O / N, esp: P / N, ep: Math.sqrt(s2) / N };
+}
+// "+5pp" discreto (verde = Over ganhou mais que o esperado, a justa dele fica baixa; vermelho = alta; apagado = acaso)
+export function calJogHtml(aid, k, semJogo) {
+  const c = calJog(aid, k, semJogo);
+  if (!c || c.over == null) return "";
+  const dif = 100 * (c.over - c.esp), forte = Math.abs(c.over - c.esp) >= 2 * c.ep && Math.abs(dif) >= 2;
+  const txt = Math.round(Math.abs(dif)) === 0 ? "0" : `${dif > 0 ? "+" : "−"}${Math.abs(dif).toFixed(0)}`;
+  const tip = `Calibração dele em ${ESTATS.find((e) => e[0] === k)?.[1] ?? k} (${c.n} jogos desta temporada, sem este): Over contra a nossa justa ${Math.round(100 * c.over)}% × ${Math.round(100 * c.esp)}% esperado = ${txt} pp. + = a justa dele costuma ficar baixa; − = alta.${forte ? "" : " Apagado = dentro do acaso (2 erros-padrão)."}`;
+  const cls = txt === "0" ? "muted" : dif > 0 ? "cal-over" : "cal-under";
+  return `<span class="sim-cal ${cls}${forte ? "" : " cv-cal-fraco"}" title="${esc(tip)}">${txt}pp</span>`;
+}
+
 // célula de uma estatística: feito grande, deveria pequeno, barra do ritmo e a linha justa × pré-jogo
 function celula(e, ins, aid, k) {
   const alvo = `data-aid="${aid}" data-k="${k}" title="clique para registrar uma entrada"`;
@@ -949,7 +983,7 @@ function celula(e, ins, aid, k) {
   return `<td class="pc${forte ? " forte" : ""}" style="--cor:${cor}" ${alvo}>
     <div class="pc-top"><b class="pc-feito" style="color:${r == null ? "var(--ink)" : cor}">${e.feito}</b><span class="pc-dev">/ ${num(e.deveria)}</span></div>
     <div class="pbar" title="feito ÷ deveria: ${r == null ? "–" : num(r, 2)}"><i style="width:${larg}%;background:${cor}"></i><em></em></div>
-    <div class="pc-fim">${seta}<b>${num(e.justa)}</b>${PAINEL.extraCel?.(aid, k) ?? ""} <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div>${insH}</td>`;
+    <div class="pc-fim">${seta}<b>${num(e.justa)}</b>${calJogHtml(aid, k, PAINEL.gid)} <small title="${e.fonte === "DK" ? "linha da DraftKings antes do jogo" : "sem linha: projeção do Edgely"}">${e.fonte === "DK" ? "pré" : "proj"} ${num(e.pre)}</small></div>${insH}</td>`;
 }
 
 // minutos de um quarto: real / esperado antes do jogo; quarto encerrado com 2+ min de diferença ganha cor; o atual tem borda
@@ -1057,6 +1091,7 @@ function paradaDe(id, st, plays) {
 }
 
 function jogoHtml(g, s) {
+  PAINEL.gid = g.id; // calibração do jogador ao lado da justa: sem este jogo
   const comp = s?.header?.competitions?.[0];
   const st = comp?.status || { type: { state: "pre" } };
   const rel = relogio(st);
@@ -1282,7 +1317,7 @@ function defesaHtml(g) {
     <p class="hint">Por jogo (ou %), quanto acima/abaixo da média da liga e posição entre os 30 (1º = o que mais cede). Cor sempre no sentido da estatística: <span style="color:var(--good)">verde</span> = 1º a 10º (a favor do Over), <span style="color:var(--bad)">vermelho</span> = 21º a 30º (a favor do Under); o resumo de cima lista só os 5 das pontas (fora as perdas e o ritmo). Perdas de bola do adversário em verde = Over em perdas dele; ritmo em verde = mais posses, Over em tudo. Lance a lance da ESPN: catch-and-shoot ≈ arremesso "Jump Shot", pull-up = "Pullup/Step Back", perto da cesta = menos de 10 pés. Rebote ofensivo cedido = % dos erros do adversário que ele pega de volta; rebote defensivo cedido = % dos erros deste time que o adversário pega. As notas em cinza vêm dos prints (pick-and-roll, marcação individual, transição: o lance a lance não mede). Consulta: não entra na linha justa.</p></details>`;
 }
 
-const LEGENDA = () => `<details class="como-ler" data-k="como-ler"${aberto("como-ler")}><summary class="muted">Como ler o Painel</summary><p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Rotação agora</b> (Q1–Q3, só rotação regular — saídas nos jogos parecidos variando até 3 min; medido em 420 mil momentos de 2025-27): <i>⏱ sai em ~X</i> = saída típica em até 2 min (senta nos 2,5 min seguintes em 67–81%, contra 33% em qualquer momento); <i>⚠ +X além do normal</i> = passou 1–4 min da saída típica (67–78%); <i>🪑 sentou há X · volta ~Y</i> = acabou de sentar. A linha da casa costuma cair em salto quando ele senta (e mais ainda se o placar abre junto). <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
+const LEGENDA = () => `<details class="como-ler" data-k="como-ler"${aberto("como-ler")}><summary class="muted">Como ler o Painel</summary><p class="hint">Em cada estatística: <b>feito</b> / <b>deveria</b> (ritmo normal dele × minutos que já jogou) e a barra do ritmo (meio = no ritmo; <span style="color:var(--sig-o)">azul</span> = 15%+ acima, <span style="color:var(--sig-u)">laranja</span> = 15%+ abaixo; borda = 40%+). Embaixo: <b>linha justa</b> estimada para o fim × linha da DraftKings antes do jogo (<i>proj</i> = sem linha, projeção do Edgely). Linha justa = feito + ritmo × minutos que faltam; ritmo = normal dele (linha da DK ÷ minutos esperados) misturado com o de hoje (peso de hoje = min ÷ (min + K), K 100 em pontos e 60 no resto); minutos que faltam = pela rotação dele: nos 10 jogos anteriores em que, neste mesmo momento, ele estava no mesmo lugar (em quadra, ou no banco há pelo menos o mesmo tempo), quanto jogou depois; enquanto ele não volta do banco a linha vai caindo, se volta antes do normal sobe (sem jogos parecidos: o esperado dos quartos que faltam, com ajuste por ter jogado a mais ou a menos até aqui), e, por cima, fatores calibrados em ~1.400 jogos para minutos e ritmo conforme o momento, o placar projetado do time (placar + handicap pelo tempo que falta) e o papel dele: titular pesado perdendo/ganhando por 21+ no Q4 joga ~0,4–0,6 do previsto, parelho no fim ~1,3; assistências e cestas de 3 rendem menos que a linha, e o PRA é a soma das três. Minutos: jogou / esperado até agora · fim previsto; Q1–Q4 = minutos reais no quarto / esperados antes do jogo (total da nossa projeção de minutos — últimos jogos no time, quem está fora hoje, 240 min por time — repartido pela rotação dele nos últimos 10 jogos; quarto encerrado com 2+ min de diferença em cor; o quarto em andamento tem borda; os que faltam mostram só o esperado). Os minutos que faltam usam esses quartos. <b>Rotação agora</b> (Q1–Q3, só rotação regular — saídas nos jogos parecidos variando até 3 min; medido em 420 mil momentos de 2025-27): <i>⏱ sai em ~X</i> = saída típica em até 2 min (senta nos 2,5 min seguintes em 67–81%, contra 33% em qualquer momento); <i>⚠ +X além do normal</i> = passou 1–4 min da saída típica (67–78%); <i>🪑 sentou há X · volta ~Y</i> = acabou de sentar. A linha da casa costuma cair em salto quando ele senta (e mais ainda se o placar abre junto). <b>Selo ao lado do nome</b> (min ✓ / ~ / ?): confiança nos minutos previstos (σ dos minutos ÷ previsto, medido em ~49 mil jogadores-jogo: variação dele nos últimos 10, fontes que discordam, sem linha na DK, reserva); passe o mouse para ver o motivo e o risco; "fim ~X ± Y" = minutos no fim com a incerteza do que falta. Compare a linha justa com a linha ao vivo da casa. <b>±X pp ao lado da justa</b> (24/11): calibração dele nesta temporada nessa estatística = Over real × Over esperado pelo modelo contra a nossa justa, no jogo todo (4+ jogos; verde = a justa dele costuma ficar baixa, vermelho = alta, apagado = dentro do acaso); só informa, não muda a justa. Estimativa simples, não calibrada contra linhas ao vivo. Atualiza a cada 30 s com a aba aberta.</p>
 <p class="hint"><b>Chance agora</b> (blowout = o time tira os titulares com 1:30+ faltando; clutch apertado = titulares até o fim e placar até 6 a 2:00): tabela da liga por minuto × placar em 2.448 jogos, com o placar projetado pelo handicap do dia e o fator do técnico (2025-26 + 2026-27, encolhido). <b>Linha justa calibrada</b> (11/11): além da rotação e do placar, entram fatores medidos em ~1.400 jogos com linha e conferidos fora da amostra: estrela nº 1/nº 2 conforme o placar (no parelho rende mais desde o Q3), faltas (por grande/outro, quarto e nº de faltas), formato individual de pontos (232 jogadores com 80+ jogos), começo dele (feito ÷ deveria) × momento × placar e, em pontos e cestas de 3, quente com o time frio. Os antigos insights ↑/↓ e os sinais com alvo foram desligados: o que deles se sustentou já está dentro da linha justa. Compare a justa com a linha ao vivo da casa (aba Casa × Painel).</p></details>`;
 
 // a análise do dia mudou no site (padroes.js confere a cada 2 min): baixa as tabelas de novo junto
@@ -1298,16 +1333,16 @@ export async function tabelasPainel() {
   // virou fator da própria justa (calibra_justa.json). Setas, alvos e sinais ficam vazios.
   PAINEL.ins = PAINEL.ins || {}; PAINEL.jog = PAINEL.jog || {}; PAINEL.tim = PAINEL.tim || {};
   if (!PAINEL.cal) PAINEL.cal = await fetch("data/padroes/calibra_justa.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
+  // calibração do jogador ao lado da justa (24/11; refeita todo dia às 13 h pela rotina da calibração)
+  if (!PAINEL.cj) PAINEL.cj = await fetch("data/padroes/calibracao/jogadores.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
 }
 
 // Simulador (18/11/2026, pedido do usuário): o MESMO quadro do Painel com um summary congelado num momento do jogo
 // (js/simulador.js monta o summary). Devolve o HTML, a lateral da rotação e o contexto (feito/justa/pré por jogador).
-// extraCel(aid, k) → HTML ao lado da justa em cada célula (24/11/2026: calibração do jogador no Simulador)
-export function painelCongelado(g, s, extraCel = null) {
-  const antes = { parada: PAINEL.parada, rail: PAINEL.rail, ctx: PAINEL.ctx, extraCel: PAINEL.extraCel };
+export function painelCongelado(g, s) {
+  const antes = { parada: PAINEL.parada, rail: PAINEL.rail, ctx: PAINEL.ctx, gid: PAINEL.gid };
   PAINEL.parada = "quadro congelado";
   PAINEL.rail = "";
-  PAINEL.extraCel = extraCel;
   try {
     const html = jogoHtml(g, s) + defesaHtml(g);
     return { html, rail: PAINEL.rail, ctx: PAINEL.ctx };

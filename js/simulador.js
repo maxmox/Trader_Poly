@@ -7,7 +7,7 @@
 // jogo (as republicações com o jogo rolando já tinham linha ao vivo). O lance a lance da ESPN é cortado no momento e o
 // box é refeito por ele (contarAte bate com o box em 310/312; minutos pelas substituições). Fica neste navegador.
 import { esc } from "./formato.js";
-import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes, chanceJusta } from "./painel.js";
+import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes, chanceJusta, calJog, calJogHtml } from "./painel.js";
 import { contarAte, segundosPorPeriodo, tempoDe } from "./jogada.js";
 
 export const MOMENTOS = [
@@ -74,7 +74,7 @@ function oddsLinha(aid, k, L) {
   return { O: lado(pO), U: lado(pU), push };
 }
 
-const S = { el: null, espn: null, indice: null, base: null, recal: null, cj: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
+const S = { el: null, espn: null, indice: null, base: null, recal: null, dias: new Map(), sums: new Map(), incompleto: new Set(), q: null, slots: [], foco: 0, salvo: false };
 
 // ---------- armazenamento (neste navegador) ----------
 function ler() {
@@ -138,37 +138,6 @@ async function json(u0) {
   if (!r.ok) throw new Error(`${u0}: ${r.status}`);
   return r.json();
 }
-// Calibração do JOGADOR ao lado da justa (24/11/2026, pedido do usuário: "só a do jogador, não a do time nem a da liga"):
-// o nível "jog" da coluna Calibração da Casa × Painel (Over contra a justa, real × esperado pelo modelo, o jogo todo, nesta
-// temporada; data/padroes/calibracao/jogadores.json, scripts/calibracao_dados.mjs), com a temporada inteira MENOS o
-// jogo do quadro (24/11, usuário: "pode usar a temporada inteira, só não usa o próprio jogo"). Mínimo 4 jogos, como lá.
-function calJog(aid, k) {
-  const ki = S.cj?.ks?.indexOf(k) ?? -1, L = S.cj?.j?.[aid];
-  if (ki < 0 || !L || !S.q) return null;
-  const id = String(S.q.id), c0 = 2 + 3 * ki;
-  let N = 0, O = 0, P = 0;
-  const gs = [];
-  for (const r of L) {
-    if (r[0] === id || !r[c0]) continue;
-    const n = r[c0], o = r[c0 + 1], pe = r[c0 + 2] / 100;
-    N += n; O += o; P += pe; gs.push([n, o - pe]);
-  }
-  if (gs.length < 4) return { n: gs.length };
-  const dif = (O - P) / N;
-  let s2 = 0;
-  for (const [n, z] of gs) s2 += (z - n * dif) ** 2;
-  return { n: gs.length, over: O / N, esp: P / N, ep: Math.sqrt(s2) / N };
-}
-// "+5pp" discreto (verde = Over ganhou mais que o esperado, a justa dele fica baixa; vermelho = alta; apagado = acaso)
-function calJogHtml(aid, k) {
-  const c = calJog(aid, k);
-  if (!c || c.over == null) return "";
-  const dif = 100 * (c.over - c.esp), forte = Math.abs(c.over - c.esp) >= 2 * c.ep && Math.abs(dif) >= 2;
-  const txt = Math.round(Math.abs(dif)) === 0 ? "0" : `${dif > 0 ? "+" : "−"}${Math.abs(dif).toFixed(0)}`;
-  const tip = `Calibração dele em ${nomeK(k)} (${c.n} jogos desta temporada, sem este): Over contra a nossa justa ${Math.round(100 * c.over)}% × ${Math.round(100 * c.esp)}% esperado = ${txt} pp. + = a justa dele costuma ficar baixa; − = alta.${forte ? "" : " Apagado = dentro do acaso (2 erros-padrão)."}`;
-  const cls = txt === "0" ? "muted" : dif > 0 ? "cal-over" : "cal-under";
-  return `<span class="sim-cal ${cls}${forte ? "" : " cv-cal-fraco"}" title="${esc(tip)}">${txt}pp</span>`;
-}
 async function diaSim(data) {
   if (!S.dias.has(data)) S.dias.set(data, await json(`data/padroes/sim/${data}.json`));
   return S.dias.get(data);
@@ -212,8 +181,7 @@ async function abrir(q) {
   area.innerHTML = `<p class="muted">montando o quadro…</p>`;
   let dia, s;
   try {
-    [dia, s] = await Promise.all([diaSim(q.data), summary(q.id), tabelasPainel(),
-      S.cj ? null : json("data/padroes/calibracao/jogadores.json").then((x) => { S.cj = x; }).catch(() => { S.cj = {}; })]);
+    [dia, s] = await Promise.all([diaSim(q.data), summary(q.id), tabelasPainel()]);
   } catch (e) {
     area.innerHTML = `<p class="erro">Não consegui carregar o jogo (${esc(e.message)}). Tente sortear de novo.</p>`;
     return true;
@@ -223,8 +191,7 @@ async function abrir(q) {
   if (!g) { S.incompleto.add(q.id); return false; }
   const m = MOM[q.m];
   const sc = congelar(s, m);
-  S.q = { ...q }; // calJog precisa do jogo e da data durante o desenho
-  const r = painelCongelado(g, sc, calJogHtml);
+  const r = painelCongelado(g, sc);
   const comp = s.header.competitions[0];
   S.q = { ...q, g, m, r, ctx: r.ctx, final: lerBox(s), placarFinal: Object.fromEntries(comp.competitors.map((c) => [c.team.abbreviation, c.score])), ot: (comp.status?.period || 4) > 4 };
   S.slots = STAKES.map(() => ({ aid: "", k: "pts", lado: "", palp: "", L: null }));
@@ -253,8 +220,8 @@ function infoSlot(x) {
   if (!x.aid) return `<span class="muted">clique numa célula do quadro ou escolha o jogador</span>`;
   const j = S.q.ctx.jogadores[x.aid], e = j?.est?.[x.k];
   if (linhaDe(e) == null) return `<span style="color:var(--bad)">sem linha justa nesta estatística</span>`;
-  const c = calJog(x.aid, x.k);
-  const cal = !c ? "" : c.over == null ? ` <span class="muted">(calibração dele: ${c.n} jogo${c.n === 1 ? "" : "s"}, pouco)</span>` : ` ${calJogHtml(x.aid, x.k)}`;
+  const c = calJog(x.aid, x.k, S.q.id);
+  const cal = !c ? "" : c.over == null ? ` <span class="muted">(calibração dele: ${c.n} jogo${c.n === 1 ? "" : "s"}, pouco)</span>` : ` ${calJogHtml(x.aid, x.k, S.q.id)}`;
   return `nossa justa <b>${num(linhaDe(e))}</b>${cal} · pré ${num(e.pre)} · tem ${e.feito} em ${num(j.min, 0)} min${e.deveria != null ? ` (deveria ${num(e.deveria)})` : ""}`;
 }
 // linha da aposta: a escolhida ou a ,5 mais perto da justa
