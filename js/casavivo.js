@@ -113,23 +113,43 @@ function chanceHtml(ch, evO, evU) {
 // em quadra/banco, placar do time (até 6 / 7–14 / 15+) — e, nesta temporada, nessa mesma situação e minuto (±2 min), o
 // Over contra a linha justa: real × esperado pelo modelo e a diferença (aba Calibração; celulas.json). Só informa: não
 // mexe na justa nem no EV. Positivo = nessa situação a justa costuma ficar baixa (Over ganha mais que o modelo espera).
-function calibSituacao(cel, k, tit, dk, quadra, mg, t) {
+function calibSituacao(cel, k, tit, dk, quadra, mg, t, aid, time) {
   if (!cel?.c || t == null) return null;
   const am = Math.abs(mg ?? 0), pl = am <= 6 ? 0 : am < 15 ? 1 : 2;
   const arr = cel.c[`${k}|${tit ? 1 : 0}|${dk ? 1 : 0}|${quadra ? 1 : 0}|${pl}`];
   let m = 0;
   cel.grade.forEach((tc, i) => { if (Math.abs(tc - t) < Math.abs(cel.grade[m] - t)) m = i; });
   const v = arr?.[m];
-  return { n: v?.[0] ?? 0, over: (v?.[1] ?? 0) / 1000, esp: (v?.[2] ?? 0) / 1000, ep: (v?.[3] ?? 0) / 1000, tit, dk, quadra, pl, min: cel.grade[m] / 60 };
+  const de = (x, rot) => (x ? { n: x[0], over: x[1] / 1000, esp: x[2] / 1000, ep: x[3] / 1000, jogos: x[4], rot } : null);
+  // time (23/11, usuário: "é para olhar o time e o jogador"): mesmo time, estatística e linha DK, jogo todo; no placar de agora
+  // se houver 5+ jogos nessa faixa, senão qualquer placar
+  const tPl = cel.time?.[`${time}|${k}|${dk ? 1 : 0}|${pl}`];
+  const tTudo = cel.time?.[`${time}|${k}|${dk ? 1 : 0}|*`];
+  const tm = tPl && tPl[4] >= 5 ? de(tPl, `${time}, ${dk ? "com" : "sem"} linha DK, placar ${["até 6", "7–14", "15+"][pl]}`) : de(tTudo, `${time}, ${dk ? "com" : "sem"} linha DK, qualquer placar`);
+  return {
+    liga: { n: v?.[0] ?? 0, over: (v?.[1] ?? 0) / 1000, esp: (v?.[2] ?? 0) / 1000, ep: (v?.[3] ?? 0) / 1000 },
+    jog: de(cel.jog?.[`${aid}|${k}`], "ele, nesta estatística"), time: tm,
+    tit, dk, quadra, pl, min: cel.grade[m] / 60,
+  };
+}
+// um nível (jogador, time ou liga na situação): diferença em pp, verde/vermelho, apagado se dentro de 2 erros-padrão
+function nivelHtml(rotulo, c, minN) {
+  if (!c || c.n < minN) return `<span class="muted">${rotulo} –</span>`;
+  const dif = 100 * (c.over - c.esp), forte = Math.abs(c.over - c.esp) >= 2 * c.ep && Math.abs(dif) >= 2;
+  return `<span class="muted">${rotulo}</span> <span class="${dif > 0 ? "cal-over" : "cal-under"}${forte ? "" : " cv-cal-fraco"}">${Math.round(Math.abs(dif)) === 0 ? "0" : `${dif > 0 ? "+" : "−"}${Math.abs(dif).toFixed(0)}`}</span>`;
+}
+function nivelTxt(nome, c, minN) {
+  if (!c || c.n < minN) return `${nome}: pouca amostra.`;
+  const dif = 100 * (c.over - c.esp), forte = Math.abs(c.over - c.esp) >= 2 * c.ep && Math.abs(dif) >= 2;
+  return `${nome}${c.rot ? ` (${c.rot})` : ""}: Over ${Math.round(100 * c.over)}% × ${Math.round(100 * c.esp)}% esperado = ${dif > 0 ? "+" : "−"}${Math.abs(dif).toFixed(0)} pp (${c.n} jogadores-jogo${c.jogos ? `, ${c.jogos} jogos` : ""})${forte ? "" : ", dentro do acaso"}.`;
 }
 function calibHtml(c) {
   if (!c) return `<span class="muted" title="Só ao vivo e numa estatística (pontos, rebotes, assistências, cestas de 3 ou PRA).">—</span>`;
   const sit = `${c.tit ? "tit" : "res"} · ${c.dk ? "DK" : "sem DK"} · ${c.quadra ? "quadra" : "banco"} · ${["≤6", "7–14", "15+"][c.pl]}`;
   const sitLonga = `${c.tit ? "titular" : "reserva"}, ${c.dk ? "com" : "sem"} linha DK, ${c.quadra ? "em quadra" : "no banco"}, placar do time ${["até 6", "de 7 a 14", "15 ou mais"][c.pl]}, perto do min ${String(c.min).replace(".", ",")}`;
-  if (c.n < 30) return `<span class="muted" title="Nesta temporada há só ${c.n} jogadores-jogo nessa situação (${sitLonga}).">pouca amostra</span><small class="cv-sub">${sit}</small>`;
-  const dif = 100 * (c.over - c.esp), forte = Math.abs(c.over - c.esp) >= 2 * c.ep && Math.abs(dif) >= 2;
-  const tip = `Situação agora: ${sitLonga}. Nesta temporada, nessa situação (±2 min), o final ficou acima da linha justa em ${Math.round(100 * c.over)}% contra ${Math.round(100 * c.esp)}% esperados pelo modelo (${c.n} jogadores-jogo). ${dif > 0 ? "Positivo: a justa costuma ficar baixa aqui (Over ganha mais que o esperado)." : "Negativo: a justa costuma ficar alta aqui (Under ganha mais que o esperado)."}${forte ? "" : " Diferença dentro do acaso (menos de 2 erros-padrão)."} Só informa: não muda a justa nem o EV.`;
-  return `<span class="${dif > 0 ? "cal-over" : "cal-under"}${forte ? "" : " cv-cal-fraco"}" title="${esc(tip)}">${dif > 0 ? "+" : "−"}${Math.abs(dif).toFixed(0)} pp</span><small class="cv-sub">${Math.round(100 * c.over)}% × ${Math.round(100 * c.esp)}% · ${sit}</small>`;
+  const tip = `Over contra a linha justa nesta temporada, real × esperado pelo modelo (pp = diferença; + = a justa costuma ficar baixa, Over ganha mais que o esperado; − = alta). `
+    + `${nivelTxt("Jogador", c.jog, 4)} ${nivelTxt("Time", c.time, 10)} ${nivelTxt(`Liga na situação agora (${sitLonga}, ±2 min)`, c.liga, 30)} Apagado = dentro de 2 erros-padrão. Só informa: não muda a justa nem o EV.`;
+  return `<span title="${esc(tip)}">${nivelHtml("jog", c.jog, 4)} · ${nivelHtml("time", c.time, 10)} · ${nivelHtml("liga", c.liga, 30)}</span><small class="cv-sub">pp · ${sit}</small>`;
 }
 
 function jogoHtml(g, s, linhas, d) {
@@ -169,7 +189,7 @@ function jogoHtml(g, s, linhas, d) {
     // antes do jogo sem linha da DK não há como estimar vantagem (a dispersão sozinha perdeu da DK): sem chance
     const ch = antes ? pre || { semDK: true, dp: chanceLinha(d.cal, r.j.aid, 0, mus, feito, r.L).dp } : chanceLinha(d.cal, r.j.aid, rel.t, mus, feito, r.L, ag ? { quadra: ag.quadra, tit: !!b?.starter, mg: margem(r.j.time), pre: dk } : null);
     const evO = r.O && !ch.semDK ? ch.over * r.O + ch.push - 1 : null, evU = r.U && !ch.semDK ? ch.under * r.U + ch.push - 1 : null;
-    const cb = !antes && ag && (r.ks.length === 1 || r.k === "pra") ? calibSituacao(d.celulas, r.k, !!b?.starter, !!dk, ag.quadra, margem(r.j.time), rel.t) : null;
+    const cb = !antes && ag && (r.ks.length === 1 || r.k === "pra") ? calibSituacao(d.celulas, r.k, !!b?.starter, !!dk, ag.quadra, margem(r.j.time), rel.t, r.j.aid, r.j.time) : null;
     return { r, feito, justa, sn, ch, evO, evU, ks, cb };
   });
   // ordem: maior EV (padrão), maior diferença justa − linha ou nome
@@ -202,7 +222,7 @@ function jogoHtml(g, s, linhas, d) {
   const melhor = ok.length ? evMax(ok.reduce((a, b) => (evMax(b) > evMax(a) ? b : a))) : -Infinity;
   return { melhor, html: `<div class="panel"><p style="margin:0 0 6px">${placarHtml(g, s)}${linhas[0]?.em ? ` <span class="muted">· odds das ${hhmm(Math.min(...linhas.map((r) => r.em || Date.now())))}</span>` : ""}</p>
     ${idade > VELHA_MIN && st?.type?.state === "in" ? `<p class="banner">Odds capturadas há ${idade} min — o jogo andou desde então. Capture de novo.</p>` : ""}
-    ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Linha justa<small>Painel, agora</small></th><th class="n">Justa − linha</th><th class="n">Chance · valor<small>lado de maior valor esperado com a odd da casa</small></th><th class="n" title="Na situação do jogador agora (papel, linha DK, quadra/banco, placar e minuto), nesta temporada: Over real contra a linha justa × esperado pelo modelo. Verde = a justa costuma ficar baixa aí; vermelho = alta. Apagado = dentro do acaso.">Calibração<small>Over real × esperado na situação</small></th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
+    ${ok.length ? `<div class="tbl-wrap"><table class="props-tab campeon-tab"><thead><tr><th>Jogador</th><th class="n">Casa<small>linha · Mais / Menos</small></th><th class="n">Linha justa<small>Painel, agora</small></th><th class="n">Justa − linha</th><th class="n">Chance · valor<small>lado de maior valor esperado com a odd da casa</small></th><th class="n" title="Over real contra a linha justa × esperado pelo modelo, nesta temporada, em pp: do jogador (nesta estatística, jogo todo), do time dele (mesma estatística, linha DK e placar) e da liga na situação de agora (papel, linha DK, quadra/banco, placar, minuto). Verde = a justa costuma ficar baixa (Over); vermelho = alta (Under); apagado = dentro do acaso. Passe o mouse na célula para os números.">Calibração<small>jogador · time · liga (pp)</small></th></tr></thead><tbody>${corpo}</tbody></table></div>` : ""}
     ${fora.length ? `<p class="muted">Sem conta: ${fora.map((w) => `${esc(w.r.j.nome)} ${NOME_K[w.r.k]} (${w.fora})`).join(" · ")}</p>` : ""}</div>` };
 }
 

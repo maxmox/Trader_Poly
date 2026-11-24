@@ -76,6 +76,36 @@ ent.jog.forEach((j, i) => {
     }
   });
 });
+// Jogador e time (23/11/2026, usuário: "é para olhar o time e o jogador"): o jogo todo (todos os momentos), como a lista de
+// jogadores da aba. Jogador: aid|k (todas as situações). Time: time|k|linha DK|placar do momento (e time|k|dk|* = qualquer placar).
+const agr = {};
+const somaAgr = (chave, gid, pj, o, pp) => {
+  const c = (agr[chave] ||= { n: 0, o: 0, p: 0, g: new Map(), pj: new Set() });
+  c.n++; c.o += o; c.p += pp; c.pj.add(pj);
+  const gg = c.g.get(gid) || [0, 0]; gg[0]++; gg[1] += o - pp; c.g.set(gid, gg);
+};
+ent.jog.forEach((j, i) => {
+  const jj = jog[i];
+  KS.forEach((k, ki) => {
+    const dk = (jj[8] >> ki) & 1;
+    for (let m = 0; m < NM; m++) {
+      const x = d[k][i * NM + m];
+      if (x == null) continue;
+      const o = x > 0 ? 1 : 0, pp = p[k][i * NM + m] / 1000, pl = est[i * NM + m] >> 1;
+      somaAgr(`j|${j.a}|${k}`, j.g, i, o, pp);
+      somaAgr(`t|${j.tm}|${k}|${dk}|${pl}`, j.g, i, o, pp);
+      somaAgr(`t|${j.tm}|${k}|${dk}|*`, j.g, i, o, pp);
+    }
+  });
+});
+const fechar = (c) => {
+  const dif = (c.o - c.p) / c.n;
+  let s2 = 0;
+  for (const [n, z] of c.g.values()) s2 += (z - n * dif) ** 2;
+  return [c.pj.size, Math.round((1000 * c.o) / c.n), Math.round((1000 * c.p) / c.n), Math.round((1000 * Math.sqrt(s2)) / c.n), c.g.size];
+};
+const jogOut = {}, timeOut = {};
+for (const [chave, c] of Object.entries(agr)) (chave[0] === "j" ? jogOut : timeOut)[chave.slice(2)] = fechar(c);
 const celOut = {};
 for (const [chave, arr] of Object.entries(cel)) {
   celOut[chave] = arr.map((c) => {
@@ -90,6 +120,8 @@ fs.writeFileSync(path.join(out, "celulas.json"), JSON.stringify({
   gerado: new Date().toISOString().slice(0, 16), grade: ent.grade, janela_s: JAN, dias: [ent.jog[0].d, ent.jog[ent.jog.length - 1].d],
   leia: "c[k|titular|linha DK|em quadra|placar 0:≤6 1:7–14 2:15+][momento] = [n jogadores-jogo, Over real ‰, esperado ‰, erro-padrão da diferença ‰ (por jogo)]",
   c: celOut,
+  jog: jogOut, time: timeOut,
+  leia_jt: "jog[aid|k] e time[time|k|linha DK|placar 0/1/2 ou *] = [n jogadores-jogo, Over real ‰, esperado ‰, erro-padrão ‰ por jogo, jogos], jogo todo",
 }));
 const tam = (f) => (fs.statSync(path.join(out, f)).size / 1024).toFixed(0);
 console.log(`células ${Object.keys(celOut).length} (${tam("celulas.json")} KB); ${ent.jog.length} jogadores-jogo × ${NM} momentos em ${((Date.now() - t0) / 1000).toFixed(0)} s → ${out} (meta ${tam("meta.json")} KB, pts ${tam("pts.json")} KB)`);
