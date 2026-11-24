@@ -140,8 +140,8 @@ async function json(u0) {
 }
 // Calibração do JOGADOR ao lado da justa (24/11/2026, pedido do usuário: "só a do jogador, não a do time nem a da liga"):
 // o nível "jog" da coluna Calibração da Casa × Painel (Over contra a justa, real × esperado pelo modelo, o jogo todo, nesta
-// temporada; data/padroes/calibracao/jogadores.json, scripts/calibracao_dados.mjs), mas só com os jogos dele ANTERIORES
-// ao do quadro (o próprio jogo e os seguintes ficam fora: senão o resultado vazaria). Mínimo 4 jogos, como lá.
+// temporada; data/padroes/calibracao/jogadores.json, scripts/calibracao_dados.mjs), com a temporada inteira MENOS o
+// jogo do quadro (24/11, usuário: "pode usar a temporada inteira, só não usa o próprio jogo"). Mínimo 4 jogos, como lá.
 function calJog(aid, k) {
   const ki = S.cj?.ks?.indexOf(k) ?? -1, L = S.cj?.j?.[aid];
   if (ki < 0 || !L || !S.q) return null;
@@ -149,8 +149,7 @@ function calJog(aid, k) {
   let N = 0, O = 0, P = 0;
   const gs = [];
   for (const r of L) {
-    // dia em UTC: o jogo anterior dele cai no máximo no dia do quadro (jogo da noite anterior); os seguintes, depois
-    if (r[0] === id || r[1] > S.q.data || !r[c0]) continue;
+    if (r[0] === id || !r[c0]) continue;
     const n = r[c0], o = r[c0 + 1], pe = r[c0 + 2] / 100;
     N += n; O += o; P += pe; gs.push([n, o - pe]);
   }
@@ -166,7 +165,7 @@ function calJogHtml(aid, k) {
   if (!c || c.over == null) return "";
   const dif = 100 * (c.over - c.esp), forte = Math.abs(c.over - c.esp) >= 2 * c.ep && Math.abs(dif) >= 2;
   const txt = Math.round(Math.abs(dif)) === 0 ? "0" : `${dif > 0 ? "+" : "−"}${Math.abs(dif).toFixed(0)}`;
-  const tip = `Calibração dele em ${nomeK(k)} (${c.n} jogos desta temporada antes deste): Over contra a nossa justa ${Math.round(100 * c.over)}% × ${Math.round(100 * c.esp)}% esperado = ${txt} pp. + = a justa dele costuma ficar baixa; − = alta.${forte ? "" : " Apagado = dentro do acaso (2 erros-padrão)."}`;
+  const tip = `Calibração dele em ${nomeK(k)} (${c.n} jogos desta temporada, sem este): Over contra a nossa justa ${Math.round(100 * c.over)}% × ${Math.round(100 * c.esp)}% esperado = ${txt} pp. + = a justa dele costuma ficar baixa; − = alta.${forte ? "" : " Apagado = dentro do acaso (2 erros-padrão)."}`;
   const cls = txt === "0" ? "muted" : dif > 0 ? "cal-over" : "cal-under";
   return `<span class="sim-cal ${cls}${forte ? "" : " cv-cal-fraco"}" title="${esc(tip)}">${txt}pp</span>`;
 }
@@ -255,7 +254,7 @@ function infoSlot(x) {
   const j = S.q.ctx.jogadores[x.aid], e = j?.est?.[x.k];
   if (linhaDe(e) == null) return `<span style="color:var(--bad)">sem linha justa nesta estatística</span>`;
   const c = calJog(x.aid, x.k);
-  const cal = !c ? "" : c.over == null ? ` <span class="muted">(calibração dele: ${c.n} jogo${c.n === 1 ? "" : "s"} antes, pouco)</span>` : ` ${calJogHtml(x.aid, x.k)}`;
+  const cal = !c ? "" : c.over == null ? ` <span class="muted">(calibração dele: ${c.n} jogo${c.n === 1 ? "" : "s"}, pouco)</span>` : ` ${calJogHtml(x.aid, x.k)}`;
   return `nossa justa <b>${num(linhaDe(e))}</b>${cal} · pré ${num(e.pre)} · tem ${e.feito} em ${num(j.min, 0)} min${e.deveria != null ? ` (deveria ${num(e.deveria)})` : ""}`;
 }
 // linha da aposta: a escolhida ou a ,5 mais perto da justa
