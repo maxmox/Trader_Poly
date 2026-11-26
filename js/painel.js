@@ -133,7 +133,7 @@ function umChip(m, x, rel, margem, ctx) {
 // com 10+ pelos minutos previstos, e a outra estatística (pontos ou reb/ast) também no ritmo de 10. Over = no histórico dele,
 // depois desse começo, chegou a 10 (ou a 9) bem mais que a nossa justa dava; Under = começa forte e termina abaixo da justa
 // (o ritmo cai para ~0,88 do normal). Aceso uma vez, fica no jogo. Só informa: não entra na justa.
-const DD_ON = new Set();
+const DD_ON = new Map(); // chave → t em que acendeu (o 1º)
 const DD_NOME = { ast: "assistências", reb: "rebotes" };
 const ddMinimo = (t) => (t < 1080 ? 3 : t < 1440 ? 4 : t < 1800 ? 5 : 6);
 function ddGatilho(j, b, rel, x) {
@@ -232,15 +232,24 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null)
     const c = sim ? ddSemJogo(e[x], gid, dd.min_jogos ?? 6) : e[x];
     if (!c) return "";
     const chave = `${gid}|${j.aid}|${x}`;
-    const aceso = ddGatilho(j, b, rel, x) || (fotos || []).some((f) => ddGatilho(j, f.b, { t: f.t, fim: false }, x));
-    if (!sim && aceso) DD_ON.add(chave);
-    if (!aceso && (sim || !DD_ON.has(chave))) return "";
+    // quando acendeu: fotos do fim do Q1 / intervalo, o momento atual e (ao vivo) a memória do 1º acendimento
+    const ts = (fotos || []).filter((f) => ddGatilho(j, f.b, { t: f.t, fim: false }, x)).map((f) => f.t);
+    if (ddGatilho(j, b, rel, x)) ts.push(rel.t);
+    if (!sim && DD_ON.has(chave)) ts.push(DD_ON.get(chave));
+    if (!ts.length) return "";
+    const tAceso = Math.min(...ts);
+    if (!sim) DD_ON.set(chave, tAceso);
     const over = c.lado === "over";
     const f = b?.[x] ?? 0;
     const feito = over && f >= 10;
     const cor = over ? "var(--good)" : "var(--bad)";
     const ab = x === "ast" ? "ast" : "reb";
-    const sg = feito || rel?.fim || !viva ? null : ddSugestao(c, x, viva, String(j.aid), rel?.t ?? 0, f, sim);
+    const sg0 = feito || rel?.fim || !viva ? null : ddSugestao(c, x, viva, String(j.aid), rel?.t ?? 0, f, sim);
+    // momento (caca_dd_aposta, só jogos anteriores): a vantagem do chip está do fim do Q1 ao intervalo (Over 9,5 cheio no fim do
+    // Q1 +34%, Q2 6:00 +21%, intervalo +16%; Under 9,5 cheio no Q2 6:00 +50%); no 2º tempo o chip não acrescenta (a nossa odd
+    // já paga o Over de quem está quente: sem chip igual); o Over que só acende no intervalo não tem vantagem (−2 a −12 pp)
+    const tarde = over && tAceso >= 1440, seg = (rel?.t ?? 0) > 1440;
+    const sg = sg0 && sg0.forte && (tarde || seg) ? { ...sg0, forte: false, motivo: tarde ? "acendeu tarde" : "2º tempo" } : sg0;
     const aposta = sg ? ` ${num(sg.L)}${sg.odd != null ? ` @${ddOdd2(sg.odd)}` : ""}` : "";
     const txt = `${over ? `🎯 DD ${ab} ↑` : `🧊 ${ab} ↓`}${feito ? " ✓" : aposta}${sg?.motivo ? ` · ${sg.motivo}` : ""}`;
     const forte = !feito && (sg ? sg.forte : true);
