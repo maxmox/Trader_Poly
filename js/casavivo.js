@@ -211,7 +211,7 @@ function jogoHtml(g, s, linhas, d) {
     const evm = Math.max(evO ?? -9, evU ?? -9);
     const suspeito = evm >= EV_SUSPEITO;
     const forte = evm >= 0.05 && !suspeito && cm?.n !== 2;
-    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)}${r.k === "ast" || r.k === "reb" ? ddChip(d.dd, r.j, b, rel, g.id, r.k, ddF ? ddF(r.j.aid, !!b?.starter) : null) : ""} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
+    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)}${r.k === "ast" || r.k === "reb" ? ddChip(d.dd, r.j, b, rel, g.id, r.k, ddF ? ddF(r.j.aid, !!b?.starter) : null, { est: est.get(r.j.aid)?.x?.est, quadra: ag ? ag.quadra : null, tit: !!b?.starter, mg: margem(r.j.time), tab: d.cal }) : ""} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
       <td class="n">${r.O && r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>`
         : /marco/i.test(r.mercado || "") ? `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`
         : `${num(r.L)} <span class="muted" title="o outro lado está suspenso na casa">· ${r.O ? `só Mais ${num(r.O, 2)}` : `só Menos ${num(r.U, 2)}`}</span>`}</td>

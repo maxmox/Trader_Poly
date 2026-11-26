@@ -159,14 +159,14 @@ export function ddFotos(plays, rel) {
   };
 }
 // simulador: a conta do histórico refeita SEM o jogo do quadro (e a mesma regra de seleção: 6+ jogos, ±8 pp)
-function ddSemJogo(c, gid) {
+function ddSemJogo(c, gid, minJogos = 6) {
   if (!gid || !c?.jg || !c.jg.some((r) => String(r[0]) === String(gid))) return c;
   const R = c.jg.filter((r) => String(r[0]) !== String(gid));
   const est = (S) => {
     const n = S.length, m = (f) => S.reduce((a, r) => a + f(r), 0) / n;
     return { n, o10: m((r) => r[3] >= 10), p10: m((r) => r[4] / 1000), o9: m((r) => r[3] >= 9), p9: m((r) => r[5] / 1000), d: m((r) => r[3] - r[6] / 10) };
   };
-  if (R.length < 6) return null;
+  if (R.length < minJogos) return null;
   const e = est(R), over = c.lado === "over", sg = over ? 1 : -1;
   const ok = over ? (e.o10 - e.p10 >= 0.08 || e.o9 - e.p9 >= 0.1) && e.d > 0 : e.o10 - e.p10 <= -0.08 && e.o9 - e.p9 <= 0 && e.d < 0;
   if (!ok) return null;
@@ -177,12 +177,59 @@ function ddSemJogo(c, gid) {
   return { ...c, ...e, ritmo: ee ? ce / ee : null, cons: per.every((x) => x && sg * (x.o10 - x.p10 + x.o9 - x.p9) > 0),
     placar: { par: pl(R.filter((r) => !r[7])), aberto: pl(R.filter((r) => r[7])) }, ult: R.slice(-5).map((r) => `${dt(r[1])}: ${r[2]}→${r[3]}`), semJogo: true };
 }
-export function ddChip(dd, j, b, rel, gid, so = null, fotos = null) {
+// Regras de aposta do chip (26/11/2026, nba_pbp/caca_dd_aposta.py: apostando como no simulador, odd do simulador, chip só
+// com os jogos ANTERIORES, momentos até o intervalo; "sem chip" = a mesma aposta em quem disparou o gatilho sem ter chip ≈ 0):
+//   🎯 Over: justa ≥ 9,5 → Over 9,5 (não subir a linha: eles param no 10); justa < 9,5 → Over na linha padrão (a ,5 mais perto
+//      da justa). Valor: em quadra (+22% × banco +3%) e odd do 9,5 entre 1,5 e 3 (1,5–2,0 +17%, 2,5–3,0 +39%; < 1,5 só +6%;
+//      > 3 loteria: 18–35% de acerto); linha menor com odd 1,7–2,5 (+23% com a linha padrão < 9,5).
+//   🧊 Under: Under 9,5 com odd ≥ 1,5 (+25% em 1,5–2,0; abaixo de 1,5 +8%); se o 9,5 paga pouco, Under na linha padrão em jogo
+//      até 10 pontos (+19%; placar aberto 0%); projeção pré alta (≥ 8,5) não funciona.
+// A odd mostrada é a nossa (justa, sem margem; no simulador, a mesma do simulador).
+let DD_RECAL = null; // o simulador registra a recalibração dele (odd igual à do quadro)
+export function ddRecalSim(fn) { DD_RECAL = fn; }
+function ddOdd(viva, aid, x, t, L, lado, sim) {
+  const e = viva?.est?.[x], tab = viva?.tab || PAINEL.cal;
+  if (!e || e.justa == null || !tab) return null;
+  const c = chanceLinha(tab, aid, t, [[x, Math.max(e.justa - e.feito, 0)]], e.feito, L, { quadra: !!viva.quadra, tit: !!viva.tit, mg: viva.mg });
+  if (!c) return null;
+  let pO = c.over;
+  if (sim && DD_RECAL) pO = DD_RECAL(t, x, `${viva.quadra ? 1 : 0}${viva.tit ? 1 : 0}`, e.justa - e.feito, pO);
+  const p = lado === "O" ? pO : 1 - pO;
+  return p < 0.04 ? null : Math.round(100 / p) / 100;
+}
+const ddOdd2 = (v) => (v == null ? "–" : num(v, 2));
+// sugestão de aposta do chip agora: {L, lado, odd, forte, motivo}
+function ddSugestao(c, x, viva, aid, t, f, sim) {
+  const e = viva?.est?.[x];
+  if (!e || e.justa == null) return null;
+  const Lp = Math.max(Math.floor(e.justa) + 0.5, f + 0.5);
+  const quadra = viva.quadra !== false;
+  if (c.lado === "over") {
+    if (f >= 10) return null;
+    const L = Lp < 9.5 ? Lp : 9.5;
+    const odd = ddOdd(viva, aid, x, t, L, "O", sim);
+    if (odd == null) return { L, lado: "O", odd, forte: false, motivo: "sem odd" };
+    const faixa = L === 9.5 ? odd >= 1.5 && odd <= 3 : odd >= 1.7 && odd <= 2.5;
+    const motivo = !quadra ? "no banco" : faixa ? "" : L === 9.5 ? (odd < 1.5 ? "odd baixa" : "loteria") : odd < 1.7 ? "odd baixa" : "odd alta";
+    return { L, lado: "O", odd, forte: quadra && faixa, motivo };
+  }
+  if (f >= 10) return { L: 9.5, lado: "U", odd: null, forte: false, motivo: "passou de 10" };
+  const projAlta = e.pre != null && e.pre >= 8.5;
+  const odd9 = ddOdd(viva, aid, x, t, 9.5, "U", sim);
+  if (odd9 != null && odd9 >= 1.5) return { L: 9.5, lado: "U", odd: odd9, forte: !projAlta, motivo: projAlta ? "projeção alta" : "" };
+  const parelho = Math.abs(viva.mg ?? 0) <= 10;
+  if (Lp < 9.5 && parelho) {
+    const odd = ddOdd(viva, aid, x, t, Lp, "U", sim);
+    return { L: Lp, lado: "U", odd, forte: !projAlta && odd != null, motivo: projAlta ? "projeção alta" : "" };
+  }
+  return { L: 9.5, lado: "U", odd: odd9, forte: false, motivo: !parelho ? "placar aberto" : "odd baixa" };
+}
+export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null) {
   const e = dd?.j?.[j?.aid];
   if (!e) return "";
   const sim = PAINEL.parada === "quadro congelado";
   return ["ast", "reb"].filter((x) => e[x] && (!so || so === x)).map((x) => {
-    const c = sim ? ddSemJogo(e[x], gid) : e[x];
+    const c = sim ? ddSemJogo(e[x], gid, dd.min_jogos ?? 6) : e[x];
     if (!c) return "";
     const chave = `${gid}|${j.aid}|${x}`;
     const aceso = ddGatilho(j, b, rel, x) || (fotos || []).some((f) => ddGatilho(j, f.b, { t: f.t, fim: false }, x));
@@ -193,14 +240,21 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null) {
     const feito = over && f >= 10;
     const cor = over ? "var(--good)" : "var(--bad)";
     const ab = x === "ast" ? "ast" : "reb";
-    const txt = over ? `🎯 DD ${ab} ↑${feito ? " ✓" : ""}` : `🧊 ${ab} ↓`;
+    const sg = feito || rel?.fim || !viva ? null : ddSugestao(c, x, viva, String(j.aid), rel?.t ?? 0, f, sim);
+    const aposta = sg ? ` ${num(sg.L)}${sg.odd != null ? ` @${ddOdd2(sg.odd)}` : ""}` : "";
+    const txt = `${over ? `🎯 DD ${ab} ↑` : `🧊 ${ab} ↓`}${feito ? " ✓" : aposta}${sg?.motivo ? ` · ${sg.motivo}` : ""}`;
+    const forte = !feito && (sg ? sg.forte : true);
     const pl = (k, r) => (c.placar?.[k] ? `${r}: ${c.placar[k][0]} j, chegou a 10 em ${pc(c.placar[k][1])} × justa ${pc(c.placar[k][2])}` : "");
+    const regra = over
+      ? "Regra (teste 2024-27 como no simulador, só jogos anteriores, até o intervalo): justa ≥ 9,5 → Over 9,5 (não suba a linha: eles param no 10); justa < 9,5 → Over na linha padrão. Valor: em quadra (+22% × banco +3%) e odd do 9,5 entre 1,5 e 3 (1,5–2,0 +17%, 2,5–3,0 +39%; abaixo de 1,5 só +6%; acima de 3 é loteria); linha menor com odd 1,7–2,5 (+23%)."
+      : "Regra (teste 2024-27 como no simulador, só jogos anteriores, até o intervalo): Under 9,5 com odd ≥ 1,5 (+25% em 1,5–2,0; abaixo de 1,5 +8%); se o 9,5 paga pouco, Under na linha padrão com o jogo até 10 pontos (+19%; placar aberto 0%). Projeção pré alta (≥ 8,5) não funciona.";
     const tip = `${over ? "Começo em ritmo de double-double" : "Começou forte, mas costuma terminar abaixo da justa"} (${DD_NOME[x]}). `
+      + `${sg ? `Sugestão agora: ${sg.lado === "O" ? "Over" : "Under"} ${num(sg.L)}${sg.odd != null ? ` — nossa odd ${ddOdd2(sg.odd)}` : ""}${sg.forte ? " (na faixa de valor)" : sg.motivo ? ` (${sg.motivo})` : ""}. ` : ""}`
+      + `${rel && rel.t > 1440 && !rel.fim ? "Já no 2º tempo: o teste mediu até o intervalo. " : ""}`
       + `Histórico dele 2024-27 com esse começo${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos → chegou a 10 em ${pc(c.o10)} × nossa justa ${pc(c.p10)}; a 9 em ${pc(c.o9)} × ${pc(c.p9)}; `
       + `final − justa ${c.d > 0 ? "+" : ""}${num(c.d, 2)}; ritmo depois ×${num(c.ritmo, 2)} do normal. ${c.cons ? "Repetiu nas duas temporadas." : "Não repetiu nas duas temporadas (mais incerto)."} `
-      + `${[pl("par", "Placar até 10"), pl("aberto", "placar aberto")].filter(Boolean).join("; ")}. Últimos: ${(c.ult || []).join(", ")}. `
-      + `${over ? "Aposta dele: Over 9,5 ou linha menor." : "Under na linha justa."} Só informa: não entra na linha justa.`;
-    return ` <span class="mu-chip${feito ? " contra" : " forte"}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
+      + `${[pl("par", "Placar até 10"), pl("aberto", "placar aberto")].filter(Boolean).join("; ")}. Últimos: ${(c.ult || []).join(", ")}. ${regra} Só informa: não entra na linha justa.`;
+    return ` <span class="mu-chip${feito ? " contra" : forte ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
   }).join("");
 }
 
@@ -1083,7 +1137,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null)}${hierChip(hv)}</span>${mupHtml(j)}</td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null, { est: x?.est, quadra, tit: !!b?.starter, mg, tab: PAINEL.cal })}${hierChip(hv)}</span>${mupHtml(j)}</td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;

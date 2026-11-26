@@ -7,7 +7,7 @@
 // jogo (as republicações com o jogo rolando já tinham linha ao vivo). O lance a lance da ESPN é cortado no momento e o
 // box é refeito por ele (contarAte bate com o box em 310/312; minutos pelas substituições). Fica neste navegador.
 import { esc } from "./formato.js";
-import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes, chanceJusta, calJog, calJogHtml } from "./painel.js";
+import { ESTATS, lerBox, tabelasPainel, painelCongelado, ligarDetalhes, chanceJusta, calJog, calJogHtml, ddRecalSim } from "./painel.js";
 import { contarAte, segundosPorPeriodo, tempoDe } from "./jogada.js";
 
 export const MOMENTOS = [
@@ -59,6 +59,8 @@ function recal(mk, k, est, rem, p) {
   const x = [lgt(p), ...R_KS.map((kk) => (kk === k ? 1 : 0)), ...R_ES.map((e) => (e === est ? 1 : 0)), rem < 0.5 ? 1 : 0, rem >= 0.5 && rem < 1 ? 1 : 0];
   return sgm(x.reduce((s1, v, i) => s1 + v * (w[i] ?? 0), 0));
 }
+// chips de double-double no quadro: a odd do chip com a mesma recalibração do simulador (o momento sai do t congelado)
+ddRecalSim((t, k, est, rem, p) => { const m = MOMENTOS.find((x) => x.t === t); return m ? recal(m.k, k, est, rem, p) : p; });
 const linhaPadrao = (e) => (e?.justa == null ? null : Math.max(Math.floor(e.justa) + 0.5, e.feito + 0.5));
 // {O: {p, odd} | null, U: {p, odd} | null, push} na linha L para o jogador aid na estatística k
 function oddsLinha(aid, k, L) {
