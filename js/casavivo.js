@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome, porSobrenome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, horaAnalise, rotacaoInfo, rotacaoAgora } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, ddChip, horaAnalise, rotacaoInfo, rotacaoAgora } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -88,8 +88,8 @@ function rotTexto(j, rel, ag) {
 async function carregarDados() {
   if (ST.dados) return ST.dados;
   const ler = (u) => (u.includes("/-.json") ? Promise.resolve({}) : fetch(u, { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}))); // insights antigos desligados (11/11)
-  const [cm, ins, jog, pol, tim, cal, celulas] = await Promise.all(["chance_minuto", "-", "-", "cenarios", "-", "calibra_justa", "calibracao/celulas"].map((n) => ler(`data/padroes/${n}.json`)));
-  return (ST.dados = { cm, ins, jog, pol, tim, cal, celulas });
+  const [cm, ins, jog, pol, tim, cal, celulas, dd] = await Promise.all(["chance_minuto", "-", "-", "cenarios", "-", "calibra_justa", "calibracao/celulas", "caca_dd"].map((n) => ler(`data/padroes/${n}.json`)));
+  return (ST.dados = { cm, ins, jog, pol, tim, cal, celulas, dd });
 }
 
 function placarHtml(g, s) {
@@ -210,7 +210,7 @@ function jogoHtml(g, s, linhas, d) {
     const evm = Math.max(evO ?? -9, evU ?? -9);
     const suspeito = evm >= EV_SUSPEITO;
     const forte = evm >= 0.05 && !suspeito && cm?.n !== 2;
-    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
+    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)}${r.k === "ast" || r.k === "reb" ? ddChip(d.dd, r.j, b, rel, g.id, r.k) : ""} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
       <td class="n">${r.O && r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>`
         : /marco/i.test(r.mercado || "") ? `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`
         : `${num(r.L)} <span class="muted" title="o outro lado está suspenso na casa">· ${r.O ? `só Mais ${num(r.O, 2)}` : `só Menos ${num(r.U, 2)}`}</span>`}</td>

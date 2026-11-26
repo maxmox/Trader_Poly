@@ -127,6 +127,49 @@ function umChip(m, x, rel, margem, ctx) {
   return ` <span class="mu-chip${ativo ? " forte" : ""}${contra ? " contra" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
 }
 
+// Caça ao double-double percebida cedo (26/11/2026, pedido do usuário; nba_pbp/caca_dd_cedo.py exportar →
+// data/padroes/caca_dd.json, base viva 2024-27, jogadores com 6+ jogos). Gatilho do fim do Q1 até o fim do Q3: tem ≤ 7
+// assistências/rebotes, um mínimo (3 até o Q2 6:00, 4 até o intervalo, 5 até o Q3 6:00, 6 depois), no ritmo de hoje termina
+// com 10+ pelos minutos previstos, e a outra estatística (pontos ou reb/ast) também no ritmo de 10. Over = no histórico dele,
+// depois desse começo, chegou a 10 (ou a 9) bem mais que a nossa justa dava; Under = começa forte e termina abaixo da justa
+// (o ritmo cai para ~0,88 do normal). Aceso uma vez, fica no jogo. Só informa: não entra na justa.
+const DD_ON = new Set();
+const DD_NOME = { ast: "assistências", reb: "rebotes" };
+const ddMinimo = (t) => (t < 1080 ? 3 : t < 1440 ? 4 : t < 1800 ? 5 : 6);
+function ddGatilho(j, b, rel, x) {
+  if (!b || b.dnp || !rel || rel.fim || rel.t < 720 || rel.t >= 2160) return false;
+  const jog = b.min || 0;
+  const f = b[x] || 0;
+  if (jog < 3 || f > 7 || f < ddMinimo(rel.t)) return false;
+  const falta = Math.max(minEspDe(j) - jog, 0);
+  const noRitmo = (v) => v >= 10 || v + (v / jog) * falta >= 10;
+  return noRitmo(f) && (x === "ast" ? ["pts", "reb"] : ["pts", "ast"]).some((o) => noRitmo(b[o] || 0));
+}
+const pc = (v) => `${Math.round(100 * v)}%`;
+export function ddChip(dd, j, b, rel, gid, so = null) {
+  const e = dd?.j?.[j?.aid];
+  if (!e || PAINEL.parada === "quadro congelado") return "";
+  return ["ast", "reb"].filter((x) => e[x] && (!so || so === x)).map((x) => {
+    const c = e[x];
+    const chave = `${gid}|${j.aid}|${x}`;
+    if (ddGatilho(j, b, rel, x)) DD_ON.add(chave);
+    if (!DD_ON.has(chave)) return "";
+    const over = c.lado === "over";
+    const f = b?.[x] ?? 0;
+    const feito = over && f >= 10;
+    const cor = over ? "var(--good)" : "var(--bad)";
+    const ab = x === "ast" ? "ast" : "reb";
+    const txt = over ? `🎯 DD ${ab} ↑${feito ? " ✓" : ""}` : `🧊 ${ab} ↓`;
+    const pl = (k, r) => (c.placar?.[k] ? `${r}: ${c.placar[k][0]} j, chegou a 10 em ${pc(c.placar[k][1])} × justa ${pc(c.placar[k][2])}` : "");
+    const tip = `${over ? "Começo em ritmo de double-double" : "Começou forte, mas costuma terminar abaixo da justa"} (${DD_NOME[x]}). `
+      + `Histórico dele 2024-27 com esse começo: ${c.n} jogos → chegou a 10 em ${pc(c.o10)} × nossa justa ${pc(c.p10)}; a 9 em ${pc(c.o9)} × ${pc(c.p9)}; `
+      + `final − justa ${c.d > 0 ? "+" : ""}${num(c.d, 2)}; ritmo depois ×${num(c.ritmo, 2)} do normal. ${c.cons ? "Repetiu nas duas temporadas." : "Não repetiu nas duas temporadas (mais incerto)."} `
+      + `${[pl("par", "Placar até 10"), pl("aberto", "placar aberto")].filter(Boolean).join("; ")}. Últimos: ${(c.ult || []).join(", ")}. `
+      + `${over ? "Aposta dele: Over 9,5 ou linha menor." : "Under na linha justa."} Só informa: não entra na linha justa.`;
+    return ` <span class="mu-chip${feito ? " contra" : " forte"}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
+  }).join("");
+}
+
 // Minutos esperados por quarto antes do jogo: total projetado repartido como a rotação dele nos últimos 10 jogos no
 // time atual (rotacao.min_q); sem rotação, 1/4 em cada quarto.
 export function minutosQuarto(j) {
@@ -1006,7 +1049,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${hierChip(hv)}</span>${mupHtml(j)}</td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid)}${hierChip(hv)}</span>${mupHtml(j)}</td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -1335,6 +1378,8 @@ export async function tabelasPainel() {
   if (!PAINEL.cal) PAINEL.cal = await fetch("data/padroes/calibra_justa.json", { cache: "no-cache" }).then((r) => r.json()).catch(() => ({}));
   // calibração do jogador ao lado da justa (24/11; refeita todo dia às 13 h pela rotina da calibração)
   if (!PAINEL.cj) PAINEL.cj = await fetch("data/padroes/calibracao/jogadores.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  // caça ao double-double percebida cedo (26/11): chips 🎯 DD ↑ / 🧊 ↓
+  if (!PAINEL.dd) PAINEL.dd = await fetch("data/padroes/caca_dd.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
 }
 
 // Simulador (18/11/2026, pedido do usuário): o MESMO quadro do Painel com um summary congelado num momento do jogo
