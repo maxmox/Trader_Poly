@@ -7,7 +7,7 @@
 import { esc } from "./formato.js";
 import { nomeChave } from "./core.js";
 import { CASAS, STATS, OUTRO, PARCIAL, palavras, temNome, porSobrenome } from "./campeon.js";
-import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, ddChip, horaAnalise, rotacaoInfo, rotacaoAgora } from "./painel.js";
+import { ESTATS, relogio, lerBox, estimar, ajusteQ4, minEspDe, sinaisJogo, agoraDe, placarProj, estrelasDe, quentesDoJogo, chanceLinha, chanceLinhaPre, confMin, seloMin, matchupChip, ddChip, ddFotos, horaAnalise, rotacaoInfo, rotacaoAgora } from "./painel.js";
 
 const DE_TIPO = { points: ["pts"], rebounds: ["reb"], assists: ["ast"], threes: ["tpm"], pra: ["pra"], pa: ["pts", "ast"], pr: ["pts", "reb"], ra: ["reb", "ast"] };
 const NOME_K = { pts: "Pontos", reb: "Rebotes", ast: "Assistências", tpm: "Cestas de 3", pra: "PRA", pa: "P+A", pr: "P+R", ra: "R+A" };
@@ -166,6 +166,7 @@ function jogoHtml(g, s, linhas, d) {
     const ag = agoraDe(s?.plays || [], j.aid, b, rel, st);
     est.set(j.aid, { b, ag, x: estimar(j, b, rel, ajusteQ4(minEspDe(j), margem(j.time), rel, d.pol?.times?.[j.time]), ag, { tab: d.cal, pm: placarProj(g, j.time, margem(j.time), rel), mg: margem(j.time), rank: estrelasDe(g)[j.aid], quente: quentes[j.aid] }) });
   }
+  const ddF = d.dd?.j ? ddFotos(s?.plays || [], rel) : null; // chips de double-double (fim do Q1 e intervalo)
   let sinais = [];
   try { sinais = sinaisJogo(g, s, d); } catch { /* sem sinais */ }
   const sinalDe = (aid, k) => sinais.find((x) => x.j.aid === aid && x.k === k);
@@ -210,7 +211,7 @@ function jogoHtml(g, s, linhas, d) {
     const evm = Math.max(evO ?? -9, evU ?? -9);
     const suspeito = evm >= EV_SUSPEITO;
     const forte = evm >= 0.05 && !suspeito && cm?.n !== 2;
-    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)}${r.k === "ast" || r.k === "reb" ? ddChip(d.dd, r.j, b, rel, g.id, r.k) : ""} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
+    return `<tr${forte ? ' style="background:var(--good-bg)"' : cm?.n === 2 ? ' class="min-incerto"' : ""}><td>${dot}<b>${esc(r.j.nome)}</b>${seloMin(r.j, rel)}${matchupChip(r.j)}${r.k === "ast" || r.k === "reb" ? ddChip(d.dd, r.j, b, rel, g.id, r.k, ddF ? ddF(r.j.aid, !!b?.starter) : null) : ""} <span class="muted">${NOME_K[r.k]}</span>${sub}</td>
       <td class="n">${r.O && r.U ? `${num(r.L)} <span class="muted">· ${num(r.O, 2)} / ${num(r.U, 2)}</span>`
         : /marco/i.test(r.mercado || "") ? `<span title="marco: a casa só oferece o Mais (${num(r.L + 0.5, 0)} ou mais = Mais de ${num(r.L)})">${num(r.L + 0.5, 0)}+</span> <span class="muted">· só Mais ${num(r.O, 2)}</span>`
         : `${num(r.L)} <span class="muted" title="o outro lado está suspenso na casa">· ${r.O ? `só Mais ${num(r.O, 2)}` : `só Menos ${num(r.U, 2)}`}</span>`}</td>

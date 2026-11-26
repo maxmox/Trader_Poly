@@ -146,14 +146,48 @@ function ddGatilho(j, b, rel, x) {
   return noRitmo(f) && (x === "ast" ? ["pts", "reb"] : ["pts", "ast"]).some((o) => noRitmo(b[o] || 0));
 }
 const pc = (v) => `${Math.round(100 * v)}%`;
-export function ddChip(dd, j, b, rel, gid, so = null) {
+// fotos do fim do Q1 e do intervalo pelo lance a lance (o gatilho pode ter acontecido antes do momento atual: página aberta
+// depois, ou o quadro congelado do simulador)
+export function ddFotos(plays, rel) {
+  if (!rel || (rel.p <= 1 && !rel.fim)) return () => [];
+  const ate = rel.fim || rel.p > 2 ? [1, 2] : [1];
+  const cont = Object.fromEntries(ate.map((p) => [p, contarAte(plays, p)]));
+  return (aid, titular) => {
+    const seg = segundosPorPeriodo(plays, String(aid), { p: ate.length, resta: 0 }, titular);
+    let acc = 0;
+    return ate.map((p, i) => { acc += (seg[i] || 0) / 60; const c = cont[p][String(aid)]; return c ? { t: 720 * p, b: { ...c, min: acc } } : null; }).filter(Boolean);
+  };
+}
+// simulador: a conta do histórico refeita SEM o jogo do quadro (e a mesma regra de seleção: 6+ jogos, ±8 pp)
+function ddSemJogo(c, gid) {
+  if (!gid || !c?.jg || !c.jg.some((r) => String(r[0]) === String(gid))) return c;
+  const R = c.jg.filter((r) => String(r[0]) !== String(gid));
+  const est = (S) => {
+    const n = S.length, m = (f) => S.reduce((a, r) => a + f(r), 0) / n;
+    return { n, o10: m((r) => r[3] >= 10), p10: m((r) => r[4] / 1000), o9: m((r) => r[3] >= 9), p9: m((r) => r[5] / 1000), d: m((r) => r[3] - r[6] / 10) };
+  };
+  if (R.length < 6) return null;
+  const e = est(R), over = c.lado === "over", sg = over ? 1 : -1;
+  const ok = over ? (e.o10 - e.p10 >= 0.08 || e.o9 - e.p9 >= 0.1) && e.d > 0 : e.o10 - e.p10 <= -0.08 && e.o9 - e.p9 <= 0 && e.d < 0;
+  if (!ok) return null;
+  const per = [R.filter((r) => r[1] < 20250801), R.filter((r) => r[1] >= 20250801)].map((S) => (S.length ? est(S) : null));
+  const ce = R.reduce((a, r) => a + r[8], 0), ee = R.reduce((a, r) => a + r[9], 0);
+  const pl = (S) => { if (!S.length) return null; const x = est(S); return [x.n, x.o10, x.p10, x.d]; };
+  const dt = (d) => `${String(d).slice(6)}/${String(d).slice(4, 6)}/${String(d).slice(2, 4)}`;
+  return { ...c, ...e, ritmo: ee ? ce / ee : null, cons: per.every((x) => x && sg * (x.o10 - x.p10 + x.o9 - x.p9) > 0),
+    placar: { par: pl(R.filter((r) => !r[7])), aberto: pl(R.filter((r) => r[7])) }, ult: R.slice(-5).map((r) => `${dt(r[1])}: ${r[2]}→${r[3]}`), semJogo: true };
+}
+export function ddChip(dd, j, b, rel, gid, so = null, fotos = null) {
   const e = dd?.j?.[j?.aid];
-  if (!e || PAINEL.parada === "quadro congelado") return "";
+  if (!e) return "";
+  const sim = PAINEL.parada === "quadro congelado";
   return ["ast", "reb"].filter((x) => e[x] && (!so || so === x)).map((x) => {
-    const c = e[x];
+    const c = sim ? ddSemJogo(e[x], gid) : e[x];
+    if (!c) return "";
     const chave = `${gid}|${j.aid}|${x}`;
-    if (ddGatilho(j, b, rel, x)) DD_ON.add(chave);
-    if (!DD_ON.has(chave)) return "";
+    const aceso = ddGatilho(j, b, rel, x) || (fotos || []).some((f) => ddGatilho(j, f.b, { t: f.t, fim: false }, x));
+    if (!sim && aceso) DD_ON.add(chave);
+    if (!aceso && (sim || !DD_ON.has(chave))) return "";
     const over = c.lado === "over";
     const f = b?.[x] ?? 0;
     const feito = over && f >= 10;
@@ -162,7 +196,7 @@ export function ddChip(dd, j, b, rel, gid, so = null) {
     const txt = over ? `🎯 DD ${ab} ↑${feito ? " ✓" : ""}` : `🧊 ${ab} ↓`;
     const pl = (k, r) => (c.placar?.[k] ? `${r}: ${c.placar[k][0]} j, chegou a 10 em ${pc(c.placar[k][1])} × justa ${pc(c.placar[k][2])}` : "");
     const tip = `${over ? "Começo em ritmo de double-double" : "Começou forte, mas costuma terminar abaixo da justa"} (${DD_NOME[x]}). `
-      + `Histórico dele 2024-27 com esse começo: ${c.n} jogos → chegou a 10 em ${pc(c.o10)} × nossa justa ${pc(c.p10)}; a 9 em ${pc(c.o9)} × ${pc(c.p9)}; `
+      + `Histórico dele 2024-27 com esse começo${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos → chegou a 10 em ${pc(c.o10)} × nossa justa ${pc(c.p10)}; a 9 em ${pc(c.o9)} × ${pc(c.p9)}; `
       + `final − justa ${c.d > 0 ? "+" : ""}${num(c.d, 2)}; ritmo depois ×${num(c.ritmo, 2)} do normal. ${c.cons ? "Repetiu nas duas temporadas." : "Não repetiu nas duas temporadas (mais incerto)."} `
       + `${[pl("par", "Placar até 10"), pl("aberto", "placar aberto")].filter(Boolean).join("; ")}. Últimos: ${(c.ult || []).join(", ")}. `
       + `${over ? "Aposta dele: Over 9,5 ou linha menor." : "Under na linha justa."} Só informa: não entra na linha justa.`;
@@ -1049,7 +1083,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid)}${hierChip(hv)}</span>${mupHtml(j)}</td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null)}${hierChip(hv)}</span>${mupHtml(j)}</td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -1141,6 +1175,7 @@ function jogoHtml(g, s) {
   const box = lerBox(s);
   const placar = Object.fromEntries((comp?.competitors || []).map((c) => [c.team.abbreviation, Number(c.score) || 0]));
   const plays = s?.plays || [];
+  PAINEL.ddF = PAINEL.dd?.j ? ddFotos(plays, rel) : null; // chips de double-double: fotos do fim do Q1 e do intervalo
   const out = (g.lesoes ? Object.values(g.lesoes).flat() : []).filter((x) => /\(Out\)/.test(x)).map((x) => x.replace(/ \(.*$/, ""));
   const porTime = {};
   const vistos = new Set();
