@@ -259,14 +259,27 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null)
     const ts = (fotos || []).filter((f) => ddGatilho(j, f.b, { t: f.t, fim: false }, x)).map((f) => f.t);
     if (ddGatilho(j, b, rel, x, viva?.jog)) ts.push(rel.t);
     if (!sim && DD_ON.has(chave)) ts.push(DD_ON.get(chave));
-    if (!ts.length) return "";
-    const tAceso = Math.min(...ts);
-    if (!sim) DD_ON.set(chave, tAceso);
     const over = c.lado === "over";
-    const f = b?.[x] ?? 0;
-    const feito = over && f >= 10;
     const cor = over ? "var(--good)" : "var(--bad)";
     const ab = x === "ast" ? "ast" : "reb";
+    const hist = `Histórico${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos com esse começo · 10+ em ${pc(c.o10)} × justa ${pc(c.p10)} · 9+ em ${pc(c.o9)} × ${pc(c.p9)}${c.cons ? " · repetiu nas 2 temporadas" : ""}`;
+    const teste = over ? "Teste: só ●●● (z ≥ 2) ganhou do sem chip — Over 9,5 +34%, linha menor +27%." : "Teste: no Under nenhuma força ganhou do sem chip.";
+    if (!ts.length) {
+      // 27/11 (usuário): botão "Chips DD" na lateral — ligado, mostra também os que ainda não acenderam, apagados
+      if (!PAINEL.ddTodos) return "";
+      const z0 = c.z !== undefined ? c.z : ddZ(c.jg, over), nv0 = ddNivel(z0);
+      const fase = !rel || rel.p === 0 ? "antes do jogo" : rel.fim || rel.t > 1800 ? "não acendeu (a janela vai até o Q3 6:00)" : rel.t < 720 ? "acende a partir do fim do Q1" : "ainda não acendeu";
+      const tip0 = [
+        `${over ? "🎯 Double-double" : "🧊 Começo forte → abaixo da justa"} · ${DD_NOME[x]} · força ${DD_PONTOS[nv0]} z ${z0 == null ? "–" : num(z0, 2)}`,
+        `Apagado: ${fase}. Acende do fim do Q1 ao Q3 6:00 com ≤ 7 ${DD_NOME[x]}, pelo menos ${ddMinimo(rel?.t ?? 720)} agora, no ritmo de 10 e com a outra estatística também no ritmo de 10.`,
+        hist, `Últimos: ${(c.ult || []).slice(-3).join(" · ")}`, teste,
+      ].join("\n");
+      return ` <span class="mu-chip dd-apagado${nv0 === 3 ? " dd-f3" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip0)}">${esc(`${over ? `🎯 DD ${ab} ↑` : `🧊 ${ab} ↓`} ${DD_PONTOS[nv0]}`)}</span>`;
+    }
+    const tAceso = Math.min(...ts);
+    if (!sim) DD_ON.set(chave, tAceso);
+    const f = b?.[x] ?? 0;
+    const feito = over && f >= 10;
     const sg0 = feito || rel?.fim || !viva ? null : ddSugestao(c, x, viva, String(j.aid), rel?.t ?? 0, f, sim);
     // momento: cheio só do fim do Q1 ao intervalo; no 2º tempo a nossa odd já paga o Over de quem está quente (sem chip
     // igual) e o Over que só acende no intervalo não teve vantagem
@@ -283,11 +296,11 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null)
     const tip = [
       `${over ? "🎯 Double-double" : "🧊 Começo forte → abaixo da justa"} · ${DD_NOME[x]} · força ${DD_PONTOS[nv]} z ${zTxt}`,
       agora,
-      `Histórico${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos com esse começo · 10+ em ${pc(c.o10)} × justa ${pc(c.p10)} · 9+ em ${pc(c.o9)} × ${pc(c.p9)}${c.cons ? " · repetiu nas 2 temporadas" : ""}`,
+      hist,
       `Últimos: ${(c.ult || []).slice(-3).join(" · ")}`,
-      over ? "Teste: só ●●● (z ≥ 2) ganhou do sem chip — Over 9,5 +34%, linha menor +27%." : "Teste: no Under nenhuma força ganhou do sem chip.",
+      teste,
     ].filter(Boolean).join("\n");
-    return ` <span class="mu-chip${feito ? " contra" : forte ? " forte" : ""}${nv === 3 ? " dd-f3" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
+    return ` <span class="mu-chip${feito ? " contra" : forte ? " forte" : ""}${nv === 3 ? " dd-f3" : ""}${PAINEL.ddTodos && !feito ? " dd-aceso" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
   }).join("");
 }
 
@@ -1061,6 +1074,7 @@ const COR_O = "var(--sig-o)", COR_U = "var(--sig-u)";
 let PAINEL = { sel: null, sb: null, sum: null, pol: null, carregando: false };
 try { PAINEL.sel = localStorage.getItem("traderpoly.painel") || null; } catch { /* sem armazenamento */ }
 try { PAINEL.mup = localStorage.getItem("traderpoly.painel.mup") === "1"; } catch { PAINEL.mup = false; }
+try { PAINEL.ddTodos = localStorage.getItem("traderpoly.painel.ddtodos") === "1"; } catch { PAINEL.ddTodos = false; }
 
 // ---------- matchup por posição e tipo (21/11/2026, pedido do usuário; nba_pbp/matchup_pos.py) ----------
 // Só um INDICADOR, ligado pelo botão "Matchup": quanto se espera que ele faça a mais/a menos que o normal dele por causa
@@ -1087,6 +1101,9 @@ function mupHtml(j) {
   return `<span class="pj-mu" title="${esc(tit)}">${it("pts", "pts", 1)} ${it("reb", "reb", 1)}<small class="muted">(of ${sinalN(m.oreb ?? 0, 1)}/def ${sinalN(m.dreb ?? 0, 1)})</small> ${it("ast", "ast", 1)}<small class="muted">(3 ${sinalN(m.a3 ?? 0, 1)}/aro ${sinalN(m.ap ?? 0, 1)})</small> ${it("tpm", "3PM", 2)}</span>`;
 }
 const botaoMup = () => `<button type="button" class="btn-mup${PAINEL.mup ? " on" : ""}" data-mup title="Mostrar embaixo do nome o que o matchup (defesa × posição dele, por tipo) indica a mais/a menos que o normal. Não muda a justa.">Matchup ${PAINEL.mup ? "ligado" : "desligado"}</button>`;
+// chips 🎯 DD / 🧊 Under (27/11, usuário): ligado = todos os jogadores com chip aparecem (apagados até acender, os acesos em
+// destaque); desligado = só aparecem quando acendem
+const botaoDD = () => `<button type="button" class="btn-mup${PAINEL.ddTodos ? " on" : ""}" data-ddtodos title="Ligado: mostra todos os chips 🎯 DD / 🧊 Under do dia — os que ainda não acenderam ficam apagados e os acesos em destaque. Desligado: o chip só aparece quando acende.">Chips DD ${PAINEL.ddTodos ? "ligados" : "desligados"}</button>`;
 
 function quandoTxt(st) {
   const e = st?.type?.state;
@@ -1546,13 +1563,19 @@ export async function mostrarPainel(el, dia, espn, forcar = false) {
     PAINEL.parada = paradaDe(g.id, sumG?.header?.competitions?.[0]?.status, sumG?.plays);
     PAINEL.rail = "";
     const corpo = jogoHtml(g, sumG);
-    vivo.innerHTML = `<aside class="pn-rail pn-esq"><div class="rail-tit">Jogos do dia</div>${seletor(dia)}<small class="muted">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small>${botaoMup()}</aside><aside class="pn-rail pn-dir">${PAINEL.rail || ""}</aside><div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small>${botaoMup()}</div>${corpo}${defesaHtml(g)}${LEGENDA()}`;
+    vivo.innerHTML = `<aside class="pn-rail pn-esq"><div class="rail-tit">Jogos do dia</div>${seletor(dia)}<small class="muted">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small>${botaoMup()}${botaoDD()}</aside><aside class="pn-rail pn-dir">${PAINEL.rail || ""}</aside><div class="painel-topo">${seletor(dia)}<small class="muted pn-hora">atualizado às ${hora} · análise das ${horaAnalise(dia)}</small>${botaoMup()}${botaoDD()}</div>${corpo}${defesaHtml(g)}${LEGENDA()}`;
     ligarDetalhes(vivo);
     const bar = document.querySelector(".bar"); // a barra de jogos gruda logo abaixo do cabeçalho fixo do site
     if (bar) document.documentElement.style.setProperty("--bar-h", `${bar.offsetHeight}px`);
     for (const b of vivo.querySelectorAll("[data-mup]")) b.onclick = () => {
       PAINEL.mup = !PAINEL.mup;
       try { localStorage.setItem("traderpoly.painel.mup", PAINEL.mup ? "1" : "0"); } catch { /* sem armazenamento */ }
+      PAINEL.carregando = false;
+      mostrarPainel(el, dia, espn, false);
+    };
+    for (const b of vivo.querySelectorAll("[data-ddtodos]")) b.onclick = () => {
+      PAINEL.ddTodos = !PAINEL.ddTodos;
+      try { localStorage.setItem("traderpoly.painel.ddtodos", PAINEL.ddTodos ? "1" : "0"); } catch { /* sem armazenamento */ }
       PAINEL.carregando = false;
       mostrarPainel(el, dia, espn, false);
     };

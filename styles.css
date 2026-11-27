@@ -216,6 +216,8 @@ table.estreita { min-width: 0; max-width: 560px; }
 .mu-chip.forte { border-style: solid; font-weight: 700; background: color-mix(in srgb, currentColor 16%, transparent); }
 .mu-chip.contra { opacity: .6; }
 .mu-chip.dd-f3 { border-width: 2px; }
+.mu-chip.dd-apagado { opacity: .35; border-style: dotted; font-weight: 400; }
+.mu-chip.dd-aceso { font-weight: 700; box-shadow: 0 0 0 1px currentColor; }
 .rot-agora { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 4px 0 8px; font-size: 13px; }
 .rot-item { white-space: nowrap; }
 tr.min-incerto td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
