@@ -3,7 +3,7 @@
 // Atualiza a cada 30 s pelo box score da ESPN. Base: linha da DraftKings da análise do dia (sem linha: projeção do
 // Edgely) ÷ minutos projetados. Estimativa simples e NÃO calibrada contra linhas ao vivo.
 import { esc } from "./formato.js";
-import { contarAte, emQuadra, segundosPorPeriodo } from "./jogada.js";
+import { contarAte, emQuadra, segundosPorPeriodo, tempoDe } from "./jogada.js";
 import { atualizarRegistro, preencher, resolverPendentes } from "./registro.js";
 
 export const ESTATS = [["pts", "PTS", "points"], ["reb", "REB", "rebounds"], ["ast", "AST", "assists"], ["tpm", "3PM", "threes"], ["pra", "PRA", "pra"]];
@@ -136,9 +136,11 @@ function umChip(m, x, rel, margem, ctx) {
 const DD_ON = new Map(); // chave → t em que acendeu (o 1º)
 const DD_NOME = { ast: "assistências", reb: "rebotes" };
 const ddMinimo = (t) => (t < 1080 ? 3 : t < 1440 ? 4 : t < 1800 ? 5 : 6);
-function ddGatilho(j, b, rel, x) {
-  if (!b || b.dnp || !rel || rel.fim || rel.t < 720 || rel.t >= 2160) return false;
-  const jog = b.min || 0;
+// 27/11 (conferido contra a pesquisa nos 147 jogos do simulador): a janela vai só até o Q3 6:00 (o histórico do chip só tem
+// gatilhos até lá) e os minutos vêm do lance a lance (`jogF`, float) — o box da ESPN arredonda os minutos e mudava o gatilho
+function ddGatilho(j, b, rel, x, jogF = null) {
+  if (!b || b.dnp || !rel || rel.fim || rel.t < 720 || rel.t > 1800) return false;
+  const jog = jogF || b.min || 0;
   const f = b[x] || 0;
   if (jog < 3 || f > 7 || f < ddMinimo(rel.t)) return false;
   const falta = Math.max(minEspDe(j) - jog, 0);
@@ -146,17 +148,22 @@ function ddGatilho(j, b, rel, x) {
   return noRitmo(f) && (x === "ast" ? ["pts", "reb"] : ["pts", "ast"]).some((o) => noRitmo(b[o] || 0));
 }
 const pc = (v) => `${Math.round(100 * v)}%`;
-// fotos do fim do Q1 e do intervalo pelo lance a lance (o gatilho pode ter acontecido antes do momento atual: página aberta
-// depois, ou o quadro congelado do simulador)
+// fotos dos cortes da pesquisa (fim do Q1, Q2 6:00, intervalo, Q3 6:00) pelo lance a lance: o gatilho pode ter acontecido
+// antes do momento atual (página aberta depois, ou o quadro congelado do simulador)
+const DD_CORTES = [720, 1080, 1440, 1800];
 export function ddFotos(plays, rel) {
-  if (!rel || (rel.p <= 1 && !rel.fim)) return () => [];
-  const ate = rel.fim || rel.p > 2 ? [1, 2] : [1];
-  const cont = Object.fromEntries(ate.map((p) => [p, contarAte(plays, p)]));
-  return (aid, titular) => {
-    const seg = segundosPorPeriodo(plays, String(aid), { p: ate.length, resta: 0 }, titular);
-    let acc = 0;
-    return ate.map((p, i) => { acc += (seg[i] || 0) / 60; const c = cont[p][String(aid)]; return c ? { t: 720 * p, b: { ...c, min: acc } } : null; }).filter(Boolean);
-  };
+  if (!rel) return () => [];
+  const ts = DD_CORTES.filter((T) => rel.fim || T < rel.t);
+  if (!ts.length) return () => [];
+  // lances até o corte (a contagem e os minutos usam só o que tinha acontecido até ali)
+  const corte = Object.fromEntries(ts.map((T) => [T, (plays || []).filter((x) => tempoDe(x.period?.number ?? 1, x.clock?.displayValue) <= T && (x.period?.number ?? 1) <= Math.ceil(T / 720))]));
+  const cont = Object.fromEntries(ts.map((T) => [T, contarAte(corte[T], 99)]));
+  return (aid, titular) => ts.map((T) => {
+    const c = cont[T][String(aid)];
+    if (!c) return null;
+    const p = Math.ceil(T / 720), seg = segundosPorPeriodo(corte[T], String(aid), { p, resta: 720 * p - T }, titular);
+    return { t: T, b: { ...c, min: seg.slice(0, p).reduce((a, v) => a + v, 0) / 60 } };
+  }).filter(Boolean);
 }
 // simulador: a conta do histórico refeita SEM o jogo do quadro (e a mesma regra de seleção: 6+ jogos, ±8 pp)
 function ddSemJogo(c, gid, minJogos = 6) {
@@ -248,9 +255,9 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null)
     const c = sim ? ddSemJogo(e[x], gid, dd.min_jogos ?? 6) : e[x];
     if (!c) return "";
     const chave = `${gid}|${j.aid}|${x}`;
-    // quando acendeu: fotos do fim do Q1 / intervalo, o momento atual e (ao vivo) a memória do 1º acendimento
+    // quando acendeu: fotos dos cortes já passados, o momento atual e (ao vivo) a memória do 1º acendimento
     const ts = (fotos || []).filter((f) => ddGatilho(j, f.b, { t: f.t, fim: false }, x)).map((f) => f.t);
-    if (ddGatilho(j, b, rel, x)) ts.push(rel.t);
+    if (ddGatilho(j, b, rel, x, viva?.jog)) ts.push(rel.t);
     if (!sim && DD_ON.has(chave)) ts.push(DD_ON.get(chave));
     if (!ts.length) return "";
     const tAceso = Math.min(...ts);
@@ -269,20 +276,17 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null)
     const z = c.z !== undefined ? c.z : ddZ(c.jg, over), nv = ddNivel(z);
     const txt = `${over ? `🎯 DD ${ab} ↑` : `🧊 ${ab} ↓`} ${DD_PONTOS[nv]}${feito ? " ✓" : aposta}${sg?.motivo ? ` · ${sg.motivo}` : ""}`;
     const forte = !feito && (sg ? sg.forte : true);
-    const pl = (k, r) => (c.placar?.[k] ? `${r}: ${c.placar[k][0]} j, chegou a 10 em ${pc(c.placar[k][1])} × justa ${pc(c.placar[k][2])}` : "");
-    const regra = over
-      ? "Regra: justa ≥ 9,5 → Over 9,5 (não suba a linha: eles param no 10); justa < 9,5 → Over na linha padrão. Cheio = em quadra e odd do 9,5 entre 1,5 e 3 (linha menor 1,7–2,5), do fim do Q1 ao intervalo."
-      : "Regra: Under 9,5 com odd ≥ 1,5; se o 9,5 paga pouco, Under na linha padrão com o jogo até 10 pontos. Projeção pré alta (≥ 8,5) não funciona.";
-    const forca = `Força ${DD_PONTOS[nv]} (z ${z == null ? "–" : num(z, 1)}: o quanto ele passa da justa nesse começo × quantos jogos sustentam). `
-      + (over
-        ? "Teste honesto (só jogos anteriores, todos os jogadores, até o intervalo, chip cheio): força ●●● (z ≥ 2) Over 9,5 +34% e linha menor +27% (sem chip +4%); ●●○ e ●○○ ≈ sem chip. "
-        : "Teste honesto: no Under nenhuma faixa de força ganhou do grupo sem chip (≈ 0). ");
-    const tip = `${over ? "Começo em ritmo de double-double" : "Começou forte, mas costuma terminar abaixo da justa"} (${DD_NOME[x]}). ${forca}`
-      + `${sg ? `Sugestão agora: ${sg.lado === "O" ? "Over" : "Under"} ${num(sg.L)}${sg.odd != null ? ` — nossa odd ${ddOdd2(sg.odd)}` : ""}${sg.forte ? " (na faixa de valor)" : sg.motivo ? ` (${sg.motivo})` : ""}. ` : ""}`
-      + `${rel && rel.t > 1440 && !rel.fim ? "Já no 2º tempo: o teste mediu até o intervalo. " : ""}`
-      + `Histórico dele 2024-27 com esse começo${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos → chegou a 10 em ${pc(c.o10)} × nossa justa ${pc(c.p10)}; a 9 em ${pc(c.o9)} × ${pc(c.p9)}; `
-      + `final − justa ${c.d > 0 ? "+" : ""}${num(c.d, 2)}; ritmo depois ×${num(c.ritmo, 2)} do normal. ${c.cons ? "Repetiu nas duas temporadas." : "Não repetiu nas duas temporadas (mais incerto)."} `
-      + `${[pl("par", "Placar até 10"), pl("aberto", "placar aberto")].filter(Boolean).join("; ")}. Últimos: ${(c.ult || []).join(", ")}. ${regra} Só informa: não entra na linha justa.`;
+    // título curto e direto (27/11, usuário): força com o z, a aposta de agora, o histórico em uma linha e o que o teste diz
+    const zTxt = z == null ? "–" : num(z, 2);
+    const agora = feito ? "Agora: já fez 10 ✓"
+      : sg ? `Agora: ${sg.lado === "O" ? "Over" : "Under"} ${num(sg.L)}${sg.odd != null ? ` @${ddOdd2(sg.odd)}` : ""} · ${sg.forte ? "na faixa (cheio)" : sg.motivo || "fora da faixa"}` : "";
+    const tip = [
+      `${over ? "🎯 Double-double" : "🧊 Começo forte → abaixo da justa"} · ${DD_NOME[x]} · força ${DD_PONTOS[nv]} z ${zTxt}`,
+      agora,
+      `Histórico${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos com esse começo · 10+ em ${pc(c.o10)} × justa ${pc(c.p10)} · 9+ em ${pc(c.o9)} × ${pc(c.p9)}${c.cons ? " · repetiu nas 2 temporadas" : ""}`,
+      `Últimos: ${(c.ult || []).slice(-3).join(" · ")}`,
+      over ? "Teste: só ●●● (z ≥ 2) ganhou do sem chip — Over 9,5 +34%, linha menor +27%." : "Teste: no Under nenhuma força ganhou do sem chip.",
+    ].filter(Boolean).join("\n");
     return ` <span class="mu-chip${feito ? " contra" : forte ? " forte" : ""}${nv === 3 ? " dd-f3" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
   }).join("");
 }
@@ -1166,7 +1170,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null, { est: x?.est, quadra, tit: !!b?.starter, mg, tab: PAINEL.cal })}${hierChip(hv)}</span>${mupHtml(j)}</td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null, { est: x?.est, quadra, tit: !!b?.starter, mg, tab: PAINEL.cal, jog: mq ? mq.reduce((a, v) => a + v, 0) : null })}${hierChip(hv)}</span>${mupHtml(j)}</td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
