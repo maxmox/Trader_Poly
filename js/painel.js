@@ -175,15 +175,31 @@ function ddSemJogo(c, gid, minJogos = 6) {
   const pl = (S) => { if (!S.length) return null; const x = est(S); return [x.n, x.o10, x.p10, x.d]; };
   const dt = (d) => `${String(d).slice(6)}/${String(d).slice(4, 6)}/${String(d).slice(2, 4)}`;
   return { ...c, ...e, ritmo: ee ? ce / ee : null, cons: per.every((x) => x && sg * (x.o10 - x.p10 + x.o9 - x.p9) > 0),
-    placar: { par: pl(R.filter((r) => !r[7])), aberto: pl(R.filter((r) => r[7])) }, ult: R.slice(-5).map((r) => `${dt(r[1])}: ${r[2]}→${r[3]}`), semJogo: true };
+    placar: { par: pl(R.filter((r) => !r[7])), aberto: pl(R.filter((r) => r[7])) }, ult: R.slice(-5).map((r) => `${dt(r[1])}: ${r[2]}→${r[3]}`), semJogo: true,
+    z: ddZ(R, over) };
 }
-// Regras de aposta do chip (26/11/2026, nba_pbp/caca_dd_aposta.py: apostando como no simulador, odd do simulador, chip só
-// com os jogos ANTERIORES, momentos até o intervalo; "sem chip" = a mesma aposta em quem disparou o gatilho sem ter chip ≈ 0):
+// Força do chip (27/11/2026, pedido do usuário: Sengun/Josh Hart "valem mais"): z da evidência do histórico dele =
+// média de (Σ chegou a 10 − Σ chance da justa) ÷ √Σ p(1−p) e o mesmo no 9, com o sinal do lado (junta o tamanho do excesso
+// e o nº de jogos). Teste honesto (scratchpad dd_forca.py: força só com jogos ANTERIORES, todos os jogadores, até o intervalo,
+// chip cheio): Over z ≥ 2 → Over 9,5 +34% [+8; +57] (81 apostas, 12 jogadores) e linha menor +27% [+6; +49] (102), sem chip
+// +4%; z 1,5–2 → +4% / −2% (= sem chip); z < 1,5 → −4% / +6%. Under: nenhuma faixa de força ganhou do sem chip.
+function ddZ(rows, over) {
+  if (!rows?.length) return null;
+  let o10 = 0, p10 = 0, v10 = 0, o9 = 0, p9 = 0, v9 = 0;
+  for (const r of rows) {
+    const a = r[4] / 1000, b = r[5] / 1000;
+    o10 += r[3] >= 10; p10 += a; v10 += a * (1 - a); o9 += r[3] >= 9; p9 += b; v9 += b * (1 - b);
+  }
+  return ((over ? 1 : -1) * ((o10 - p10) / Math.sqrt(v10 || 1e-9) + (o9 - p9) / Math.sqrt(v9 || 1e-9))) / 2;
+}
+const ddNivel = (z) => (z == null ? 1 : z >= 2 ? 3 : z >= 1.5 ? 2 : 1);
+const DD_PONTOS = { 1: "●○○", 2: "●●○", 3: "●●●" };
+// Regras de aposta do chip (26/11/2026, nba_pbp/caca_dd_aposta.py, odd do simulador, momentos até o intervalo):
 //   🎯 Over: justa ≥ 9,5 → Over 9,5 (não subir a linha: eles param no 10); justa < 9,5 → Over na linha padrão (a ,5 mais perto
-//      da justa). Valor: em quadra (+22% × banco +3%) e odd do 9,5 entre 1,5 e 3 (1,5–2,0 +17%, 2,5–3,0 +39%; < 1,5 só +6%;
-//      > 3 loteria: 18–35% de acerto); linha menor com odd 1,7–2,5 (+23% com a linha padrão < 9,5).
-//   🧊 Under: Under 9,5 com odd ≥ 1,5 (+25% em 1,5–2,0; abaixo de 1,5 +8%); se o 9,5 paga pouco, Under na linha padrão em jogo
-//      até 10 pontos (+19%; placar aberto 0%); projeção pré alta (≥ 8,5) não funciona.
+//      da justa); cheio = em quadra e odd do 9,5 entre 1,5 e 3 (linha menor 1,7–2,5).
+//   🧊 Under: Under 9,5 com odd ≥ 1,5; se o 9,5 paga pouco, Under na linha padrão em jogo até 10 pontos.
+// ⚠ Os percentuais medidos em 26/11 olhavam o futuro (qualificavam só quem terminou com chip). No teste honesto (todos os
+// jogadores, só jogos anteriores) o chip com 6+ jogos ≈ sem chip; o valor aparece só no Over com força alta (ddZ ≥ 2).
 // A odd mostrada é a nossa (justa, sem margem; no simulador, a mesma do simulador).
 let DD_RECAL = null; // o simulador registra a recalibração dele (odd igual à do quadro)
 export function ddRecalSim(fn) { DD_RECAL = fn; }
@@ -245,25 +261,29 @@ export function ddChip(dd, j, b, rel, gid, so = null, fotos = null, viva = null)
     const cor = over ? "var(--good)" : "var(--bad)";
     const ab = x === "ast" ? "ast" : "reb";
     const sg0 = feito || rel?.fim || !viva ? null : ddSugestao(c, x, viva, String(j.aid), rel?.t ?? 0, f, sim);
-    // momento (caca_dd_aposta, só jogos anteriores): a vantagem do chip está do fim do Q1 ao intervalo (Over 9,5 cheio no fim do
-    // Q1 +34%, Q2 6:00 +21%, intervalo +16%; Under 9,5 cheio no Q2 6:00 +50%); no 2º tempo o chip não acrescenta (a nossa odd
-    // já paga o Over de quem está quente: sem chip igual); o Over que só acende no intervalo não tem vantagem (−2 a −12 pp)
+    // momento: cheio só do fim do Q1 ao intervalo; no 2º tempo a nossa odd já paga o Over de quem está quente (sem chip
+    // igual) e o Over que só acende no intervalo não teve vantagem
     const tarde = over && tAceso >= 1440, seg = (rel?.t ?? 0) > 1440;
     const sg = sg0 && sg0.forte && (tarde || seg) ? { ...sg0, forte: false, motivo: tarde ? "acendeu tarde" : "2º tempo" } : sg0;
     const aposta = sg ? ` ${num(sg.L)}${sg.odd != null ? ` @${ddOdd2(sg.odd)}` : ""}` : "";
-    const txt = `${over ? `🎯 DD ${ab} ↑` : `🧊 ${ab} ↓`}${feito ? " ✓" : aposta}${sg?.motivo ? ` · ${sg.motivo}` : ""}`;
+    const z = c.z !== undefined ? c.z : ddZ(c.jg, over), nv = ddNivel(z);
+    const txt = `${over ? `🎯 DD ${ab} ↑` : `🧊 ${ab} ↓`} ${DD_PONTOS[nv]}${feito ? " ✓" : aposta}${sg?.motivo ? ` · ${sg.motivo}` : ""}`;
     const forte = !feito && (sg ? sg.forte : true);
     const pl = (k, r) => (c.placar?.[k] ? `${r}: ${c.placar[k][0]} j, chegou a 10 em ${pc(c.placar[k][1])} × justa ${pc(c.placar[k][2])}` : "");
     const regra = over
-      ? "Regra (teste 2024-27 como no simulador, só jogos anteriores, até o intervalo): justa ≥ 9,5 → Over 9,5 (não suba a linha: eles param no 10); justa < 9,5 → Over na linha padrão. Valor: em quadra (+22% × banco +3%) e odd do 9,5 entre 1,5 e 3 (1,5–2,0 +17%, 2,5–3,0 +39%; abaixo de 1,5 só +6%; acima de 3 é loteria); linha menor com odd 1,7–2,5 (+23%)."
-      : "Regra (teste 2024-27 como no simulador, só jogos anteriores, até o intervalo): Under 9,5 com odd ≥ 1,5 (+25% em 1,5–2,0; abaixo de 1,5 +8%); se o 9,5 paga pouco, Under na linha padrão com o jogo até 10 pontos (+19%; placar aberto 0%). Projeção pré alta (≥ 8,5) não funciona.";
-    const tip = `${over ? "Começo em ritmo de double-double" : "Começou forte, mas costuma terminar abaixo da justa"} (${DD_NOME[x]}). `
+      ? "Regra: justa ≥ 9,5 → Over 9,5 (não suba a linha: eles param no 10); justa < 9,5 → Over na linha padrão. Cheio = em quadra e odd do 9,5 entre 1,5 e 3 (linha menor 1,7–2,5), do fim do Q1 ao intervalo."
+      : "Regra: Under 9,5 com odd ≥ 1,5; se o 9,5 paga pouco, Under na linha padrão com o jogo até 10 pontos. Projeção pré alta (≥ 8,5) não funciona.";
+    const forca = `Força ${DD_PONTOS[nv]} (z ${z == null ? "–" : num(z, 1)}: o quanto ele passa da justa nesse começo × quantos jogos sustentam). `
+      + (over
+        ? "Teste honesto (só jogos anteriores, todos os jogadores, até o intervalo, chip cheio): força ●●● (z ≥ 2) Over 9,5 +34% e linha menor +27% (sem chip +4%); ●●○ e ●○○ ≈ sem chip. "
+        : "Teste honesto: no Under nenhuma faixa de força ganhou do grupo sem chip (≈ 0). ");
+    const tip = `${over ? "Começo em ritmo de double-double" : "Começou forte, mas costuma terminar abaixo da justa"} (${DD_NOME[x]}). ${forca}`
       + `${sg ? `Sugestão agora: ${sg.lado === "O" ? "Over" : "Under"} ${num(sg.L)}${sg.odd != null ? ` — nossa odd ${ddOdd2(sg.odd)}` : ""}${sg.forte ? " (na faixa de valor)" : sg.motivo ? ` (${sg.motivo})` : ""}. ` : ""}`
       + `${rel && rel.t > 1440 && !rel.fim ? "Já no 2º tempo: o teste mediu até o intervalo. " : ""}`
       + `Histórico dele 2024-27 com esse começo${c.semJogo ? " (sem este jogo)" : ""}: ${c.n} jogos → chegou a 10 em ${pc(c.o10)} × nossa justa ${pc(c.p10)}; a 9 em ${pc(c.o9)} × ${pc(c.p9)}; `
       + `final − justa ${c.d > 0 ? "+" : ""}${num(c.d, 2)}; ritmo depois ×${num(c.ritmo, 2)} do normal. ${c.cons ? "Repetiu nas duas temporadas." : "Não repetiu nas duas temporadas (mais incerto)."} `
       + `${[pl("par", "Placar até 10"), pl("aberto", "placar aberto")].filter(Boolean).join("; ")}. Últimos: ${(c.ult || []).join(", ")}. ${regra} Só informa: não entra na linha justa.`;
-    return ` <span class="mu-chip${feito ? " contra" : forte ? " forte" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
+    return ` <span class="mu-chip${feito ? " contra" : forte ? " forte" : ""}${nv === 3 ? " dd-f3" : ""}" style="color:${cor};border-color:${cor}" title="${esc(tip)}">${esc(txt)}</span>`;
   }).join("");
 }
 
