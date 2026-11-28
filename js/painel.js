@@ -1177,9 +1177,15 @@ function celQuarto(real, esp, q, rel) {
   return `<td class="pq0${atual ? " atual" : ""}"><b style="color:${cor}">${num(real)}</b><small>/ ${num(esp)}</small></td>`;
 }
 
+// chips ao lado do nome (rotação, marcador, double-double, hierarquia): o mesmo no quadro do Painel e na aba Celular
+export function chipsJogador({ j, b, x, quadra, mq, rot, mg, ch, hv }, rel) {
+  return `${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null, { est: x?.est, quadra, tit: !!b?.starter, mg, tab: PAINEL.cal, jog: mq ? mq.reduce((a, v) => a + v, 0) : null })}${hierChip(hv)}`;
+}
+
 function tabelaTime(sigla, linhas, semBase, rel) {
   const pr = rel.p > 4;
-  const corpo = linhas.map(({ j, b, x, quadra, mq, ins, cmin, rot, mg, ch, hv }) => {
+  const corpo = linhas.map((p) => {
+    const { j, b, x, quadra, mq, ins, cmin } = p;
     const notaMin = cmin ? `<small style="color:${COR_O}" title="${esc(`quente em pontos (${cmin.faixa}) com o time ${cmin.est}: o técnico costuma deixar em quadra; ${b?.starter ? "titular" : "reserva"} nessa situação joga em média ${num(cmin.min)} min a mais que os companheiros (mesmo sinal em 3 testes)`)}">+${num(cmin.min)} min (quente, time ${cmin.est})</small>` : "";
     const pf = b?.pf ?? 0;
     const pfCor = pf >= 5 ? "var(--bad)" : pf >= 4 ? "var(--warn)" : "var(--ink-3)";
@@ -1187,7 +1193,7 @@ function tabelaTime(sigla, linhas, semBase, rel) {
     const minCor = !b || x.minAgora < 3 ? "var(--ink)" : md >= 3 ? COR_O : md <= -3 ? COR_U : "var(--ink)";
     const dot = quadra == null ? "" : `<span class="dot${quadra ? " on" : ""}" title="${quadra ? "em quadra" : "no banco"}"></span>`;
     const cm = confMin(j, rel);
-    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${rotacaoChip(rot)}${matchupChip(j, x, rel, mg, { ch, tit: !!b?.starter || minEspDe(j) >= 28 })}${ddChip(PAINEL.dd, j, b, rel, PAINEL.gid, null, PAINEL.ddF ? PAINEL.ddF(j.aid, !!b?.starter) : null, { est: x?.est, quadra, tit: !!b?.starter, mg, tab: PAINEL.cal, jog: mq ? mq.reduce((a, v) => a + v, 0) : null })}${hierChip(hv)}</span>${mupHtml(j)}</td>
+    return `<tr${cm?.n === 2 ? ' class="min-incerto"' : ""}><td class="pj"><span class="pj-nome">${dot}<b>${esc(j.nome)}</b>${seloMin(j, rel)}</span><span class="pj-sub"><small style="color:${pfCor}">${b ? `${pf} falta${pf === 1 ? "" : "s"}` : "não entrou"}</small>${chipsJogador(p, rel)}</span>${mupHtml(j)}</td>
       <td class="pmin"><b style="color:${minCor}">${b ? b.min : 0}</b><small>de ~${num(x.minAgora, 0)} · fim ~${num((b?.min || 0) + x.minResto, 0)}${cm && !rel.fim ? ` ± ${num(cm.sdResto, 0)}` : ""}</small>${notaMin}</td>
       ${[1, 2, 3, 4].map((q) => celQuarto(mq?.[q - 1], x.espQ[q - 1], q, rel)).join("")}${pr ? `<td class="pq0"><b>${num((mq || []).slice(4).reduce((a, c) => a + c, 0))}</b></td>` : ""}
       ${ESTATS.map(([k]) => celula(x.est[k], ins?.[k], j.aid, k)).join("")}</tr>`;
@@ -1210,15 +1216,24 @@ function polChip(p) {
 function medidor(rot, v, cor, extra = "") {
   return `<div class="bc-linha"><span class="bc-rot">${rot}</span><span class="bc-barra"><span style="width:${Math.min(100, v)}%;background:${cor}"></span></span><b class="bc-val" style="color:${cor}">${v}%</b>${extra ? `<small>${extra}</small>` : ""}</div>`;
 }
-function blowoutClutchHtml(g, chance, fat, lim, rel) {
+// cenário provável (blowout ≥ 40% / fim apertado ≥ 50% / em aberto) com o fator do técnico: o quadro do Painel e a aba Celular
+const fatTec = (t) => PAINEL.cm?.times?.[t] || { fator: 1, fator_clutch: 1 };
+const limPct = (v) => Math.min(95, Math.round(v));
+export function cenarioJogo(g, chance, fat = fatTec, lim = limPct) {
   const times = [g.fora, g.casa].filter((t) => chance[t]);
-  if (!times.length) return "";
+  if (!times.length) return null;
   const v = Object.fromEntries(times.map((t) => { const c = chance[t], f = fat(t); return [t, { mais: lim(c.bmais * f.fator), menos: lim(c.bmenos * f.fator), mais5: lim(c.b5mais * f.fator), menos5: lim(c.b5menos * f.fator), clutch: lim(c.clutch * f.fator_clutch), f }]; }));
   const lider = times.reduce((a, b) => (v[b].mais > v[a].mais ? b : a));
   const bMax = v[lider].mais, cMed = Math.round(times.reduce((s, t) => s + v[t].clutch, 0) / times.length);
   const [cls, titulo, sub] = bMax >= 40 ? ["blow", `⚠ Blowout provável ${bMax}%`, `${esc(lider)} tirar os titulares ganhando (5+ min antes do fim ${v[lider].mais5}%): titulares perdem minutos no Q4, reservas ganham`]
     : cMed >= 50 ? ["clutch", `🔥 Fim apertado provável ${cMed}%`, "titulares até o fim: estrelas rendem mais, assistências caem"]
     : ["aberto", "Jogo em aberto", `blowout ${bMax}% · fim apertado ${cMed}%`];
+  return { times, v, lider, bMax, cMed, cls, titulo, sub };
+}
+function blowoutClutchHtml(g, chance, fat, lim, rel) {
+  const C = cenarioJogo(g, chance, fat, lim);
+  if (!C) return "";
+  const { times, v, cls, titulo, sub } = C;
   const papel = (t) => (g.handicap == null || g.handicap === 0 ? "" : (t === g.casa) === (g.handicap < 0) ? `fav. ${num(Math.abs(g.handicap))}` : "azarão");
   const mini = (rot, val, cor, tip) => `<span class="mini" title="${esc(tip)}"><small>${rot}</small><span class="mini-b"><i style="width:${Math.min(100, val)}%;background:${cor}"></i></span><b style="color:${val >= 40 ? cor : "var(--ink-2)"}">${val}%</b></span>`;
   const linhas = times.map((t) => {
@@ -1271,7 +1286,9 @@ function paradaDe(id, st, plays) {
   return Date.now() - a.em >= 25e3 ? "relógio parado" : null;
 }
 
-function jogoHtml(g, s) {
+// A conta do jogo por jogador (justa, minutos, rotação, quadra/banco, cenário): a MESMA para o quadro do Painel, o
+// Simulador e a aba Celular (28/11/2026) — as duas telas mostram sempre o mesmo número
+export function dadosJogo(g, s) {
   PAINEL.gid = g.id; // calibração do jogador ao lado da justa: sem este jogo
   const comp = s?.header?.competitions?.[0];
   const st = comp?.status || { type: { state: "pre" } };
@@ -1317,6 +1334,11 @@ function jogoHtml(g, s) {
   const contHoje = contarAte(plays, 99);
   for (const p of Object.values(porTime).flat()) p.hv = hierVivo(p.j, p.b, contHoje[String(p.j.aid)], p.x);
   const semBase = Object.entries(box).filter(([id, b]) => !vistos.has(id) && !b.dnp && b.min > 0).map(([, b]) => b);
+  return { comp, st, rel, box, placar, plays, porTime, chance, lista, contHoje, semBase, margemDe };
+}
+
+function jogoHtml(g, s) {
+  const { st, rel, box, placar, porTime, chance, lista, contHoje, semBase, margemDe } = dadosJogo(g, s);
   // contexto para o registro das entradas (o que o Painel mostrava na hora)
   let sinais = [];
   try { sinais = sinaisJogo(g, s, { cm: PAINEL.cm, ins: PAINEL.ins, jog: PAINEL.jog, pol: PAINEL.pol, tim: PAINEL.tim }); } catch { /* sem sinais */ }
@@ -1532,7 +1554,14 @@ export function painelCongelado(g, s) {
     return { html, rail: PAINEL.rail, ctx: PAINEL.ctx };
   } finally { Object.assign(PAINEL, antes); }
 }
-export { ligarDetalhes };
+export { ligarDetalhes, paradaDe, quandoTxt as quandoPainel };
+// aba Celular (28/11): o mesmo botão "Chips DD" (ligado = todos os chips do dia, os apagados mais claros)
+export const ddTodosLigado = () => !!PAINEL.ddTodos;
+export function alternarDDTodos() {
+  PAINEL.ddTodos = !PAINEL.ddTodos;
+  try { localStorage.setItem("traderpoly.painel.ddtodos", PAINEL.ddTodos ? "1" : "0"); } catch { /* sem armazenamento */ }
+  return PAINEL.ddTodos;
+}
 
 export async function mostrarPainel(el, dia, espn, forcar = false) {
   if (!dia || PAINEL.carregando || document.hidden) return;

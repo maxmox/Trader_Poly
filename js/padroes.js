@@ -7,6 +7,7 @@ import { $, esc } from "./formato.js";
 import { mostrarPainel, seloMin, confMin, matchupChip, recarregarTabelas } from "./painel.js";
 import { mostrarCasaVivo, limparDadosCasa } from "./casavivo.js";
 import { mostrarSimulador } from "./simulador.js";
+import { mostrarCelular } from "./celular.js";
 import { ouvirCampeon } from "./campeon.js";
 import { contarAte, margemAte, fechou, condicao, variaveis, tempoDe, emQuadra, consertarResumo } from "./jogada.js";
 
@@ -259,6 +260,7 @@ async function mostrar(dia) {
     resumos.clear();
     if (aba === "jog") mostrarJogadores();
     if (aba === "painel") mostrarPainel($("#painel"), DIA, espn, true);
+    if (aba === "cel") mostrarCelular($("#cel"), DIA, espn, true);
     if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn);
   } catch (e) {
     $("#jogos").innerHTML = `<p class="erro">Não consegui ler a análise de ${esc(dia)} (${esc(e.message)}).</p>`;
@@ -270,6 +272,8 @@ function trocarAba(nova) {
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.aba === nova));
   $("#jogos").hidden = nova !== "jog";
   $("#painel").hidden = nova !== "painel";
+  $("#cel").hidden = nova !== "cel";
+  document.body.classList.toggle("aba-cel", nova === "cel");
   $("#casa").hidden = nova !== "casa";
   $("#sim").hidden = nova !== "sim";
   $("#cal").hidden = nova !== "cal";
@@ -278,6 +282,8 @@ function trocarAba(nova) {
   if (nova === "sim") mostrarSimulador($("#sim"), espn); // 18/11/2026: Painel congelado em jogos encerrados
   if (nova === "casa") { $("#casa").innerHTML ||= `<p class="muted">buscando os jogos…</p>`; mostrarCasaVivo($("#casa"), DIA, espn); }
   if (nova === "painel") { $("#painel").innerHTML ||= `<p class="muted">buscando o jogo…</p>`; mostrarPainel($("#painel"), DIA, espn); }
+  if (nova === "cel") { $("#cel").innerHTML ||= `<p class="muted">buscando o jogo…</p>`; mostrarCelular($("#cel"), DIA, espn); }
+  try { localStorage.setItem("traderpoly.padroes.aba", nova); } catch { /* sem armazenamento */ }
   if (nova === "jog") mostrarJogadores();
 }
 
@@ -285,19 +291,24 @@ function trocarAba(nova) {
   for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => trocarAba(b.dataset.aba);
   setInterval(() => { if (aba === "jog") mostrarJogadores(); }, 60e3);
   setInterval(() => { if (aba === "painel") mostrarPainel($("#painel"), DIA, espn); }, 30e3);
+  setInterval(() => { if (aba === "cel") mostrarCelular($("#cel"), DIA, espn); }, 30e3);
   setInterval(() => { if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); }, 30e3);
   setInterval(conferirVersao, 120e3);
   // aba Casa × Painel: captura chegando pelo endereço (#campeon=…, coletor "Abrir a comparação") ou gravada pela página
   // de props em outra janela (evento storage) → mostra na hora
   ouvirCampeon(() => trocarAba("casa"));
   addEventListener("storage", (e) => { if (e.key === "casas-coleta" && aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn); });
-  const pedida = new URLSearchParams(location.search).get("aba");
-  if (["painel", "casa", "sim", "cal"].includes(pedida)) trocarAba(pedida);
+  // 28/11/2026: no celular abre direto na aba Celular (o Painel de tabela larga não cabe); se ele trocar de aba, a escolha
+  // fica guardada para a próxima vez
+  let pedida = new URLSearchParams(location.search).get("aba");
+  if (!pedida && matchMedia("(max-width: 760px)").matches) { try { pedida = localStorage.getItem("traderpoly.padroes.aba") || "cel"; } catch { pedida = "cel"; } }
+  if (["painel", "cel", "casa", "sim", "cal"].includes(pedida)) trocarAba(pedida);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     conferirVersao();
     if (aba === "jog") mostrarJogadores();
     if (aba === "painel") mostrarPainel($("#painel"), DIA, espn);
+    if (aba === "cel") mostrarCelular($("#cel"), DIA, espn);
     if (aba === "casa") mostrarCasaVivo($("#casa"), DIA, espn);
   });
   let datas = [];

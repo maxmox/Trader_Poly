@@ -688,3 +688,75 @@ button.prim:hover { color: var(--panel); filter: brightness(1.1); }
 /* Simulador (24/11/2026): calibração do jogador ao lado da justa (pp, discreta) */
 .sim-cal { font-family: var(--mono); font-size: 10px; margin-left: 3px; letter-spacing: -0.2px; }
 .pc-fim .sim-cal { font-weight: 500; }
+
+/* Aba Celular (padroes.html, 28/11/2026): o Painel em cartões, para a tela do celular */
+.cel { font-size: 14px; }
+.cel-jogos { position: sticky; top: var(--bar-h, 56px); z-index: 5; display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 6px; margin: 0 -16px; padding-inline: 16px; background: var(--bg); border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.cel-jogos::-webkit-scrollbar { display: none; }
+.cel-jogos button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 13px; font-weight: 500; border-radius: 999px; }
+.cel-jogos button small { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.cel-jogos button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.cel-jogos button[aria-pressed="true"] small { color: inherit; opacity: .85; }
+.cel-jogos button.rolando .pt-dot { background: var(--good); }
+.cel-jogos button.parado .pt-dot { background: var(--bad); }
+.cel-jogos button.rolando:not([aria-pressed="true"]) { border-color: var(--good); }
+.cel-jogos button.parado:not([aria-pressed="true"]) { border-color: var(--bad); }
+.cel-placar { margin: 10px 0 6px; padding-left: 10px; border-left: 5px solid var(--line); }
+.cel-placar.rolando { border-left-color: var(--good); }
+.cel-placar.parado { border-left-color: var(--bad); }
+.cel-pl { display: flex; align-items: baseline; gap: 10px; font-family: var(--display); font-size: 18px; font-weight: 800; }
+.cel-pl b { font-size: 26px; }
+.cel-placar.rolando .cel-pl b, .cel-placar.rolando .cel-est { color: var(--good); }
+.cel-placar.parado .cel-pl b, .cel-placar.parado .cel-est { color: var(--bad); }
+.cel-placar > small { display: block; color: var(--ink-2); font-family: var(--mono); font-size: 12px; }
+.cel-cen { margin: 4px 0; padding: 6px 10px; border-radius: 8px; border-left: 4px solid var(--line); background: var(--panel); font-size: 13px; }
+.cel-cen b { font-family: var(--display); }
+.cel-cen small { color: var(--ink-3); }
+.cel-cen.blow { border-left-color: var(--warn); } .cel-cen.blow b { color: var(--warn); }
+.cel-cen.clutch { border-left-color: var(--accent); } .cel-cen.clutch b { color: var(--accent); }
+.cel-rot { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0; font-size: 13px; }
+.cel-rot .rot-chip { margin-left: 4px; }
+.cel-fora { margin: 4px 0; font-size: 12px; color: var(--ink-2); }
+.cel-ops { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 4px; }
+.cel-grupo { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.cel-op { padding: 4px 9px; font-size: 12px; font-weight: 500; border-radius: 999px; color: var(--ink-3); }
+.cel-op.on { color: var(--ink); background: var(--accent-soft); border-color: var(--accent); }
+.cel-time { margin: 14px 0 6px; font-size: 15px; }
+.cel-c { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 0 0 6px; cursor: pointer; }
+.cel-c.banco { opacity: .78; }
+.cel-c.incerto { border-color: var(--bad); }
+.cel-c.aberto { border-color: var(--accent); opacity: 1; }
+.cel-l1 { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cel-l1 .dot { flex: none; margin-right: 2px; }
+.cel-nome { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.cel-l1 .selo-min { flex: none; margin-left: 2px; }
+.cel-pf { flex: none; font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-left: 2px; }
+.cel-pf.f4 { color: var(--warn); font-weight: 700; } .cel-pf.f5 { color: var(--bad); font-weight: 700; }
+.cel-min { flex: none; margin-left: auto; padding-left: 6px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.cel-min b { color: var(--ink); font-size: 14px; }
+.cel-chips { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0 0; }
+.cel-chips > span { margin-left: 0 !important; }
+.cel-ests { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.cel-e { display: grid; justify-items: center; gap: 0; padding: 3px 2px; border-radius: 6px; background: var(--bg); text-align: center; font-family: var(--mono); line-height: 1.25; min-width: 0; }
+.cel-e > small:first-child { font-family: var(--body); font-size: 10px; letter-spacing: .04em; color: var(--ink-3); }
+.cel-f { font-size: 17px; font-weight: 800; }
+.cel-e.quente .cel-f { color: var(--good); } .cel-e.frio .cel-f { color: var(--bad); }
+.cel-j { font-size: 14px; font-weight: 700; white-space: nowrap; }
+.cel-j i { font-style: normal; font-size: 10px; margin-right: 1px; } .cel-j i.up { color: var(--good); } .cel-j i.dn { color: var(--bad); }
+.cel-pre { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.cel-det { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: grid; gap: 4px; font-size: 13px; cursor: auto; }
+.cel-det small { margin-right: 4px; }
+.cel-dicas { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.cel-rodape { font-size: 12px; margin: 12px 0 0; }
+.cel-dica { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 30; max-height: 55vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 40px 12px 14px; box-shadow: 0 8px 28px rgb(0 0 0 / .25); font-size: 13px; display: none; }
+.cel-dica.on { display: block; }
+.cel-x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1; }
+/* celular: abas roláveis, sem o texto de abertura, e a aba Celular sem as margens largas */
+@media (max-width: 760px) {
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; padding: 8px 10px; font-size: 15px; }
+  body.props .lede { display: none; }
+  body.props .sec-head h1 { font-size: 20px; }
+  body.aba-cel .wrap { padding-block: 10px 48px; gap: 12px; }
+}
